@@ -16,6 +16,7 @@
 		"security/repo_security.xml",
 		"security/ir.model.access.csv",
 		"data/repo_rules_data.xml",
+		"data/repo_policy_data.xml",
 		"views/repo_backend_views.xml",
 		"views/repo_menus.xml",
 		"wizards/repo_key_rotation_views.xml",

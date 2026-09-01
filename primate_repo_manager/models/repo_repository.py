@@ -34,6 +34,14 @@ class RepoRepository(models.Model):
 	is_fork = fields.Boolean(string="Es fork")
 	upstream_full_name = fields.Char(
 		string="Upstream", help="Sólo forks. Ej: OCA/partner-contact")
+	governance_status = fields.Selection(
+		[("pending_migration", "Pendiente de migración"), ("governed", "Gobernado")],
+		string="Estado de gobernanza", default="pending_migration", tracking=True,
+		help="Sólo relevante en forks. La plantilla `fork-upstream` describe el patrón "
+			 "espejo+parches; los forks actuales son forks normales, sin esa estructura. "
+			 "Evaluarlos contra el detalle de la plantilla produciría cientos de hallazgos "
+			 "que no son incumplimiento sino 'todavía no migrado'. Mientras esté pendiente "
+			 "se emite UN hallazgo agregado; al marcarlo gobernado se evalúa completo.")
 
 	classification = fields.Selection(
 		CLASSIFICATIONS, string="Clasificación", tracking=True,

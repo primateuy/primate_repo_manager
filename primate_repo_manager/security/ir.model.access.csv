@@ -19,3 +19,11 @@ access_repo_classification_rule_reader,repo.classification.rule.reader,model_rep
 access_repo_classification_rule_admin,repo.classification.rule.admin,model_repo_classification_rule,group_repo_admin,1,1,1,1
 access_repo_branch_role_rule_reader,repo.branch.role.rule.reader,model_repo_branch_role_rule,group_repo_reader,1,0,0,0
 access_repo_branch_role_rule_admin,repo.branch.role.rule.admin,model_repo_branch_role_rule,group_repo_admin,1,1,1,1
+access_repo_policy_template_reader,repo.policy.template.reader,model_repo_policy_template,group_repo_reader,1,0,0,0
+access_repo_policy_template_admin,repo.policy.template.admin,model_repo_policy_template,group_repo_admin,1,1,1,1
+access_repo_policy_branch_rule_reader,repo.policy.branch.rule.reader,model_repo_policy_branch_rule,group_repo_reader,1,0,0,0
+access_repo_policy_branch_rule_admin,repo.policy.branch.rule.admin,model_repo_policy_branch_rule,group_repo_admin,1,1,1,1
+access_repo_policy_status_check_reader,repo.policy.status.check.reader,model_repo_policy_status_check,group_repo_reader,1,0,0,0
+access_repo_policy_status_check_admin,repo.policy.status.check.admin,model_repo_policy_status_check,group_repo_admin,1,1,1,1
+access_repo_policy_access_rule_reader,repo.policy.access.rule.reader,model_repo_policy_access_rule,group_repo_reader,1,0,0,0
+access_repo_policy_access_rule_admin,repo.policy.access.rule.admin,model_repo_policy_access_rule,group_repo_admin,1,1,1,1

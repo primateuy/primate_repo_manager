@@ -94,11 +94,18 @@ Prefijo de modelos: `repo.*`. Todos con `mail.thread` donde haya estados o accio
 
 **Plantillas de datos iniciales (data XML):**
 
+> **Nota (1-sep-2026):** `interno` exige PR y checks pero **0 aprobaciones**. La versión
+> anterior de esta tabla pedía 1 aprobación, lo que contradecía "sin ramas de entorno" y
+> frenaba el trabajo en herramientas internas donde muchas veces hay una sola persona. Se
+> conservan la trazabilidad del PR y el CI pre-merge, se quita la espera por aprobación.
+> Staging y support heredan de base (PR + 1 aprobación) en las plantillas que tienen esas
+> ramas; endurecer support se hace por override en `repo.policy.branch.rule`.
+
 | Plantilla | Aprobaciones base | Aprobaciones prod | CODEOWNERS | Firma | Notas |
 |---|---|---|---|---|---|
 | `cliente-estandar` | 1 | 2 | no | no (fase 2 de rollout) | CI requerida |
 | `localizacion` | 1 (de owner) | 2 (1 de owner) | sí (team owners) | sí | La más estricta |
-| `interno` | 1 | — | no | no | Sin ramas de entorno |
+| `interno` | 0 (PR obligatorio) | — | no | no | Sin ramas de entorno; CI sí |
 | `fork-upstream` | (ver §5) | — | no | no | Espejo + parches |
 
 ### 4.4 Operación

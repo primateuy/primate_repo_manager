@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 - PrimateUY / License AGPL-3.0 or later -->
+<!--
+	Las cuatro plantillas de la spec §4.3. Cada valor sale de una decisión escrita, no de
+	un default razonable; donde la spec no decide, el campo queda vacío y marcado como no
+	evaluable en vez de completado con un invento.
+
+	Los checks requeridos son el caso: la decisión 2 los hace obligatorios en toda
+	plantilla, pero no nombra ninguno. Un nombre equivocado en un ruleset bloquea TODOS
+	los merges del repo, así que `status_checks_defined` queda en falso hasta que la
+	auditoría releve qué workflows corren de verdad y se decida la lista con datos.
+-->
+<odoo noupdate="1">
+
+	<!-- ================================================================
+	     cliente-estandar — §4.3, decisiones 2, 4 y 6
+	     ================================================================ -->
+	<record id="policy_cliente_estandar" model="repo.policy.template">
+		<field name="name">Cliente estándar</field>
+		<field name="code">cliente-estandar</field>
+		<field name="sequence">10</field>
+		<field name="classification_default">cliente</field>
+		<field name="require_pr" eval="True"/>
+		<field name="required_approvals">1</field>
+		<field name="require_codeowner_review" eval="False"/>
+		<field name="block_force_push" eval="True"/>
+		<field name="block_deletion" eval="True"/>
+		<field name="require_signed_commits" eval="False"/>
+		<field name="branch_name_pattern">^(feature|fix)\/\d+-[a-z0-9-]+$</field>
+		<field name="commit_message_pattern">^\[(ADD|IMP|FIX)\]\[\d+\] .+</field>
+		<field name="merge_strategy_base">squash</field>
+		<field name="merge_strategy_promotion">merge_commit</field>
+		<field name="status_checks_defined" eval="False"/>
+		<field name="max_permission_default">push</field>
+		<field name="note">Firma de commits desactivada a propósito: §9 fija el orden de
+rollout localizacion → cliente-estandar → resto, y activarla antes de que el 100% de los
+que pushean tengan firma configurada bloquearía a gente que no puede resolverlo sola.</field>
+	</record>
+
+	<record id="policy_cliente_prod" model="repo.policy.branch.rule">
+		<field name="template_id" ref="policy_cliente_estandar"/>
+		<field name="branch_role">prod</field>
+		<field name="required_approvals">2</field>
+		<field name="note">Decisión 4: doble aprobación a producción.</field>
+	</record>
+
+	<!-- staging y support heredan base (PR + 1 aprobación): no llevan override.
+	     Endurecer support más adelante es agregar una fila acá, sin tocar código. -->
+
+	<!-- ================================================================
+	     localizacion — la más estricta. §4.3 y decisiones 5 y 7
+	     ================================================================ -->
+	<record id="policy_localizacion" model="repo.policy.template">
+		<field name="name">Localización</field>
+		<field name="code">localizacion</field>
+		<field name="sequence">20</field>
+		<field name="classification_default">localizacion</field>
+		<field name="require_pr" eval="True"/>
+		<field name="required_approvals">1</field>
+		<field name="require_codeowner_review" eval="True"/>
+		<field name="block_force_push" eval="True"/>
+		<field name="block_deletion" eval="True"/>
+		<field name="require_signed_commits" eval="True"/>
+		<field name="branch_name_pattern">^(feature|fix)\/\d+-[a-z0-9-]+$</field>
+		<field name="commit_message_pattern">^\[(ADD|IMP|FIX)\]\[\d+\] .+</field>
+		<field name="merge_strategy_base">squash</field>
+		<field name="merge_strategy_promotion">merge_commit</field>
+		<field name="status_checks_defined" eval="False"/>
+		<field name="max_permission_default">push</field>
+		<field name="note">Decisión 5: una sola aprobación de owner en el flujo diario a
+base. Decisión 7: primera en el rollout de firma. El team de owners debe tener mínimo 2
+miembros para no ser cuello de botella (§7.1), y eso se valida al aplicar, en F3.</field>
+	</record>
+
+	<record id="policy_localizacion_prod" model="repo.policy.branch.rule">
+		<field name="template_id" ref="policy_localizacion"/>
+		<field name="branch_role">prod</field>
+		<field name="required_approvals">2</field>
+		<field name="require_codeowner_review" eval="True"/>
+		<field name="require_signed_commits" eval="True"/>
+		<field name="note">Decisión 4: dos aprobaciones y una de ellas de owner.</field>
+	</record>
+
+	<!-- ================================================================
+	     interno — resuelta la contradicción de la spec (nota del 1-sep-2026)
+	     ================================================================ -->
+	<record id="policy_interno" model="repo.policy.template">
+		<field name="name">Interno</field>
+		<field name="code">interno</field>
+		<field name="sequence">30</field>
+		<field name="classification_default">interno</field>
+		<field name="require_pr" eval="True"/>
+		<field name="required_approvals">0</field>
+		<field name="require_codeowner_review" eval="False"/>
+		<field name="block_force_push" eval="True"/>
+		<field name="block_deletion" eval="True"/>
+		<field name="require_signed_commits" eval="False"/>
+		<field name="branch_name_pattern">^(feature|fix)\/\d+-[a-z0-9-]+$</field>
+		<field name="commit_message_pattern">^\[(ADD|IMP|FIX)\]\[\d+\] .+</field>
+		<field name="merge_strategy_base">squash</field>
+		<field name="status_checks_defined" eval="False"/>
+		<field name="max_permission_default">push</field>
+		<field name="note">PR obligatorio con 0 aprobaciones: se conservan la trazabilidad
+y el CI pre-merge, y se quita la espera por aprobación en herramientas donde muchas veces
+trabaja una sola persona. Sin ramas de entorno, así que no lleva reglas de prod.</field>
+	</record>
+
+	<!-- ================================================================
+	     fork-upstream — §5, espejo + parches
+	     ================================================================ -->
+	<record id="policy_fork_upstream" model="repo.policy.template">
+		<field name="name">Fork de upstream</field>
+		<field name="code">fork-upstream</field>
+		<field name="sequence">40</field>
+		<field name="classification_default">fork_upstream</field>
+		<field name="require_pr" eval="True"/>
+		<field name="required_approvals">1</field>
+		<field name="require_codeowner_review" eval="False"/>
+		<field name="block_force_push" eval="True"/>
+		<field name="block_deletion" eval="True"/>
+		<field name="require_signed_commits" eval="False"/>
+		<field name="commit_message_pattern">^\[(ADD|IMP|FIX)\]\[\d+\] .+</field>
+		<field name="status_checks_defined" eval="False"/>
+		<field name="max_permission_default">push</field>
+		<field name="note">Sólo se evalúa en detalle contra los forks marcados como
+gobernados. Los que están pendientes de migración generan UN hallazgo agregado: son forks
+normales, sin estructura espejo+parches, y compararlos ítem por ítem produciría cientos de
+hallazgos que no son incumplimiento sino trabajo todavía no hecho.</field>
+	</record>
+
+	<record id="policy_fork_mirror" model="repo.policy.branch.rule">
+		<field name="template_id" ref="policy_fork_upstream"/>
+		<field name="branch_role">mirror</field>
+		<field name="require_pr" eval="False"/>
+		<field name="required_approvals">0</field>
+		<field name="block_human_push" eval="True"/>
+		<field name="block_force_push" eval="True"/>
+		<field name="block_deletion" eval="True"/>
+		<field name="note">§5: la rama espejo tiene push bloqueado para TODOS los humanos.
+Sólo el job de sync la avanza con ff-only. No lleva PR porque nadie debería abrir una: si
+alguien pusheó ahí, es drift crítico y el ff del sync va a fallar.</field>
+	</record>
+
+	<record id="policy_fork_patch" model="repo.policy.branch.rule">
+		<field name="template_id" ref="policy_fork_upstream"/>
+		<field name="branch_role">patch</field>
+		<field name="require_pr" eval="True"/>
+		<field name="required_approvals">1</field>
+		<field name="note">§5: la rama de parches lleva el flujo normal, PR + 1 aprobación
++ CI. Es donde van los fixes propios y a la que apunta el addons_path de los clientes.</field>
+	</record>
+
+</odoo>
