@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 - PrimateUY / License AGPL-3.0 or later -->
+<odoo>
+
+	<menuitem id="menu_repo_root" name="Repo Manager" sequence="70"
+			  groups="group_repo_reader"/>
+
+	<menuitem id="menu_repo_config" name="Configuración" sequence="90"
+			  parent="menu_repo_root" groups="group_repo_admin"/>
+
+	<menuitem id="menu_repo_backend" name="Conexiones" sequence="10"
+			  parent="menu_repo_config" action="action_repo_backend"/>
+
+</odoo>

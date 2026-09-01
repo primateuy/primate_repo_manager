@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 - PrimateUY / License AGPL-3.0 or later -->
+<odoo>
+
+	<record id="view_repo_key_rotation_form" model="ir.ui.view">
+		<field name="name">repo.key.rotation.form</field>
+		<field name="model">repo.key.rotation</field>
+		<field name="arch" type="xml">
+			<form string="Rotar secreto de cifrado">
+				<div class="alert alert-info" role="alert">
+					<p><b>Orden correcto:</b></p>
+					<ol class="mb-0">
+						<li>Cambiá <code>repo_manager_key</code> en <code>odoo.conf</code> y reiniciá.</li>
+						<li>Pegá acá el secreto <b>anterior</b> y probá primero con «Verificar».</li>
+						<li>Recién entonces «Recifrar».</li>
+					</ol>
+				</div>
+				<group>
+					<field name="previous_key" password="True" widget="text"
+						   placeholder="El valor que tenía repo_manager_key antes del cambio"/>
+					<field name="backend_ids" widget="many2many_tags"/>
+				</group>
+				<group string="Resultado" invisible="not preview">
+					<field name="preview" nolabel="1" readonly="1"/>
+				</group>
+				<footer>
+					<button name="action_verify" type="object" string="Verificar"
+							class="btn-secondary"/>
+					<button name="action_rotate" type="object" string="Recifrar"
+							class="btn-primary"
+							confirm="¿Recifro las credenciales con la clave actual de odoo.conf?"/>
+					<button string="Cerrar" class="btn-secondary" special="cancel"/>
+				</footer>
+			</form>
+		</field>
+	</record>
+
+	<record id="action_repo_key_rotation" model="ir.actions.act_window">
+		<field name="name">Rotar secreto de cifrado</field>
+		<field name="res_model">repo.key.rotation</field>
+		<field name="view_mode">form</field>
+		<field name="target">new</field>
+	</record>
+
+	<menuitem id="menu_repo_key_rotation" name="Rotar secreto de cifrado" sequence="20"
+			  parent="menu_repo_config" action="action_repo_key_rotation"/>
+
+</odoo>

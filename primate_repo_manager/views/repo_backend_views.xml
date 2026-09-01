@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 - PrimateUY / License AGPL-3.0 or later -->
+<odoo>
+
+	<record id="view_repo_backend_list" model="ir.ui.view">
+		<field name="name">repo.backend.list</field>
+		<field name="model">repo.backend</field>
+		<field name="arch" type="xml">
+			<list string="Conexiones">
+				<field name="name"/>
+				<field name="owner_login"/>
+				<field name="owner_type"/>
+				<field name="last_sync"/>
+				<field name="state" widget="badge"
+					   decoration-success="state == 'connected'"
+					   decoration-danger="state == 'error'"/>
+			</list>
+		</field>
+	</record>
+
+	<record id="view_repo_backend_form" model="ir.ui.view">
+		<field name="name">repo.backend.form</field>
+		<field name="model">repo.backend</field>
+		<field name="arch" type="xml">
+			<form string="Conexión">
+				<header>
+					<button name="action_test_connection" type="object" string="Probar conexión"
+							class="btn-primary"/>
+					<field name="state" widget="statusbar"/>
+				</header>
+				<sheet>
+					<div class="oe_title">
+						<h1><field name="name" placeholder="GitHub — PrimateUY"/></h1>
+					</div>
+					<group>
+						<group string="Cuenta">
+							<field name="provider"/>
+							<field name="owner_login" placeholder="primateuy"/>
+							<field name="owner_type"/>
+									</group>
+						<group string="Credenciales de la App">
+							<field name="app_id" password="False"/>
+							<field name="installation_id"
+								   help="Está en la URL de la app instalada: /installations/&lt;número&gt;"/>
+							<field name="private_key_set"/>
+							<field name="private_key" password="True" widget="text"
+								   placeholder="-----BEGIN RSA PRIVATE KEY----- …"
+								   invisible="private_key_set"/>
+							<div colspan="2" invisible="not private_key_set">
+								<span class="text-muted">
+									La private key está guardada y cifrada. No se muestra:
+									para reemplazarla, vaciá el campo cifrado y cargá una nueva.
+								</span>
+							</div>
+						</group>
+					</group>
+					<group string="Estado" invisible="state == 'draft'">
+						<field name="last_sync"/>
+						<field name="rate_remaining"/>
+						<field name="last_error" invisible="state != 'error'"/>
+					</group>
+				</sheet>
+				<chatter/>
+			</form>
+		</field>
+	</record>
+
+	<record id="action_repo_backend" model="ir.actions.act_window">
+		<field name="name">Conexiones</field>
+		<field name="res_model">repo.backend</field>
+		<field name="view_mode">list,form</field>
+	</record>
+
+</odoo>

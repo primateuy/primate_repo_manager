@@ -1,0 +1,4 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_repo_backend_reader,repo.backend.reader,model_repo_backend,group_repo_reader,1,0,0,0
+access_repo_backend_admin,repo.backend.admin,model_repo_backend,group_repo_admin,1,1,1,1
+access_repo_key_rotation_admin,repo.key.rotation.admin,model_repo_key_rotation,group_repo_admin,1,1,1,1
