@@ -16,11 +16,13 @@ Módulo Odoo que gobierna los repositorios git de la organización GitHub de Pri
 ## 2. Arquitectura de módulos
 
 ```
-primate_repo_manager             depends: [base, mail, queue_job]
+primate_repo_manager             depends: [base, mail, queue_job, hr]
 primate_repo_manager_pcm_bridge  depends: [primate_repo_manager, <módulo core PCM>], auto_install: True
 ```
 
 - El core no contiene ninguna referencia a PCM.
+- `hr` es necesario para el vínculo `repo.member` ↔ `hr.employee`, que el DoD de F1 usa
+  para reportar cuentas de GitHub sin persona asociada.
 - El bridge aporta: menú de entrada en el shell de PCM hacia la acción raíz del core; vínculo Many2one entre `repo.repository` y el modelo de repositorio de deploy de PCM; hook de pre-validación de promociones que consulta estado de deploy en PCM.
 
 ## 3. Autenticación GitHub

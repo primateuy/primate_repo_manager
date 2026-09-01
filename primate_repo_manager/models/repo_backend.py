@@ -56,6 +56,16 @@ class RepoBackend(models.Model):
 	last_error = fields.Text(string="Último error", readonly=True, copy=False)
 	rate_remaining = fields.Integer(string="Cuota API restante", readonly=True, copy=False)
 
+	environment = fields.Selection(
+		[("sandbox", "Sandbox"), ("production", "Producción")],
+		string="Entorno", default="production", required=True, tracking=True,
+		help="Sandbox es la cuenta de prueba con repos dummy donde se ensayan las "
+			 "escrituras de F2/F3. La conexión de producción se mantiene read-only a "
+			 "nivel GitHub como red de seguridad dura, además del código.")
+
+	repository_ids = fields.One2many("repo.repository", "backend_id", string="Repositorios")
+	repository_count = fields.Integer(string="Repos", compute="_compute_repository_count")
+
 	_login_uniq = models.Constraint(
 		"UNIQUE (provider, owner_login)",
 		"Ya existe una conexión para esa cuenta en ese proveedor.")
@@ -191,3 +201,8 @@ class RepoBackend(models.Model):
 			self.write({"state": "error", "last_error": str(exc)})
 			raise UserError(_("No pude conectar: %s") % exc) from exc
 		return True
+
+	@api.depends("repository_ids")
+	def _compute_repository_count(self):
+		for backend in self:
+			backend.repository_count = len(backend.repository_ids)

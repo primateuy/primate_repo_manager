@@ -9,10 +9,13 @@
 	"author": "PrimateUY",
 	"website": "https://primate.uy",
 	"license": "AGPL-3",
-	"depends": ["base", "mail", "queue_job"],
+		# `hr` es necesario para vincular cuentas de GitHub con empleados: el DoD de F1
+	# pide reportar las cuentas sin ese vínculo.
+	"depends": ["base", "mail", "hr", "queue_job"],
 	"data": [
 		"security/repo_security.xml",
 		"security/ir.model.access.csv",
+		"data/repo_rules_data.xml",
 		"views/repo_backend_views.xml",
 		"views/repo_menus.xml",
 		"wizards/repo_key_rotation_views.xml",

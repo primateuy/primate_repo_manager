@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 - PrimateUY / License AGPL-3.0 or later -->
+<!--
+	Defaults derivados de LOS DATOS REALES, no de la convención escrita: 503 ramas de 40
+	repos de la cuenta primateuy, leídas el 1-sep-2026. Los patrones se validaron contra
+	ese conjunto antes de fijarlos acá.
+
+	Son filas editables: si mañana la convención cambia, se cambia acá y no en Python.
+-->
+<odoo noupdate="1">
+
+	<!-- ================================================================
+	     Clasificación de repositorios
+	     ================================================================ -->
+
+	<record id="classification_rule_fork" model="repo.classification.rule">
+		<field name="name">Es un fork de upstream</field>
+		<field name="sequence">10</field>
+		<field name="match_type">is_fork</field>
+		<field name="classification">fork_upstream</field>
+		<field name="note">60 de los 94 repos son forks; es la señal más confiable y va primero.</field>
+	</record>
+
+	<record id="classification_rule_localizacion" model="repo.classification.rule">
+		<field name="name">Nombre de localización</field>
+		<field name="sequence">20</field>
+		<field name="match_type">name_regex</field>
+		<field name="value">(?i)(localizacion|localización|l10n)</field>
+		<field name="classification">localizacion</field>
+		<field name="note">Ej: LocalizacionUy. Es la plantilla más estricta de la spec.</field>
+	</record>
+
+	<record id="classification_rule_interno" model="repo.classification.rule">
+		<field name="name">Herramienta interna de Primate</field>
+		<field name="sequence">30</field>
+		<field name="match_type">name_regex</field>
+		<field name="value">(?i)^(primate|pcm|prm)[-_]?</field>
+		<field name="classification">interno</field>
+		<field name="note">primate_IA_hub, primate_repo_manager, Primate-Cloude-Manager…</field>
+	</record>
+
+	<!--
+		A propósito NO hay una regla catch-all a "cliente": un repo sin clasificar tiene
+		que quedar SIN clasificar, porque eso es un finding de la auditoría. Adivinar
+		"cliente" por descarte escondería justamente lo que hay que revisar.
+	-->
+
+	<!-- ================================================================
+	     Rol de las ramas
+	     ================================================================ -->
+
+	<record id="branch_role_rule_base" model="repo.branch.role.rule">
+		<field name="name">Rama base de versión</field>
+		<field name="sequence">10</field>
+		<field name="pattern">^\d+\.\d+$</field>
+		<field name="role">base</field>
+		<field name="note">284 de 503 ramas. Ej: 17.0, 18.0, 19.0.</field>
+	</record>
+
+	<record id="branch_role_rule_staging" model="repo.branch.role.rule">
+		<field name="name">Staging (cualquier grafía)</field>
+		<field name="sequence">20</field>
+		<field name="pattern">(?i)(^|[._-])staging($|[._-])</field>
+		<field name="role">staging</field>
+		<field name="note">Cubre .staging, _staging y .Staging con mayúscula, con o sin
+			sufijo (19.0.Staging_12082026_1036) y sin prefijo de versión (staging-uruguay).
+			Va ANTES que support a propósito: 17.0_support_staging se comporta como staging,
+			y el rol determina las protecciones esperadas. Support ahí es linaje, no rol.</field>
+	</record>
+
+	<record id="branch_role_rule_support" model="repo.branch.role.rule">
+		<field name="name">Support</field>
+		<field name="sequence">30</field>
+		<field name="pattern">(?i)(^|[._-])support($|[._-])</field>
+		<field name="role">support</field>
+		<field name="note">Ej: 17.0.PRIMATE_support, con segmento en mayúsculas.</field>
+	</record>
+
+	<record id="branch_role_rule_prod" model="repo.branch.role.rule">
+		<field name="name">Producción (incluye español)</field>
+		<field name="sequence">40</field>
+		<field name="pattern">(?i)(^|[._-])(produccion|producción|prod)($|[._-])</field>
+		<field name="role">prod</field>
+		<field name="note">La única rama de producción encontrada está EN ESPAÑOL
+			(17.0.Produccion), que la convención escrita no contempla. El anclaje a
+			separador o fin es imprescindible: sin él, 17.0.product_domain se clasificaría
+			como producción.</field>
+	</record>
+
+	<record id="branch_role_rule_version" model="repo.branch.role.rule">
+		<field name="name">Rama derivada de una versión</field>
+		<field name="sequence">50</field>
+		<field name="pattern">(?i)^\d+\.\d+[._-].+</field>
+		<field name="role">version</field>
+		<field name="note">93 ramas. Trabajo sobre una versión que no es un entorno:
+			17.0_pos_voucher, 17.0.product_domain…</field>
+	</record>
+
+</odoo>
