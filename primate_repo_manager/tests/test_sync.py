@@ -184,6 +184,31 @@ class TestSync(TransactionCase):
 		with self.assertRaises(GithubError):
 			self._sincronizar()
 
+	# --- techo de plan en una lectura suelta ---
+
+	def test_el_limite_de_plan_en_rulesets_no_tumba_el_repo(self):
+		"""Un privado en plan free devuelve 403 «Upgrade» en /rulesets. Es un techo sobre
+		esa lectura, no un repositorio inauditable: el resto se audita igual y la causa
+		queda anotada. Antes el job entero moría y el repo salía como «no se pudo auditar»."""
+		UPGRADE = {"message": "Upgrade to GitHub Pro or make this repository public "
+							  "to enable this feature."}
+
+		class TransportePlanFree(TransporteAuditoria):
+			def get(self, url, headers=None, timeout=None):
+				if "/rulesets" in url:
+					self.llamadas.append(url)
+					return RespuestaFalsa(403, UPGRADE)
+				return super().get(url, headers=headers, timeout=timeout)
+
+		self.transporte = TransportePlanFree([REPO_PRIVADO_SIN_ADMIN, REPO_FORK])
+		repos = self._sincronizar()
+		loca = repos.filtered(lambda r: r.name == "LocalizacionUy")
+
+		self.assertEqual(loca.sync_state, "done",
+						 "el repo se audita igual: el techo de plan es de una lectura")
+		self.assertIn("rulesets", loca.unreadable_json or "")
+		self.assertTrue(loca.branch_ids, "las ramas se leen aunque no se lean los rulesets")
+
 	# --- los tres estados de protección ---
 
 	def test_sin_admin_la_proteccion_queda_como_no_legible(self):

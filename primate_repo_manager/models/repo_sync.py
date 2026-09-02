@@ -129,7 +129,7 @@ class RepoRepositorySync(models.Model):
 			if not es_admin:
 				no_legible.append("branch_protection")
 
-			self._sync_branches(client, detalle, es_admin)
+			self._sync_branches(client, detalle, es_admin, no_legible)
 			self._sync_collaborators(client, no_legible)
 			self._sync_pull_requests(client)
 			self._sync_commit_samples(client)
@@ -160,13 +160,24 @@ class RepoRepositorySync(models.Model):
 	# Piezas
 	# ------------------------------------------------------------------
 
-	def _sync_branches(self, client, detalle, es_admin):
+	def _sync_branches(self, client, detalle, es_admin, no_legible=None):
 		"""Ramas relevantes, su rol y el estado real de protección."""
 		self.ensure_one()
 		Rama = self.env["repo.branch"]
 		Reglas = self.env["repo.branch.role.rule"]
-		rulesets = client.get(
-			"/repos/%s/rulesets" % self.full_name, tolerar_404=True) or []
+		no_legible = no_legible if no_legible is not None else []
+		try:
+			rulesets = client.get(
+				"/repos/%s/rulesets" % self.full_name, tolerar_404=True) or []
+		except GithubPlanLimit:
+			# Repo PRIVADO en plan free: GitHub responde 403 «Upgrade to GitHub Pro» en
+			# rulesets. Es un techo de plan sobre UNA lectura, no un repo inauditable:
+			# dejarlo escapar hacía fallar el job entero y los 31 privados de primateuy
+			# terminaban como «no se pudo auditar», perdiendo ramas, colaboradores, PRs y
+			# commits que sí se leen perfectamente. Se anota la causa y se sigue.
+			rulesets = []
+			if "rulesets" not in no_legible:
+				no_legible.append("rulesets")
 
 		for item in client.paginate("/repos/%s/branches" % self.full_name):
 			nombre = item.get("name")
