@@ -683,6 +683,25 @@ class RepoWriteOperationApply(models.Model):
 
 	# --- membresía de team ------------------------------------------------
 	#
+	# QUÉ SIGNIFICA «CERO ACCESOS» EN UN OFFBOARDING, que no es lo que parece.
+	#
+	# Después de quitar todos los grants directos y sacar a la persona de sus teams, el
+	# permiso EFECTIVO que devuelve GitHub sobre un repositorio PÚBLICO sigue siendo
+	# `read`. No es un acceso que le quedó: es la visibilidad del repositorio, y ninguna
+	# operación de permisos la puede quitar — sólo hacerlo privado, o sacar a la persona
+	# de la organización.
+	#
+	# Por eso la métrica del offboarding es CERO ACCESOS CONCEDIDOS, y se comprueba en
+	# tres lecturas separadas, no en el efectivo:
+	#
+	#   · sin entrada en `/collaborators?affiliation=direct`
+	#   · sin membresía en ningún team con acceso al repositorio
+	#   · sobre los repositorios PRIVADOS, sin acceso de ninguna clase
+	#
+	# Medirlo por el permiso efectivo da un falso negativo garantizado en cuanto haya un
+	# repositorio público, y llevaría a concluir que el offboarding falló cuando salió
+	# bien. Verificado contra el sandbox el 2-sep-2026.
+	#
 	# Hace falta para un offboarding honesto: quitar los grants directos de alguien no lo
 	# saca de sus teams, y por el team puede seguir entrando a todo. Es idempotente por
 	# destino —la persona y el team ya existen— así que va con el ciclo de cuatro pasos.
