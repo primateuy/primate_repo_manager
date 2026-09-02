@@ -5,6 +5,12 @@
 	<menuitem id="menu_repo_root" name="Repo Manager" sequence="70"
 			  groups="group_repo_reader"/>
 
+	<menuitem id="menu_repo_repositories" name="Repositorios" sequence="10"
+			  parent="menu_repo_root" action="action_repo_repository"/>
+
+	<menuitem id="menu_repo_audit" name="Auditorías" sequence="20"
+			  parent="menu_repo_root" action="action_repo_audit_run"/>
+
 	<menuitem id="menu_repo_config" name="Configuración" sequence="90"
 			  parent="menu_repo_root" groups="group_repo_admin"/>
 

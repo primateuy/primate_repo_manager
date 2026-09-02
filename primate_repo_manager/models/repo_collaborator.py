@@ -5,10 +5,22 @@
 Es la foto de lo que GitHub dice hoy, no lo que la política declara. La comparación
 entre ambas cosas es la que produce el finding de "permiso excedido".
 """
-from odoo import fields, models
+from odoo import api, fields, models
 
 # Orden de menor a mayor: se usa para decidir si un permiso excede al esperado.
 PERMISSION_LEVELS = ["pull", "triage", "push", "maintain", "admin"]
+
+# GitHub habla DOS vocabularios para lo mismo y los mezcla según el endpoint: el campo
+# `role_name` de /collaborators devuelve "read"/"write", mientras que el objeto
+# `permissions` y los endpoints de permisos usan "pull"/"push". Verificado contra la API
+# real: dyturralbe figura como "write" en primateuy/primate_IA_hub.
+ROLE_NAME_TO_PERMISSION = {
+	"read": "pull",
+	"write": "push",
+	"triage": "triage",
+	"maintain": "maintain",
+	"admin": "admin",
+}
 
 PERMISSIONS = [
 	("pull", "Lectura (pull)"),
@@ -45,3 +57,13 @@ class RepoCollaborator(models.Model):
 			return PERMISSION_LEVELS.index(permission)
 		except ValueError:
 			return -1
+
+	@api.model
+	def permission_from_role_name(self, role_name):
+		"""Traduce el vocabulario de roles de GitHub al de permisos.
+
+		Ante un valor desconocido devuelve el más restrictivo, nunca uno permisivo: si
+		GitHub agrega un rol nuevo, el peor error posible sería asumir que da más acceso
+		del que da y no reportar un permiso excedido.
+		"""
+		return ROLE_NAME_TO_PERMISSION.get((role_name or "").strip().lower(), "pull")

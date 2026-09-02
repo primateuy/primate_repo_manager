@@ -27,3 +27,9 @@ access_repo_policy_status_check_reader,repo.policy.status.check.reader,model_rep
 access_repo_policy_status_check_admin,repo.policy.status.check.admin,model_repo_policy_status_check,group_repo_admin,1,1,1,1
 access_repo_policy_access_rule_reader,repo.policy.access.rule.reader,model_repo_policy_access_rule,group_repo_reader,1,0,0,0
 access_repo_policy_access_rule_admin,repo.policy.access.rule.admin,model_repo_policy_access_rule,group_repo_admin,1,1,1,1
+access_repo_workflow_reader,repo.workflow.reader,model_repo_workflow,group_repo_reader,1,0,0,0
+access_repo_workflow_lead,repo.workflow.lead,model_repo_workflow,group_repo_lead,1,1,1,1
+access_repo_audit_run_reader,repo.audit.run.reader,model_repo_audit_run,group_repo_reader,1,0,0,0
+access_repo_audit_run_lead,repo.audit.run.lead,model_repo_audit_run,group_repo_lead,1,1,1,1
+access_repo_audit_finding_reader,repo.audit.finding.reader,model_repo_audit_finding,group_repo_reader,1,0,0,0
+access_repo_audit_finding_lead,repo.audit.finding.lead,model_repo_audit_finding,group_repo_lead,1,1,1,1

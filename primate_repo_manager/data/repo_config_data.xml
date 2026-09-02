@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 - PrimateUY / License AGPL-3.0 or later -->
+<odoo noupdate="1">
+
+	<record id="param_commit_violation_ratio" model="ir.config_parameter">
+		<field name="key">repo_manager.commit_violation_ratio</field>
+		<field name="value">50</field>
+	</record>
+
+	<record id="param_fork_behind_threshold" model="ir.config_parameter">
+		<field name="key">repo_manager.fork_behind_threshold</field>
+		<field name="value">100</field>
+	</record>
+
+	<record id="param_pr_stale_days" model="ir.config_parameter">
+		<field name="key">repo_manager.pr_stale_days</field>
+		<field name="value">7</field>
+	</record>
+
+</odoo>

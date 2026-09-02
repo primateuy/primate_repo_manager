@@ -28,6 +28,14 @@ class RepoBranch(models.Model):
 		string="Protección legible", default=True,
 		help="False cuando la API no dejó leerla. NO es lo mismo que 'no tiene protección': "
 			 "el endpoint devuelve 404 en los dos casos y confundirlos arruina la auditoría.")
+	protection_cause = fields.Selection(
+		[("plan_limit", "Límite del plan de GitHub"),
+		 ("no_admin_permission", "La App no tiene permiso de administrador"),
+		 ("unknown", "Sin determinar")],
+		string="Causa de la ilegibilidad",
+		help="Sólo cuando `protection_readable` es falso. Se guarda como dato para que "
+			 "los conteos separen lo que se resuelve con una decisión de plan de lo que "
+			 "se resuelve reinstalando la App.")
 	ruleset_count = fields.Integer(string="Rulesets que la alcanzan")
 
 	last_commit_sha = fields.Char(string="Último commit")

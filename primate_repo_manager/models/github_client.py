@@ -45,6 +45,40 @@ class GithubRateLimit(GithubError):
 	"""Cuota agotada. Se distingue del resto para poder reintentar con criterio."""
 
 
+class GithubPlanLimit(GithubError):
+	"""La cuenta no tiene plan para esa función.
+
+	NO SIMPLIFICAR ESTA CLASE SIN LEER ESTO. Parece redundante con GithubError y no lo es:
+	distingue un caso que sólo se puede detectar por la FORMA de la respuesta, y de esa
+	distinción depende que el informe diga la verdad.
+
+	El endpoint de branch protection (`GET /repos/{owner}/{repo}/branches/{branch}/protection`)
+	responde de tres maneras distintas que un lector apurado colapsa en una sola:
+
+	  200  → la rama está protegida, y viene la configuración.
+	  404  → dos cosas MUY distintas según quién pregunta:
+	         · con permiso de admin  → la rama realmente no tiene protección.
+	         · sin permiso de admin  → GitHub devuelve 404 en vez de 403 A PROPÓSITO, para
+	           no revelar si el recurso existe. No significa "no hay protección":
+	           significa "no te puedo decir". Ver la doc de la API: los endpoints de
+	           branch protection requieren admin sobre el repositorio.
+	  403 con mensaje de upgrade → la cuenta es gratuita y el repo es privado. En ese plan
+	         GitHub no permite proteger ramas de repos privados, así que la función no
+	         está disponible por PLAN, no por permisos.
+
+	Las tres se resuelven de manera distinta, y por eso se guardan como causas distintas
+	en `repo.branch.protection_cause`:
+
+	  · sin protección real  → aplicar el ruleset (F3).
+	  · sin permiso de admin → reinstalar la App con una cuenta que lo tenga.
+	  · límite de plan       → decisión comercial; no hay arreglo técnico.
+
+	Colapsar las tres en "no está protegida" produce un informe que afirma cosas que nadie
+	verificó, y manda a alguien a "arreglar" repos que en realidad no se pudieron mirar.
+	Ya pasó una vez en este proyecto, muestreando cuatro repos a mano.
+	"""
+
+
 class GithubAppAuth:
 	"""Cambia la private key de la App por un token de instalación de corta vida.
 
@@ -135,6 +169,10 @@ class GithubReadClient:
 			return None
 		if response.status_code == 403 and self._sin_cuota(response):
 			raise GithubRateLimit(403, "cuota de API agotada", path)
+		if response.status_code == 403:
+			mensaje = _cuerpo(response)
+			if "upgrade" in mensaje.lower() or "plan" in mensaje.lower():
+				raise GithubPlanLimit(403, mensaje, path)
 		if response.status_code >= 400:
 			raise GithubError(response.status_code, _cuerpo(response), path)
 		return response.json()

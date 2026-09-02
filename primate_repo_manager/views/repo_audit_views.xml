@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 - PrimateUY / License AGPL-3.0 or later -->
+<odoo>
+
+	<record id="view_repo_audit_run_list" model="ir.ui.view">
+		<field name="name">repo.audit.run.list</field>
+		<field name="model">repo.audit.run</field>
+		<field name="arch" type="xml">
+			<list string="Auditorías">
+				<field name="name"/>
+				<field name="backend_id"/>
+				<field name="started_at"/>
+				<field name="repos_total"/>
+				<field name="repos_done"/>
+				<field name="repos_error" decoration-danger="repos_error &gt; 0"/>
+				<field name="progress" widget="progressbar"/>
+				<field name="state" widget="badge"
+					   decoration-success="state == 'done'"
+					   decoration-warning="state in ('running', 'partial')"
+					   decoration-danger="state == 'error'"/>
+			</list>
+		</field>
+	</record>
+
+	<record id="view_repo_audit_run_form" model="ir.ui.view">
+		<field name="name">repo.audit.run.form</field>
+		<field name="model">repo.audit.run</field>
+		<field name="arch" type="xml">
+			<form string="Auditoría">
+				<header>
+					<button name="action_start" type="object" string="Auditar"
+							class="btn-primary" invisible="state != 'draft'"/>
+					<button name="action_resume" type="object" string="Reanudar"
+							class="btn-primary" invisible="state not in ('partial', 'error')"/>
+					<field name="state" widget="statusbar"/>
+				</header>
+				<sheet>
+					<div class="oe_title"><h1><field name="name"/></h1></div>
+					<group>
+						<group>
+							<field name="backend_id"/>
+							<field name="started_at"/>
+							<field name="finished_at"/>
+						</group>
+						<group>
+							<field name="repos_total"/>
+							<field name="repos_done"/>
+							<field name="repos_error"/>
+							<field name="progress" widget="progressbar"/>
+						</group>
+					</group>
+					<group string="Error" invisible="not error_detail">
+						<field name="error_detail" nolabel="1" readonly="1"/>
+					</group>
+				</sheet>
+				<chatter/>
+			</form>
+		</field>
+	</record>
+
+	<record id="action_repo_audit_run" model="ir.actions.act_window">
+		<field name="name">Auditorías</field>
+		<field name="res_model">repo.audit.run</field>
+		<field name="view_mode">list,form</field>
+	</record>
+
+	<record id="view_repo_repository_list" model="ir.ui.view">
+		<field name="name">repo.repository.list</field>
+		<field name="model">repo.repository</field>
+		<field name="arch" type="xml">
+			<list string="Repositorios">
+				<field name="full_name"/>
+				<field name="classification"/>
+				<field name="classification_source"/>
+				<field name="visibility"/>
+				<field name="default_branch"/>
+				<field name="is_fork"/>
+				<field name="governance_status" invisible="not is_fork"/>
+				<field name="branch_count"/>
+				<field name="collaborator_count"/>
+				<field name="open_pr_count"/>
+				<field name="sync_state" widget="badge"
+					   decoration-success="sync_state == 'done'"
+					   decoration-danger="sync_state == 'error'"/>
+			</list>
+		</field>
+	</record>
+
+	<record id="action_repo_repository" model="ir.actions.act_window">
+		<field name="name">Repositorios</field>
+		<field name="res_model">repo.repository</field>
+		<field name="view_mode">list,form</field>
+	</record>
+
+</odoo>

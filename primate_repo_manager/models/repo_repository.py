@@ -60,6 +60,8 @@ class RepoRepository(models.Model):
 		"repo.pull.request", "repository_id", string="Pull requests")
 	commit_sample_ids = fields.One2many(
 		"repo.commit.sample", "repository_id", string="Muestra de commits")
+	workflow_ids = fields.One2many(
+		"repo.workflow", "repository_id", string="Workflows de CI")
 
 	branch_count = fields.Integer(string="Ramas", compute="_compute_counts")
 	collaborator_count = fields.Integer(string="Colaboradores", compute="_compute_counts")
