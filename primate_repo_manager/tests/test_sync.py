@@ -209,6 +209,27 @@ class TestSync(TransactionCase):
 		self.assertIn("rulesets", loca.unreadable_json or "")
 		self.assertTrue(loca.branch_ids, "las ramas se leen aunque no se lean los rulesets")
 
+	def test_sin_permiso_de_actions_el_repo_se_audita_igual(self):
+		"""403 «Resource not accessible by integration» en /actions/workflows: le falta el
+		permiso de Actions a la App. Es una lectura menos, no un repo perdido."""
+		SIN_PERMISO = {"message": "Resource not accessible by integration"}
+
+		class TransporteSinActions(TransporteAuditoria):
+			def get(self, url, headers=None, timeout=None):
+				if "/actions/workflows" in url:
+					self.llamadas.append(url)
+					return RespuestaFalsa(403, SIN_PERMISO)
+				return super().get(url, headers=headers, timeout=timeout)
+
+		self.transporte = TransporteSinActions([REPO_PRIVADO_SIN_ADMIN, REPO_FORK])
+		repos = self._sincronizar()
+
+		self.assertEqual(set(repos.mapped("sync_state")), {"done"})
+		for repo in repos:
+			self.assertIn("workflows", repo.unreadable_json or "")
+		self.assertTrue(repos.mapped("branch_ids"),
+						"lo leído antes del workflow no se pierde")
+
 	# --- los tres estados de protección ---
 
 	def test_sin_admin_la_proteccion_queda_como_no_legible(self):

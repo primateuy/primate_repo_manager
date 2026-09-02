@@ -323,8 +323,17 @@ class RepoRepositorySync(models.Model):
 	def _sync_workflows(self, client, no_legible):
 		"""Releva qué workflows corren, para poder proponer los checks requeridos con datos."""
 		self.ensure_one()
-		datos = client.get(
-			"/repos/%s/actions/workflows" % self.full_name, tolerar_404=True)
+		try:
+			datos = client.get(
+				"/repos/%s/actions/workflows" % self.full_name, tolerar_404=True)
+		except GithubError:
+			# 403 «Resource not accessible by integration»: a la GitHub App no le dieron
+			# el permiso de Actions. Es UNA lectura que no se puede hacer, no un repo
+			# inauditable — mismo criterio que en colaboradores. Dejarlo escapar hacía
+			# fallar el job entero al final del recorrido, tirando ramas, colaboradores,
+			# PRs y commits ya leídos.
+			no_legible.append("workflows")
+			return
 		if datos is None:
 			no_legible.append("workflows")
 			return
