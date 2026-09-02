@@ -22,6 +22,9 @@ REPO_PRIVADO_SIN_ADMIN = {
 	"permissions": {"admin": False, "maintain": False, "push": True},
 }
 
+# OJO: este fixture se usa para las DOS respuestas —el listado y el GET individual— y en
+# GitHub sólo la segunda trae `parent`. El transporte lo saca del listado a propósito, en
+# `_sin_parent()`, para que el test refleje la asimetría real.
 REPO_FORK = {
 	"id": 222, "name": "webOCA", "full_name": "primateuy/webOCA",
 	"private": False, "fork": True, "default_branch": "17.0",
@@ -60,6 +63,11 @@ WORKFLOWS = {"workflows": [
 ]}
 
 
+def _sin_parent(repo):
+	"""El objeto reducido de los listados: igual pero sin `parent`."""
+	return {k: v for k, v in repo.items() if k != "parent"}
+
+
 class TransporteAuditoria:
 	"""Devuelve fixtures según la URL pedida, e imita la paginación (sin cabecera Link)."""
 
@@ -73,9 +81,11 @@ class TransporteAuditoria:
 	def get(self, url, headers=None, timeout=None):
 		self.llamadas.append(url)
 		if "/installation/repositories" in url:
-			# Igual que GitHub: la lista viene ENVUELTA, no como array suelto.
+			# Igual que GitHub: la lista viene ENVUELTA, no como array suelto, y con el
+			# objeto REDUCIDO, que no incluye `parent`.
 			return RespuestaFalsa(200, {
-				"total_count": len(self.repos), "repositories": self.repos})
+				"total_count": len(self.repos),
+				"repositories": [_sin_parent(r) for r in self.repos]})
 		if "/users/" in url and "/repos" in url:
 			# El endpoint equivocado: sólo públicos. Si el módulo vuelve a usarlo, el
 			# repo privado desaparece del enumerado y el test lo caza.
@@ -276,6 +286,17 @@ class TestSync(TransactionCase):
 		self.assertTrue(fork.branch_ids.filtered("protection_readable"))
 
 	# --- lo que se persiste y lo que no ---
+
+	def test_el_upstream_del_fork_sale_del_GET_individual(self):
+		"""Los listados no traen `parent`; el GET del repositorio sí.
+
+		Mientras ese detalle se descartaba, `upstream_full_name` quedaba vacío en los 60
+		forks de la cuenta: el informe decía «es un fork» sin poder decir fork DE QUÉ.
+		"""
+		repos = self._sincronizar()
+		fork = repos.filtered(lambda r: r.name == "webOCA")
+		self.assertTrue(fork.is_fork)
+		self.assertEqual(fork.upstream_full_name, "OCA/web")
 
 	def test_las_feature_branches_no_se_persisten(self):
 		repos = self._sincronizar()

@@ -140,7 +140,8 @@ class RepoRepositorySync(models.Model):
 		no_legible = []
 		try:
 			client = self.backend_id.client()
-			client.get("/repos/%s" % self.full_name)
+			detalle = client.get("/repos/%s" % self.full_name) or {}
+			self._completar_desde_el_detalle(detalle)
 
 			self._sync_branches(client, no_legible)
 			self._sync_collaborators(client, no_legible)
@@ -172,6 +173,30 @@ class RepoRepositorySync(models.Model):
 	# ------------------------------------------------------------------
 	# Piezas
 	# ------------------------------------------------------------------
+
+	def _completar_desde_el_detalle(self, detalle):
+		"""Lo que sólo trae el GET del repositorio y NO trae el listado.
+
+		POR QUÉ HACE FALTA. Los endpoints que LISTAN repositorios —tanto
+		`/installation/repositories` como `/users/{login}/repos`— devuelven un objeto
+		reducido que no incluye `parent`. El único que lo trae es el GET del repositorio
+		individual, que este método ya pedía y descartaba.
+
+		Consecuencia mientras se descartó: `upstream_full_name` quedaba vacío en los 60
+		forks de la cuenta. El informe decía «es un fork sin estructura espejo+parches»
+		sin poder decir fork DE QUÉ, y la remediación viajaba con `{"upstream": false}`.
+		Detectado al revisar el criterio de salida de F2, no por un error visible.
+		"""
+		self.ensure_one()
+		padre = detalle.get("parent") or {}
+		valores = {}
+		if padre.get("full_name") and padre["full_name"] != self.upstream_full_name:
+			valores["upstream_full_name"] = padre["full_name"]
+		# `parent` también confirma la condición de fork con más autoridad que el listado.
+		if padre and not self.is_fork:
+			valores["is_fork"] = True
+		if valores:
+			self.write(valores)
 
 	def _sync_branches(self, client, no_legible=None):
 		"""Ramas relevantes, su rol y el estado real de protección."""
