@@ -22,6 +22,48 @@ import requests
 
 _logger = logging.getLogger(__name__)
 
+# =============================================================================
+# MAPA DE VOCABULARIOS DE GITHUB — leer esto antes de comparar cualquier permiso
+# =============================================================================
+#
+# GitHub nombra el MISMO permiso de maneras distintas según el endpoint, el campo y la
+# dirección (escritura o lectura). Nos mordió tres veces con la misma forma, así que el
+# mapa vive acá, en un solo lugar, con los tres episodios.
+#
+#   escala interna del módulo   pull    triage   push    maintain   admin
+#   ---------------------------------------------------------------------------
+#   `role_name` (lectura)       read    triage   write   maintain   admin
+#   setter de permisos          pull    triage   push    maintain   admin
+#   campo legacy `permission`   read    read     write   write      admin   <- COLAPSA
+#
+# EPISODIO 1 — F1, colaboradores.
+#   `role_name` de /collaborators devuelve "write" mientras el objeto `permissions` usa
+#   "push". Resuelto con ROLE_NAME_TO_PERMISSION en repo_collaborator.py, verificado
+#   contra la API real.
+#
+# EPISODIO 2 — sandbox, verificación de grants.
+#   `GET /repos/{o}/{r}/collaborators/{u}/permission` trae DOS campos: `permission`, que
+#   es legacy y COLAPSA maintain en "write" y triage en "read", y `role_name`, que es el
+#   fino. Comparar contra `permission` daba por incorrecto un grant de `maintain` que
+#   estaba perfecto, y además rompía la idempotencia del script de poblado, que
+#   reescribía el grant en cada corrida.
+#
+# EPISODIO 3 — sandbox, grants por team.
+#   El PUT de `/orgs/{org}/teams/{slug}/repos/...` acepta pull/push/maintain/admin, pero
+#   al releer, `role_name` devuelve read/write/maintain/admin. Se escribe "push" y se lee
+#   "write": el mismo permiso en la ida y en la vuelta de una sola operación.
+#
+# REGLA PRÁCTICA: para LEER un permiso, usar siempre `role_name` y traducirlo con
+# ROLE_NAME_TO_PERMISSION. Nunca comparar contra el campo `permission`. Para ESCRIBIR,
+# usar el vocabulario del setter (pull/push), que no coincide con el que se lee.
+#
+# Trampa vecina, del mismo endpoint familiar: `GET /orgs/{org}/teams/{slug}/repos/{o}/{r}`
+# responde 204 SIN CUERPO salvo que se pida el media type
+# `application/vnd.github.v3.repository+json`. Leído de frente parece que el grant no
+# existe. El listado `/orgs/{org}/teams/{slug}/repos` sí trae `role_name` y no tiene esa
+# vuelta.
+# =============================================================================
+
 API_ROOT = "https://api.github.com"
 ACCEPT = "application/vnd.github+json"
 API_VERSION = "2022-11-28"

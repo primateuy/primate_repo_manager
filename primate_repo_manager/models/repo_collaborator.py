@@ -14,6 +14,10 @@ PERMISSION_LEVELS = ["pull", "triage", "push", "maintain", "admin"]
 # `role_name` de /collaborators devuelve "read"/"write", mientras que el objeto
 # `permissions` y los endpoints de permisos usan "pull"/"push". Verificado contra la API
 # real: dyturralbe figura como "write" en primateuy/primate_IA_hub.
+#
+# EL MAPA COMPLETO ESTÁ EN github_client.py, arriba de todo: los tres vocabularios, los
+# tres episodios en que nos mordió, y la regla práctica. Antes de comparar un permiso
+# contra otro, leelo — el campo `permission` colapsa roles y no sirve para comparar.
 ROLE_NAME_TO_PERMISSION = {
 	"read": "pull",
 	"write": "push",
