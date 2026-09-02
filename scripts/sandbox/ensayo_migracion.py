@@ -102,8 +102,14 @@ class Github:
 # Fases
 # ---------------------------------------------------------------------------
 
-def preflight(gh):
-	"""Nada se crea si el terreno no está como tiene que estar."""
+def preflight(gh, fase="preflight"):
+	"""Nada se crea si el terreno no está como tiene que estar.
+
+	EL CHEQUEO DE EXISTENCIA DEPENDE DE LA FASE, y hacerlo genérico fue un error: que los
+	repositorios de ensayo ya existan bloquea a `crear` —sería duplicar— y es un requisito
+	de `transferir`, que sin ellos no tiene qué mover. Un preflight que no distingue la
+	fase termina impidiendo justo el paso siguiente.
+	"""
 	print("PREFLIGHT")
 	problemas = []
 
@@ -137,9 +143,13 @@ def preflight(gh):
 			"vía elegida fue el rol, que es puntual y reversible.")
 
 	existentes = [n for n in NOMBRES if gh.leer("/repos/%s/%s" % (CUENTA, n))[0] == 200]
-	if existentes:
+	if fase == "crear" and existentes:
 		problemas.append("ya existen en %s: %s — corré `limpiar` antes"
 						 % (CUENTA, existentes))
+	if fase == "transferir" and not existentes:
+		problemas.append(
+			"no hay repositorios de ensayo en %s para transferir — corré `crear` antes"
+			% CUENTA)
 
 	if problemas:
 		print("\nPREFLIGHT FALLÓ:")
@@ -186,14 +196,47 @@ def transferir(gh):
 			raise SystemExit("  %s no apareció en %s tras 60s" % (nombre, ORG))
 
 
+def duenio_real(gh, nombre):
+	"""Quién es el dueño HOY, o None si no existe.
+
+	OJO CON LA REDIRECCIÓN. Después de una transferencia, GitHub sigue resolviendo la
+	ruta vieja: `GET /repos/primateuy/prm-test-migracion-uno` devuelve 200 y responde con
+	`prm-sandbox/prm-test-migracion-uno`. Verificar «se fue del origen» por el código HTTP
+	de la ruta vieja da un FALSO POSITIVO garantizado, y borrar por esa ruta borraría el
+	repositorio en su dueño nuevo creyendo que se limpia el viejo.
+
+	Lo único que dice la verdad es `owner.login` del cuerpo.
+	"""
+	for candidato in (ORG, CUENTA):
+		cod, datos, _h = gh.leer("/repos/%s/%s" % (candidato, nombre))
+		if cod == 200:
+			return ((datos.get("owner") or {}).get("login"), datos.get("full_name"))
+	return (None, None)
+
+
 def limpiar(gh):
-	"""Borra los repos de ensayo, estén donde estén."""
+	"""Borra los repos de ensayo, una sola vez y por su dueño REAL."""
 	for nombre in NOMBRES:
 		_permitido(nombre)
-		for duenio in (ORG, CUENTA):
-			if gh.leer("/repos/%s/%s" % (duenio, nombre))[0] == 200:
-				gh.escribir("DELETE", "/repos/%s/%s" % (duenio, nombre),
-							que="borrar %s/%s" % (duenio, nombre))
+		duenio, full = duenio_real(gh, nombre)
+		if not duenio:
+			print("  ya no existe: %s" % nombre)
+			continue
+		gh.escribir("DELETE", "/repos/%s" % full, que="borrar %s" % full)
+
+
+def verificar_transferencia(gh):
+	"""Los tres del lado del destino, comprobado por `owner.login`."""
+	print("VERIFICACIÓN DE LA TRANSFERENCIA")
+	mal = []
+	for nombre in NOMBRES:
+		duenio, full = duenio_real(gh, nombre)
+		print("  %-30s dueño: %s" % (nombre, duenio or "no existe"))
+		if duenio != ORG:
+			mal.append(nombre)
+	if mal:
+		raise SystemExit("\nNO llegaron a %s: %s" % (ORG, mal))
+	print("  los %s están en %s\n" % (len(NOMBRES), ORG))
 
 
 def revocacion(gh):
@@ -228,6 +271,7 @@ def rol_restaurado(gh):
 
 FASES = {
 	"preflight": preflight, "crear": crear, "transferir": transferir,
+	"verificar": verificar_transferencia,
 	"limpiar": limpiar, "revocacion": revocacion, "rol": rol_restaurado,
 }
 
@@ -261,8 +305,8 @@ def main():
 	print("origen: %s (cuenta REAL)   destino: %s" % (CUENTA, ORG))
 	print("=" * 74)
 
-	if args.fase not in ("preflight", "revocacion", "rol"):
-		preflight(gh)
+	if args.fase not in ("preflight", "revocacion", "rol", "verificar"):
+		preflight(gh, fase=args.fase)
 	FASES[args.fase](gh)
 
 	if gh.plan:
