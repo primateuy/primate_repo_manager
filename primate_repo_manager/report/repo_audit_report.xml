@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 - PrimateUY / License AGPL-3.0 or later -->
+<!--
+	El informe está escrito para leerse con alguien que no toca el código. Por eso el
+	orden no es el técnico: primero qué se pudo mirar y qué no, después lo urgente, y
+	recién al final el detalle por repositorio.
+-->
+<odoo>
+
+	<!--
+		Formato propio: el de Odoo reserva ~4 cm arriba para el encabezado con logo, y
+		este informe no lo usa. Sin esto cada página arranca con un tercio en blanco, que
+		en un documento que se imprime y se pasa en una reunión se lee como descuido.
+	-->
+	<record id="paperformat_audit" model="report.paperformat">
+		<field name="name">Informe de auditoría</field>
+		<field name="format">A4</field>
+		<field name="orientation">Portrait</field>
+		<field name="margin_top">12</field>
+		<field name="margin_bottom">14</field>
+		<field name="margin_left">12</field>
+		<field name="margin_right">12</field>
+		<field name="header_line" eval="False"/>
+		<field name="header_spacing">6</field>
+		<field name="dpi">90</field>
+	</record>
+
+	<record id="action_report_audit" model="ir.actions.report">
+		<field name="name">Informe de auditoría</field>
+		<field name="model">repo.audit.run</field>
+		<field name="report_type">qweb-pdf</field>
+		<field name="report_name">primate_repo_manager.report_audit</field>
+		<field name="report_file">primate_repo_manager.report_audit</field>
+		<field name="binding_model_id" ref="model_repo_audit_run"/>
+		<field name="binding_type">report</field>
+		<field name="paperformat_id" ref="paperformat_audit"/>
+	</record>
+
+	<template id="report_audit">
+		<t t-call="web.html_container">
+			<t t-foreach="docs" t-as="run">
+				<t t-call="web.basic_layout">
+					<div class="page" style="font-size: 11px;">
+
+						<!-- ============ Portada: qué se pudo mirar ============ -->
+						<h1 class="mt0">Auditoría de repositorios</h1>
+						<p class="text-muted">
+							<span t-field="run.backend_id.owner_login"/> ·
+							<span t-field="run.started_at"/>
+						</p>
+
+						<div class="alert alert-secondary">
+							<h4 class="mb-2">Cobertura</h4>
+							<p class="mb-1">
+								<strong><span t-esc="run.repos_total"/> repositorios</strong>:
+								<span t-esc="run.repos_done"/> auditados,
+								<span t-esc="run.repos_error"/> con error.
+							</p>
+							<p class="mb-0" t-if="run.repos_error">
+								Los repositorios con error <strong>no fueron revisados</strong>:
+								lo que este informe dice no aplica a ellos. Aparecen listados
+								más abajo con el motivo.
+							</p>
+							<p class="mb-0" t-else="">
+								Se pudo revisar la totalidad de los repositorios.
+							</p>
+						</div>
+
+						<!-- ============ Resumen por severidad ============ -->
+						<h3>Resumen</h3>
+						<table class="table table-sm">
+							<thead>
+								<tr>
+									<th>Severidad</th>
+									<th class="text-end">Hallazgos</th>
+									<th>Qué significa</th>
+								</tr>
+							</thead>
+							<tbody>
+								<tr t-foreach="run._report_severity_summary()" t-as="fila">
+									<td><strong t-esc="fila['label']"/></td>
+									<td class="text-end"><span t-esc="fila['count']"/></td>
+									<td class="text-muted small"><span t-esc="fila['meaning']"/></td>
+								</tr>
+							</tbody>
+						</table>
+
+						<!-- ============ Leyenda de moduladores ============ -->
+						<div class="alert alert-light border" t-if="run._report_has_modulated()">
+							<p class="mb-1"><strong>Sobre las severidades</strong></p>
+							<p class="mb-0 small">
+								Un mismo tipo de hallazgo puede aparecer con severidades
+								distintas, y no es un error: el peso depende de dónde ocurre y
+								de cuánto. Una rama sin proteger es <em>crítica</em> en un
+								repositorio de localización y <em>media</em> en una herramienta
+								interna; un fork muy atrasado pesa más que uno apenas
+								desactualizado. Los hallazgos ajustados así van marcados con un
+								asterisco (*).
+							</p>
+						</div>
+
+						<!-- ============ Lo que no se pudo revisar ============ -->
+						<t t-set="plan" t-value="run._report_unreadable('plan_limit')"/>
+						<t t-set="permiso" t-value="run._report_unreadable('no_admin_permission')"/>
+
+						<div t-if="plan or permiso">
+							<h3>Repositorios que no se pudieron revisar del todo</h3>
+
+							<div t-if="plan" class="mb-3">
+								<h5>Por el plan de GitHub</h5>
+								<p>
+									GitHub sólo permite configurar reglas de protección en
+									repositorios <strong>privados</strong> si la cuenta tiene un
+									plan pago. La cuenta de Primate está en el plan gratuito, así
+									que en esos repositorios las reglas no se pueden activar
+									<em>ni consultar</em>. Son
+									<strong><span t-esc="len(plan)"/></strong> de
+									<span t-esc="run.repos_total"/>.
+								</p>
+								<p class="text-muted small">
+									Esto no se arregla cambiando el sistema ni los permisos:
+									requiere una decisión sobre el plan contratado.
+								</p>
+								<ul>
+									<li t-foreach="plan" t-as="h">
+										<span t-field="h.repository_id.full_name"/>
+										<span class="text-muted"> — <span t-field="h.subject"/></span>
+									</li>
+								</ul>
+							</div>
+
+							<div t-if="permiso" class="mb-3">
+								<h5>Por permisos de la aplicación</h5>
+								<p>
+									En estos repositorios la aplicación que hace la auditoría no
+									tiene nivel de administrador, y GitHub no le permite leer la
+									configuración de protección. <strong>No quiere decir que
+									estén desprotegidos</strong>: quiere decir que no lo sabemos.
+									Son <strong><span t-esc="len(permiso)"/></strong>.
+								</p>
+								<p class="text-muted small">
+									Se resuelve reinstalando la aplicación desde la cuenta dueña
+									de los repositorios. No requiere ningún gasto.
+								</p>
+								<ul>
+									<li t-foreach="permiso" t-as="h">
+										<span t-field="h.repository_id.full_name"/>
+									</li>
+								</ul>
+							</div>
+						</div>
+
+						<!-- ============ Adopción de convenciones ============ -->
+						<t t-set="adopcion" t-value="run._report_finding('convention_adoption')"/>
+						<div t-if="adopcion">
+							<h3>Adopción de convenciones</h3>
+							<p><span t-field="adopcion.detail"/></p>
+						</div>
+
+						<!-- ============ Hallazgos por severidad ============ -->
+						<h3>Hallazgos</h3>
+						<t t-foreach="run._report_findings_by_severity()" t-as="grupo">
+							<h5 class="mt-3" t-attf-style="border-left:4px solid {{ grupo['color'] }};padding-left:8px;">
+								<span t-esc="grupo['label']"/>
+								<span class="text-muted">(<span t-esc="len(grupo['findings'])"/>)</span>
+							</h5>
+							<table class="table table-sm">
+								<thead>
+									<tr>
+										<th>Repositorio</th>
+										<th>Qué pasa</th>
+										<th>Cómo se resuelve</th>
+									</tr>
+								</thead>
+								<tbody>
+									<tr t-foreach="grupo['findings']" t-as="h">
+										<td class="text-nowrap">
+											<span t-if="h.repository_id"
+												  t-field="h.repository_id.full_name"/>
+											<em t-else="" class="text-muted">toda la cuenta</em>
+										</td>
+										<td>
+											<span t-field="h.summary"/>
+											<span t-if="h.severity_modulated">*</span>
+										</td>
+										<td class="text-muted small">
+											<span t-esc="h._remediation_label()"/>
+										</td>
+									</tr>
+								</tbody>
+							</table>
+						</t>
+
+						<!-- ============ Repos no auditados ============ -->
+						<t t-set="fallidos" t-value="run._report_finding('repo_sync_error', todos=True)"/>
+						<div t-if="fallidos">
+							<h3>Repositorios no auditados</h3>
+							<table class="table table-sm">
+								<thead>
+									<tr><th>Repositorio</th><th>Motivo</th></tr>
+								</thead>
+								<tbody>
+									<tr t-foreach="fallidos" t-as="h">
+										<td><span t-field="h.repository_id.full_name"/></td>
+										<td class="small text-muted"><span t-field="h.detail"/></td>
+									</tr>
+								</tbody>
+							</table>
+						</div>
+
+					</div>
+				</t>
+			</t>
+		</t>
+	</template>
+
+</odoo>

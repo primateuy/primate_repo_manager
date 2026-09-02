@@ -187,3 +187,22 @@ class RepoAuditFinding(models.Model):
 		if kwargs:
 			_logger.warning("Repo Manager: claves ignoradas al crear hallazgo: %s", list(kwargs))
 		return self.create(valores)
+
+	def _remediation_label(self):
+		"""Cómo se resuelve, en una frase corta y sin jerga."""
+		self.ensure_one()
+		frases = {
+			"apply_ruleset": _("Aplicar las reglas de protección de la plantilla."),
+			"revoke_permission": _("Bajar el permiso de esa persona."),
+			"set_classification": _("Definir de qué tipo es el repositorio."),
+			"sync_fork": _("Sincronizar el fork con el proyecto original."),
+			"migrate_fork": _("Migrarlo al esquema de espejo y parches."),
+			"link_employee": _("Asociar la cuenta de GitHub con la persona."),
+			"rename_default_branch": _("Cambiar la rama por defecto."),
+			"create_version_branch": _("Crear la rama de la versión."),
+			"reinstall_app": _("Reinstalar la aplicación con permisos de administrador."),
+			"upgrade_plan": _("Requiere una decisión sobre el plan de GitHub."),
+			"define_required_checks": _("Definir qué controles de CI son obligatorios."),
+			"review_manually": _("Revisar a mano."),
+		}
+		return frases.get(self.remediation_action, "")

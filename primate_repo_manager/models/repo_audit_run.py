@@ -139,3 +139,87 @@ class RepoAuditRun(models.Model):
 				"%(hallazgos)s hallazgo(s)."
 			) % {"ok": self.repos_done, "mal": self.repos_error,
 				 "hallazgos": self.finding_count})
+
+	# ------------------------------------------------------------------
+	# Ayudantes del informe
+	# ------------------------------------------------------------------
+	# Viven acá y no en el QWeb a propósito: una plantilla llena de lógica es imposible
+	# de leer y de testear. Acá se pueden probar como cualquier método.
+
+	# Tipos que tienen su propia sección en el informe y por eso NO se repiten en las
+	# tablas de hallazgos. El resumen los cuenta aparte para que los números cierren:
+	# un lector que suma las tablas y no llega al total del resumen deja de confiar.
+	TIPOS_CON_SECCION_PROPIA = (
+		"convention_adoption", "repo_sync_error", "branch_protection_unreadable")
+
+	def _report_severity_summary(self):
+		"""Conteo por severidad con una explicación en lenguaje llano."""
+		self.ensure_one()
+		significados = {
+			"critical": _("Requiere acción inmediata: acceso o integridad comprometidos."),
+			"high": _("Hay que resolverlo pronto; deja repositorios sin control efectivo."),
+			"medium": _("Conviene ordenarlo, pero no bloquea el trabajo del día a día."),
+			"info": _("Para tener presente al decidir; no es un incumplimiento."),
+		}
+		etiquetas = dict(self.env["repo.audit.finding"]._fields["severity"].selection)
+		resumen = []
+		colores = self._report_severity_colors()
+		for clave in ("critical", "high", "medium", "info"):
+			de_tabla = self.finding_ids.filtered(
+				lambda f, c=clave: f.severity == c
+				and f.finding_type not in self.TIPOS_CON_SECCION_PROPIA)
+			aparte = self.finding_ids.filtered(
+				lambda f, c=clave: f.severity == c
+				and f.finding_type in self.TIPOS_CON_SECCION_PROPIA)
+			if de_tabla or aparte:
+				resumen.append({
+					"key": clave, "label": etiquetas.get(clave, clave),
+					"count": len(de_tabla), "aside": len(aparte),
+					"meaning": significados[clave], "color": colores[clave],
+				})
+		return resumen
+
+	def _report_findings_by_severity(self):
+		"""Hallazgos agrupados, de lo más grave a lo informativo."""
+		self.ensure_one()
+		etiquetas = dict(self.env["repo.audit.finding"]._fields["severity"].selection)
+		grupos = []
+		for clave in ("critical", "high", "medium", "info"):
+			hallazgos = self.finding_ids.filtered(
+				lambda f, c=clave: f.severity == c
+				and f.finding_type not in self.TIPOS_CON_SECCION_PROPIA)
+			if hallazgos:
+				grupos.append({
+					"key": clave, "label": etiquetas.get(clave, clave),
+					"findings": hallazgos,
+					"color": self._report_severity_colors()[clave],
+				})
+		return grupos
+
+	@api.model
+	def _report_severity_colors(self):
+		"""Color por severidad. En un documento que se usa para decidir, lo grave tiene
+		que distinguirse antes de leer la palabra."""
+		return {
+			"critical": "#B02A37",
+			"high": "#D97706",
+			"medium": "#6B7280",
+			"info": "#9CA3AF",
+		}
+
+	def _report_unreadable(self, causa):
+		"""Los que no se pudieron leer, separados por causa: plan vs permisos."""
+		self.ensure_one()
+		return self.finding_ids.filtered(
+			lambda f: f.finding_type == "branch_protection_unreadable"
+			and f.unreadable_cause == causa)
+
+	def _report_finding(self, tipo, todos=False):
+		self.ensure_one()
+		hallazgos = self.finding_ids.filtered(lambda f: f.finding_type == tipo)
+		return hallazgos if todos else hallazgos[:1]
+
+	def _report_has_modulated(self):
+		"""¿Hay alguna severidad ajustada? Si no, la leyenda sobra."""
+		self.ensure_one()
+		return bool(self.finding_ids.filtered("severity_modulated"))

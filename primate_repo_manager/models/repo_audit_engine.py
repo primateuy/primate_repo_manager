@@ -45,6 +45,7 @@ class RepoAuditEngine(models.AbstractModel):
 
 		self._evaluate_account(run, repos)
 		self._evaluate_members(run)
+		self._evaluate_templates(run, repos)
 		return run.finding_ids
 
 	# ------------------------------------------------------------------
@@ -84,10 +85,6 @@ class RepoAuditEngine(models.AbstractModel):
 		self._evaluate_pull_requests(run, repo)
 		self._evaluate_fork_drift(run, repo)
 
-		if not plantilla.status_checks_defined:
-			self._finding(run, repo, "checks_not_evaluable",
-						  _("Los checks requeridos de «%s» no están definidos")
-						  % plantilla.name)
 
 	@api.model
 	def _evaluate_permissions(self, run, repo, plantilla):
@@ -223,6 +220,31 @@ class RepoAuditEngine(models.AbstractModel):
 				severity="high" if modulada else BASE_SEVERITY["fork_behind_upstream"],
 				severity_modulated=modulada,
 				observed={"behind": rama.behind_upstream, "ahead": rama.ahead_upstream})
+
+	@api.model
+	def _evaluate_templates(self, run, repos):
+		"""Un hallazgo POR PLANTILLA, no por repo.
+
+		Que una plantilla no tenga checks definidos es una sola deuda nuestra. Emitirla
+		por cada repositorio afectado llenaría el informe de noventa filas idénticas y
+		taparía lo que sí hay que mirar. Se dice una vez, con cuántos repos alcanza.
+		"""
+		for plantilla in self.env["repo.policy.template"].search([]):
+			if plantilla.status_checks_defined:
+				continue
+			alcanzados = repos.filtered(
+				lambda r, p=plantilla: r.classification == p.classification_default)
+			if not alcanzados:
+				continue
+			self._finding(
+				run, None, "checks_not_evaluable",
+				_("La plantilla «%(plantilla)s» no tiene checks de CI definidos "
+				  "(%(n)s repositorio(s))") % {
+					"plantilla": plantilla.name, "n": len(alcanzados)},
+				detail=_("Hasta definirlos no se puede evaluar si la CI requerida se "
+						 "cumple. La auditoría releva qué workflows corren hoy para "
+						 "poder proponer la lista."),
+				observed={"repositories": alcanzados.mapped("full_name")})
 
 	# ------------------------------------------------------------------
 	# A nivel cuenta

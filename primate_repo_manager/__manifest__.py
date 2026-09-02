@@ -21,6 +21,7 @@
 		"views/repo_backend_views.xml",
 		"views/repo_audit_views.xml",
 		"views/repo_menus.xml",
+		"report/repo_audit_report.xml",
 		"wizards/repo_key_rotation_views.xml",
 	],
 	"external_dependencies": {
