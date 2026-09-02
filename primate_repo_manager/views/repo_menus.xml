@@ -11,6 +11,13 @@
 	<menuitem id="menu_repo_audit" name="Auditorías" sequence="20"
 			  parent="menu_repo_root" action="action_repo_audit_run"/>
 
+	<menuitem id="menu_repo_write_plan" name="Planes de escritura" sequence="30"
+			  parent="menu_repo_root" action="action_repo_write_plan"
+			  groups="group_repo_lead"/>
+
+	<menuitem id="menu_repo_audit_log" name="Bitácora" sequence="40"
+			  parent="menu_repo_root" action="action_repo_audit_log"/>
+
 	<menuitem id="menu_repo_config" name="Configuración" sequence="90"
 			  parent="menu_repo_root" groups="group_repo_admin"/>
 

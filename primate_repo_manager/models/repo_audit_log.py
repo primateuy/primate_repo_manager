@@ -40,6 +40,8 @@ EVENT_TYPES = [
 	# Los que agrega el ciclo plan -> aprobación -> apply de F2.
 	("write_applied", "Escritura aplicada"),
 	("write_failed", "Escritura fallida"),
+	# Distinto de fallida a propósito: un techo de plan no es un error del sistema.
+	("write_blocked", "Escritura bloqueada por el plan de GitHub"),
 	("write_rolled_back", "Escritura revertida"),
 ]
 

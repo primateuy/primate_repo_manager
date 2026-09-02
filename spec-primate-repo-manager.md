@@ -308,6 +308,26 @@ NO se puede ejecutar desde el módulo. Va por procedimiento aparte. El módulo s
 identificar qué falta migrar, ordenar el trabajo y verificar cada transferencia después de
 hecha, aplicando la gobernanza al repositorio ya movido.
 
+## 10.2 Decisiones abiertas
+
+**Doble aprobación de planes de escritura — sin resolver, para el rollout de F3.**
+Registrado el 2-sep-2026, al construir `repo.write.plan`.
+
+Hoy quien arma un plan puede aprobarlo: NO hay regla de "no aprobar lo propio". Se dejó
+así a propósito y no por descuido.
+
+- En el sandbox sería inaplicable: hay dos cuentas y las dos son de la misma persona.
+- Y es una decisión de política, no un parámetro que corresponda fijar desde el código.
+
+Si alguna vez se activa, la forma correcta **no es global sino por tipo de acción**: las
+operaciones destructivas —revocar accesos, borrar ramas o repositorios, cambiar la rama
+por defecto— piden un segundo aprobador, y las demás no. Una regla global agregaría
+fricción a lo rutinario sin agregar seguridad donde importa, y la fricción inútil termina
+buscándole la vuelta.
+
+Se conversa en el rollout de F3, cuando la gobernanza empiece a aplicarse sobre
+repositorios reales y haya más de un aprobador posible.
+
 ## 11. Decisiones registradas (29-jul-2026)
 
 1. Nombre: `primate_repo_manager`. Odoo 19.0 Enterprise.

@@ -8,3 +8,4 @@ from . import test_sync
 from . import test_findings
 from . import test_audit_log
 from . import test_write_plan
+from . import test_write_apply
