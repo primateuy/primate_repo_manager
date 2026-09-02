@@ -103,7 +103,25 @@ class RepoAuditEngine(models.AbstractModel):
 
 	@api.model
 	def _evaluate_permissions(self, run, repo, plantilla):
+		owner = (repo.backend_id.owner_login or "").lower()
 		for colaborador in repo.collaborator_ids:
+			if owner and (colaborador.member_id.github_login or "").lower() == owner:
+				# La matriz de acceso NO aplica a la cuenta dueña. Su admin es inherente a
+				# la propiedad del repositorio: no se puede bajar, y pedirlo como acción
+				# crítica manda al lector a hacer algo que GitHub no permite. El dato de
+				# que figura además como colaboradora explícita sí se conserva, como nota.
+				self._finding(
+					run, repo, "owner_account_admin",
+					_("«%(persona)s» es la cuenta dueña y figura como colaboradora con "
+					  "%(tiene)s en «%(repo)s»") % {
+						"persona": colaborador.member_id.github_login,
+						"tiene": colaborador.permission, "repo": repo.full_name},
+					subject=colaborador.member_id.github_login,
+					detail=_("No es un exceso de permiso: la cuenta dueña administra sus "
+							 "repositorios por definición. Se lista para que el inventario "
+							 "de accesos esté completo."),
+					observed={"permission": colaborador.permission, "owner": True})
+				continue
 			maximo = plantilla.max_permission_for(colaborador.member_id)
 			if self._nivel(colaborador.permission) <= self._nivel(maximo):
 				continue
@@ -308,8 +326,22 @@ class RepoAuditEngine(models.AbstractModel):
 
 	@api.model
 	def _evaluate_members(self, run):
+		owner = (run.backend_id.owner_login or "").lower()
 		for miembro in self.env["repo.member"].search(
 				[("state", "=", "active"), ("employee_id", "=", False)]):
+			if owner and (miembro.github_login or "").lower() == owner:
+				# «Asociar la cuenta con la persona» no aplica: detrás de la cuenta dueña
+				# no hay un empleado, es la identidad de la empresa. Se dice como nota
+				# para que el inventario de cuentas quede completo, no como pendiente.
+				self._finding(
+					run, None, "institutional_account",
+					_("«%s» es la cuenta institucional dueña de los repositorios")
+					% miembro.github_login,
+					subject=miembro.github_login,
+					detail=_("No corresponde vincularla a un empleado. Sí conviene que "
+							 "tenga dueño declarado y 2FA, que es una revisión aparte."),
+					observed={"owner": True})
+				continue
 			self._finding(
 				run, None, "member_without_employee",
 				_("La cuenta «%s» no está vinculada a ningún empleado")

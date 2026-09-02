@@ -203,6 +203,53 @@ class TestFindings(TransactionCase):
 		# Y el repo concreto también tiene el suyo.
 		self.assertTrue(self._hallazgo("default_branch_off_convention"))
 
+	# --- la cuenta dueña no se mide con la matriz de acceso ---
+
+	def test_la_cuenta_duena_no_es_un_permiso_excedido(self):
+		"""El admin de la cuenta dueña es inherente a la propiedad: no se puede bajar, y
+		pedirlo como crítico manda a hacer algo que GitHub no permite."""
+		repo = self._repo("del-dueno")
+		duena = self.env["repo.member"].create(
+			{"github_login": self.backend.owner_login})
+		self.env["repo.collaborator"].create({
+			"repository_id": repo.id, "member_id": duena.id, "permission": "admin"})
+
+		self.env["repo.audit.engine"].evaluate(self.run)
+
+		self.assertNotIn("permission_admin_exceeded", self._tipos())
+		nota = self._hallazgo("owner_account_admin")
+		self.assertTrue(nota, "el dato de que figura como colaboradora se conserva")
+		self.assertEqual(nota.severity, "info")
+		self.assertEqual(nota.remediation_action, "no_action_owner")
+		self.assertFalse(nota.is_destructive)
+
+	def test_un_colaborador_que_no_es_el_dueno_sigue_siendo_critico(self):
+		"""La exención es para la cuenta dueña y sólo para ella."""
+		repo = self._repo("de-otro")
+		otro = self.env["repo.member"].create({"github_login": "alguien-mas"})
+		self.env["repo.collaborator"].create({
+			"repository_id": repo.id, "member_id": otro.id, "permission": "admin"})
+
+		self.env["repo.audit.engine"].evaluate(self.run)
+
+		self.assertEqual(self._hallazgo("permission_admin_exceeded").severity, "critical")
+
+	def test_la_cuenta_duena_no_pide_vincular_empleado(self):
+		"""Detrás de la cuenta institucional no hay un empleado: el consejo no aplica."""
+		self.env["repo.member"].create({"github_login": self.backend.owner_login})
+		self.env["repo.member"].create({"github_login": "una-persona"})
+
+		self.env["repo.audit.engine"].evaluate(self.run)
+
+		institucional = self._hallazgo("institutional_account")
+		self.assertEqual(institucional.subject, self.backend.owner_login)
+		self.assertEqual(institucional.severity, "info")
+		self.assertEqual(institucional.remediation_action, "no_action_owner")
+		sin_empleado = self._hallazgo("member_without_employee").mapped("subject")
+		self.assertIn("una-persona", sin_empleado,
+					  "las personas de verdad se siguen reportando")
+		self.assertNotIn(self.backend.owner_login, sin_empleado)
+
 	# --- el resumen tiene que cerrar con la tabla ---
 
 	def test_el_conteo_de_main_habla_de_la_poblacion_que_se_evalua(self):

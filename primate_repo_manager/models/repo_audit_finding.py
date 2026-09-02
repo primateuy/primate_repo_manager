@@ -46,6 +46,10 @@ FINDING_TYPES = [
 	("fork_not_migrated", "Fork sin migrar al patrón espejo+parches"),
 	("checks_not_evaluable", "Checks requeridos sin definir"),
 	("convention_adoption", "Adopción de convenciones"),
+	# La cuenta DUEÑA de los repositorios no se mide con la matriz de acceso: su admin es
+	# inherente a la propiedad y no se puede bajar. El dato igual se conserva, como nota.
+	("owner_account_admin", "La cuenta dueña figura como colaboradora"),
+	("institutional_account", "Cuenta institucional sin persona asociada"),
 ]
 
 BASE_SEVERITY = {
@@ -66,6 +70,8 @@ BASE_SEVERITY = {
 	"fork_not_migrated": "info",
 	"checks_not_evaluable": "info",
 	"convention_adoption": "info",
+	"owner_account_admin": "info",
+	"institutional_account": "info",
 }
 
 # Acción de remediación que resolvería cada tipo. Se calcula en F1, se ejecuta en F2/F3.
@@ -85,6 +91,7 @@ REMEDIATION_ACTIONS = [
 	("configure_signing", "Configurar la firma de commits del equipo"),
 	("check_app_access", "Revisar el acceso de la App al repositorio"),
 	("review_manually", "Revisar a mano"),
+	("no_action_owner", "No requiere acción: es la cuenta dueña"),
 ]
 
 REMEDIATION_BY_TYPE = {
@@ -104,6 +111,8 @@ REMEDIATION_BY_TYPE = {
 	"fork_not_migrated": "migrate_fork",
 	"checks_not_evaluable": "define_required_checks",
 	"convention_adoption": "review_manually",
+	"owner_account_admin": "no_action_owner",
+	"institutional_account": "no_action_owner",
 }
 
 # Las que quitan acceso o cambian algo que puede romper el trabajo de otro.
