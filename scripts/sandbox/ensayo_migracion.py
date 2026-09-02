@@ -264,8 +264,22 @@ def revocacion(gh):
 	raise SystemExit(1)
 
 
-def rol_restaurado(gh):
-	"""La bajada de primateuy a Member, verificada por relectura."""
+RTF_SANDBOX = ("/Users/darylyturraldelopez/Desktop/Odoo/Desarrollos Documentos/"
+			   "PRM(Primate Repo Manager)/token-poblado.rtf")
+
+
+def rol_restaurado(_gh):
+	"""La bajada de primateuy a Member, verificada por relectura.
+
+	USA OTRA CREDENCIAL A PROPÓSITO, y esto fue un defecto de secuencia del guion que
+	apareció corriéndolo: esta fase va DESPUÉS de `revocacion`, así que el PAT clásico ya
+	no existe. La credencial que comprueba que la ventana se cerró no puede ser la que la
+	ventana destruyó.
+
+	Se usa el fine-grained del sandbox, que sobrevive, está acotado a la organización y no
+	puede tocar la cuenta real ni para leer sus privados.
+	"""
+	gh = Github(token_desde_rtf(RTF_SANDBOX), aplicar=False)
 	cod, mem, _h = gh.leer("/orgs/%s/memberships/%s" % (ORG, CUENTA))
 	rol = (mem or {}).get("role") if cod == 200 else None
 	print("rol de %s en %s: %s" % (CUENTA, ORG, rol))
@@ -283,12 +297,12 @@ FASES = {
 }
 
 
-def token_desde_rtf():
-	txt = subprocess.run(["textutil", "-convert", "txt", "-stdout", RTF],
+def token_desde_rtf(ruta=None):
+	txt = subprocess.run(["textutil", "-convert", "txt", "-stdout", ruta or RTF],
 						 capture_output=True, text=True).stdout
 	m = re.search(r"(ghp_[A-Za-z0-9]+|github_pat_[A-Za-z0-9_]+)", txt)
 	if not m:
-		raise SystemExit("no encontré el PAT en %s" % RTF)
+		raise SystemExit("no encontré el PAT en %s" % (ruta or RTF))
 	return m.group(1)
 
 
@@ -301,8 +315,12 @@ def main():
 
 	token = os.environ.get("PRM_PAT_MIGRACION")
 	if not token and args.token_desde_rtf:
-		token = token_desde_rtf()
-	if not token:
+		try:
+			token = token_desde_rtf()
+		except SystemExit:
+			token = None
+	if not token and args.fase != "rol":
+		# `rol` corre después de la revocación y usa su propia credencial.
 		raise SystemExit("Falta el PAT: exportá PRM_PAT_MIGRACION o pasá --token-desde-rtf.")
 
 	gh = Github(token, aplicar=args.apply)
