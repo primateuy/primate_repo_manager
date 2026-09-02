@@ -42,6 +42,9 @@ EVENT_TYPES = [
 	("write_failed", "Escritura fallida"),
 	# Distinto de fallida a propósito: un techo de plan no es un error del sistema.
 	("write_blocked", "Escritura bloqueada por el plan de GitHub"),
+	# Paso 2b de las operaciones que crean identidad: el id que devolvió GitHub, guardado
+	# antes de verificar nada. Ver la taxonomía en repo_write_apply.
+	("write_identity", "Identidad creada, registrada antes de verificar"),
 	("write_rolled_back", "Escritura revertida"),
 ]
 
@@ -104,13 +107,17 @@ class RepoAuditLog(models.Model):
 
 	@api.model
 	def registrar(self, event_type, summary, *, backend=None, repository=None,
-				  member=None, payload=None, previous_state=None):
+				  member=None, payload=None, previous_state=None, extra=None):
 		"""Única forma prevista de escribir en la bitácora.
 
 		Rellena las copias en texto en el momento del alta, que es cuando los registros
 		enlazados todavía existen.
+
+		`extra` existe porque la entrada se escribe UNA VEZ y completa: como `write()`
+		está prohibido, un campo que agregue otra capa —el enlace a la operación de
+		escritura, por ejemplo— no se puede setear después. Se pasa acá o no se pasa.
 		"""
-		return self.sudo().create({
+		valores = {
 			"event_type": event_type,
 			"summary": summary[:255] if summary else "",
 			"backend_id": backend.id if backend else False,
@@ -121,7 +128,9 @@ class RepoAuditLog(models.Model):
 			"payload_json": json.dumps(payload, default=str) if payload else False,
 			"previous_state_json": (
 				json.dumps(previous_state, default=str) if previous_state else False),
-		})
+		}
+		valores.update(extra or {})
+		return self.sudo().create(valores)
 
 	def _compute_display_name(self):
 		etiquetas = dict(EVENT_TYPES)

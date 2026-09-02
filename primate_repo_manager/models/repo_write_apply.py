@@ -21,6 +21,53 @@ EL CICLO DE CADA OPERACIÓN, Y POR QUÉ ESE ORDEN
 EL ROLLBACK SALE DE LA BITÁCORA, NO DEL PLAN. El estado previo vive en `repo.audit.log`,
 que es inmutable; si viviera en el plan, quien pueda editar el plan podría reescribir el
 punto de retorno.
+
+
+DOS CLASES DE OPERACIÓN, Y CUÁL LLEVA UN PASO MÁS
+=================================================
+
+Antes de implementar un tipo nuevo, ubicarlo en una de estas dos clases. La diferencia no
+es de estilo: decide si el ciclo lleva cuatro pasos o cinco.
+
+**IDEMPOTENTES POR DESTINO.** El destino de la escritura ya existe y tiene nombre propio:
+una rama, una persona sobre un repositorio, un team sobre un repositorio. Escribir dos
+veces deja el mismo resultado, y revertir es volver a escribir el valor anterior sobre el
+MISMO destino, que sigue estando donde estaba.
+
+    branch_protection_apply · collaborator_grant · collaborator_revoke
+    team_repo_grant · team_repo_revoke
+
+Estas van con el ciclo de cuatro pasos y nada más. Si el apply muere a mitad, no hay nada
+huérfano: o el destino tiene el valor viejo, o tiene el nuevo, y en los dos casos el
+estado previo alcanza para volver.
+
+**CREAN IDENTIDAD.** La escritura hace nacer un objeto que antes no existía y al que
+GitHub le asigna un id que sólo se conoce DESPUÉS de crearlo: un ruleset, un repositorio,
+un team, un webhook, una PR.
+
+    ruleset_create · (F3: crear repositorio, crear team, alta de webhook)
+
+Estas llevan un paso extra, y va ANTES de verificar:
+
+    1. leer el estado previo
+    2. ejecutar
+    2b. PERSISTIR LA IDENTIDAD DEVUELTA, en su propia entrada de bitácora y en su propia
+        transacción, antes de cualquier otra cosa
+    3. verificar releyendo
+    4. registrar
+
+El motivo es el escenario que arruina todo lo demás: **el apply crea el objeto y se cae
+antes de terminar.** Si el id sólo vivió en memoria, GitHub queda con un objeto nuevo y
+Odoo sin saber cuál es. El rollback entonces no tiene a qué apuntar, y las salidas de
+apuro son todas malas: borrar «el último de la lista» o buscar «el que se llama como el
+nuestro» puede borrar un objeto ajeno y preexistente que nadie pidió tocar.
+
+Por eso el estado previo de estas operaciones incluye la LISTA COMPLETA con ids, y por
+eso la identidad se guarda apenas GitHub la devuelve, en una transacción propia para que
+sobreviva al rollback de la transacción que se cae.
+
+REGLA PRÁCTICA: ¿el objeto que escribo ya existía y lo estoy modificando, o lo estoy
+haciendo nacer? Si nace, lleva el paso 2b.
 """
 import json
 import logging
@@ -43,6 +90,20 @@ PROTECCION_BASE = {
 }
 
 
+class RepoAuditLogWriteLink(models.Model):
+	"""El enlace del registro a la operación lo agrega la capa de escritura.
+
+	Va acá y no en `repo_audit_log.py` para que la bitácora genérica no tenga que conocer
+	los planes de escritura. Y es `set null` como todos los demás: la entrada sobrevive
+	aunque el plan se borre — que es justamente cuando su información de identidad se
+	vuelve más necesaria, no menos.
+	"""
+	_inherit = "repo.audit.log"
+
+	operation_id = fields.Many2one(
+		"repo.write.operation", string="Operación", ondelete="set null", index=True)
+
+
 class RepoWritePlanApply(models.Model):
 	_inherit = "repo.write.plan"
 
@@ -52,7 +113,9 @@ class RepoWritePlanApply(models.Model):
 		self._verificar_congelado()
 
 		cliente = self.backend_id.write_client()
-		self.write({"state": "applying"})
+		# Durable: si esto se escribiera sólo en la transacción del apply, una caída lo
+		# devolvería a «aprobado» y el plan mentiría sobre lo que llegó a pasar.
+		self._marcar_aplicando()
 
 		for operacion in self.operation_ids.sorted(lambda o: (o.sequence, o.id)):
 			if operacion.state in ("applied", "blocked"):
@@ -75,6 +138,18 @@ class RepoWritePlanApply(models.Model):
 		})
 		return True
 
+	def _cursor_durable(self):
+		"""Ver el homónimo en la operación: conexión aparte, y por qué."""
+		return self.pool.cursor()
+
+	def _marcar_aplicando(self):
+		self.ensure_one()
+		with self._cursor_durable() as cr:
+			entorno = self.env(cr=cr)
+			entorno["repo.write.plan"].browse(self.id).state = "applying"
+			entorno.flush_all()
+		self.invalidate_recordset(["state"])
+
 	def action_rollback(self):
 		"""Revierte en ORDEN INVERSO. Una operación puede depender de la anterior.
 
@@ -85,13 +160,23 @@ class RepoWritePlanApply(models.Model):
 		puerta de servicio a las mismas escrituras.
 		"""
 		self.ensure_one()
-		self._verificar_congelado(estados=("applied", "failed"))
+		# LA ADMISIBILIDAD SALE DE LOS HECHOS, NO DEL CAMPO DE ESTADO. Si el plan tuviera
+		# que estar en cierto estado, una caída que se lleve esa escritura dejaría objetos
+		# vivos en GitHub sin forma de limpiarlos: pasó, y así se descubrió. Lo que
+		# habilita revertir es que existan operaciones cuyo objeto EXISTE —`applied` o
+		# `created`—, que es lo que la caída no puede borrar porque se guardó aparte.
+		# La huella se sigue exigiendo: eso no se negocia.
+		self._verificar_congelado(estados=None)
 		cliente = self.backend_id.write_client()
+		# `created` entra: el objeto existe en GitHub aunque el ciclo no haya terminado, y
+		# no poder revertirlo sería dejarlo huérfano.
 		aplicadas = self.operation_ids.filtered(
-			lambda o: o.state == "applied").sorted(lambda o: (o.sequence, o.id),
-												   reverse=True)
+			lambda o: o.state in ("applied", "created")).sorted(
+				lambda o: (o.sequence, o.id), reverse=True)
 		if not aplicadas:
-			raise UserError(_("No hay operaciones aplicadas para revertir."))
+			raise UserError(_(
+				"No hay operaciones con efecto en GitHub para revertir en «%s».")
+				% self.name)
 		for operacion in aplicadas:
 			operacion._revertir(cliente)
 		self.state = "rolled_back"
@@ -103,8 +188,14 @@ class RepoWriteOperationApply(models.Model):
 	_inherit = "repo.write.operation"
 
 	state = fields.Selection(
-		selection_add=[("blocked", "Bloqueada por el plan de GitHub")],
-		ondelete={"blocked": "set default"})
+		selection_add=[
+			("blocked", "Bloqueada por el plan de GitHub"),
+			# El objeto YA EXISTE en GitHub pero el ciclo no llegó a terminar. Es un
+			# estado reversible a propósito: si no lo fuera, un apply caído a mitad
+			# dejaría el objeto huérfano y sin forma de limpiarlo desde el módulo.
+			("created", "Creada, sin verificar"),
+		],
+		ondelete={"blocked": "set default", "created": "set default"})
 
 	# ------------------------------------------------------------------
 	# Ciclo
@@ -137,6 +228,13 @@ class RepoWriteOperationApply(models.Model):
 		except GithubError as exc:
 			self._registrar_falla(str(exc), previo=previo)
 			return False
+
+		# --- 2b. persistir la identidad creada, ANTES de verificar --------
+		# Ver la taxonomía en el docstring del módulo. Si el ciclo muere entre acá y el
+		# final, esto es lo único que le dice al rollback qué objeto borrar.
+		identidad = manejador.get("identidad")
+		if identidad:
+			self._persistir_identidad(getattr(self, identidad)(resultado), previo)
 
 		# --- 3. verificar releyendo -------------------------------------
 		ok, detalle = getattr(self, manejador["verificar"])(cliente)
@@ -173,6 +271,10 @@ class RepoWriteOperationApply(models.Model):
 	def _revertir(self, cliente):
 		"""Restaura el estado previo guardado en la bitácora, y lo verifica releyendo."""
 		self.ensure_one()
+		if not self.audit_log_id and self.state == "created":
+			# Se cayó antes de dejar la entrada final. El punto de retorno es el que se
+			# guardó en el paso 2b, que está en su propia entrada.
+			self.audit_log_id = self._entrada_de_identidad()
 		if not self.audit_log_id or not self.audit_log_id.previous_state_json:
 			raise UserError(_(
 				"La operación «%s» no tiene estado previo registrado: no hay punto de "
@@ -222,14 +324,90 @@ class RepoWriteOperationApply(models.Model):
 		mismo camino con menos operaciones.
 		"""
 		self.ensure_one()
-		self.plan_id._verificar_congelado(estados=("applied", "failed"))
-		if self.state != "applied":
+		self.plan_id._verificar_congelado(estados=None)
+		if self.state not in ("applied", "created"):
 			raise UserError(_(
-				"Sólo se revierte una operación aplicada; ésta está en «%s».") % self.state)
+				"Sólo se revierte una operación con efecto en GitHub; ésta está en «%s».")
+				% self.state)
 		self._revertir(self.plan_id.backend_id.write_client())
 		if not self.plan_id.operation_ids.filtered(lambda o: o.state == "applied"):
 			self.plan_id.state = "rolled_back"
 		return True
+
+	# ------------------------------------------------------------------
+	# Paso 2b: la identidad, en su propia transacción
+	# ------------------------------------------------------------------
+
+	def _cursor_durable(self):
+		"""La conexión donde se escribe la identidad: SEPARADA de la transacción actual.
+
+		Tiene que ser otra conexión para que la entrada sobreviva al rollback de la
+		transacción que se cae — que es el escenario entero del paso 2b. Es además lo que
+		recomienda el propio Odoo, que prohíbe `cr.commit()` dentro de una transacción de
+		test justamente porque deja el cursor roto.
+
+		ESTA COSTURA EXISTE PARA PODER PROBAR LA LÓGICA, y conviene ser claro sobre su
+		precio: una conexión nueva no ve lo que la transacción actual todavía no confirmó,
+		así que en los tests —donde nada está confirmado— se la reemplaza por el cursor
+		actual. Con ese reemplazo los tests verifican QUÉ se guarda y que el rollback lo
+		usa, pero **no** verifican la durabilidad. Eso se prueba contra el sandbox, en dos
+		procesos distintos, matando el apply en el medio.
+
+		En producción no hay reemplazo: cuando se aprieta Aplicar, el plan y sus
+		operaciones vienen confirmados de requests anteriores y la conexión nueva los ve.
+		"""
+		return self.pool.cursor()
+
+	def _persistir_identidad(self, identidad, previo):
+		"""Guarda el id devuelto por GitHub, en una transacción que sobreviva a la caída.
+
+		Si el id sólo viviera en memoria, un apply que muere entre crear y verificar
+		dejaría un objeto vivo en GitHub que Odoo no sabe identificar, y el rollback sin a
+		qué apuntar. Ver la taxonomía en el docstring del módulo.
+		"""
+		self.ensure_one()
+		# Se leen ANTES de abrir la otra conexión: son datos de esta transacción.
+		datos = {
+			"repo_id": self.repository_id.id,
+			"repo_name": self.repository_id.full_name,
+			"backend_id": self.plan_id.backend_id.id,
+			"huella": self.plan_id.approval_fingerprint,
+		}
+		with self._cursor_durable() as cr:
+			entorno = self.env(cr=cr)
+			entorno["repo.audit.log"].sudo().create({
+				"event_type": "write_identity",
+				"summary": (_("Creado %(que)s en %(repo)s") % {
+					"que": identidad, "repo": datos["repo_name"]})[:255],
+				"backend_id": datos["backend_id"],
+				"repository_id": datos["repo_id"],
+				"repository_name": datos["repo_name"],
+				"operation_id": self.id,
+				"payload_json": json.dumps({
+					"kind": self.kind, "target": self.target,
+					"identidad": identidad, "plan_fingerprint": datos["huella"],
+				}, default=str),
+				"previous_state_json": json.dumps(previo, default=str),
+			})
+			entorno["repo.write.operation"].browse(self.id).state = "created"
+			# El flush va DENTRO del bloque: sin él la escritura queda en caché, y el
+			# `invalidate_recordset` de abajo la descartaría en vez de releerla.
+			entorno.flush_all()
+		self.invalidate_recordset(["state"])
+		return identidad
+
+	def _entrada_de_identidad(self):
+		"""La entrada del paso 2b de esta operación, si la hubo."""
+		self.ensure_one()
+		return self.env["repo.audit.log"].search(
+			[("operation_id", "=", self.id), ("event_type", "=", "write_identity")],
+			order="id desc", limit=1)
+
+	def _identidad_guardada(self):
+		entrada = self._entrada_de_identidad()
+		if not entrada:
+			return None
+		return json.loads(entrada.payload_json or "{}").get("identidad")
 
 	# ------------------------------------------------------------------
 	# Registro de desenlaces
@@ -310,7 +488,77 @@ class RepoWriteOperationApply(models.Model):
 				"verificar": "_verificar_team_revocacion",
 				"revertir": "_revertir_team_grant",
 			},
+			# La única que CREA IDENTIDAD hasta ahora: lleva el paso 2b.
+			"ruleset_create": {
+				"leer": "_leer_rulesets",
+				"ejecutar": "_crear_ruleset",
+				"identidad": "_id_del_ruleset",
+				"verificar": "_verificar_ruleset_creado",
+				"revertir": "_revertir_ruleset_creado",
+			},
 		}
+
+	# --- rulesets: la clase que crea identidad ---------------------------
+	#
+	# EL ESTADO PREVIO ES LA LISTA COMPLETA CON IDS, y no un objeto. En un repositorio
+	# puede haber rulesets preexistentes que no son nuestros y que no se tocan; sin la
+	# lista, el rollback no tendría cómo distinguir el que creamos de los que ya estaban.
+	#
+	# Y el borrado apunta al ID DEVUELTO Y GUARDADO, nunca «al último de la lista» ni «al
+	# que se llama como el nuestro». Los dos atajos borran un ruleset ajeno el día que
+	# alguien cree uno con el mismo nombre o justo después que nosotros.
+
+	def _leer_rulesets(self, cliente):
+		rulesets = cliente.paginate(
+			"/repos/%s/rulesets" % self.repository_id.full_name)
+		return {
+			"rulesets": sorted(
+				[{"id": r.get("id"), "name": r.get("name"),
+				  "enforcement": r.get("enforcement")} for r in rulesets],
+				key=lambda r: r["id"] or 0),
+		}
+
+	def _crear_ruleset(self, cliente):
+		cuerpo = _cargar(self.payload_json) or {}
+		if not cuerpo.get("name"):
+			raise UserError(_("El ruleset a crear necesita al menos un `name`."))
+		return cliente.post(
+			"/repos/%s/rulesets" % self.repository_id.full_name, cuerpo)
+
+	def _id_del_ruleset(self, resultado):
+		"""La identidad que devolvió GitHub. Sin esto no hay paso 2b posible."""
+		identidad = (resultado or {}).get("id")
+		if not identidad:
+			raise UserError(_(
+				"GitHub no devolvió el id del ruleset creado. Sin identidad no se puede "
+				"garantizar el rollback, así que la operación no continúa."))
+		return identidad
+
+	def _verificar_ruleset_creado(self, cliente):
+		esperado = self._identidad_guardada()
+		estado = self._leer_rulesets(cliente)
+		encontrado = next(
+			(r for r in estado["rulesets"] if r["id"] == esperado), None)
+		if not encontrado:
+			return False, _("el ruleset %s no aparece al releer") % esperado
+		return True, encontrado
+
+	def _revertir_ruleset_creado(self, cliente, previo):
+		"""Borra POR ID el que creamos. Los preexistentes ni se miran."""
+		identidad = self._identidad_guardada()
+		if not identidad:
+			raise UserError(_(
+				"No hay identidad registrada para esta operación: no se sabe qué ruleset "
+				"borrar y no se va a adivinar."))
+		previos = {r["id"] for r in (previo.get("rulesets") or [])}
+		if identidad in previos:
+			raise UserError(_(
+				"El ruleset %s ya existía antes de esta operación. No se borra: no lo "
+				"creamos nosotros.") % identidad)
+		cliente.delete(
+			"/repos/%s/rulesets/%s" % (self.repository_id.full_name, identidad),
+			tolerar_404=True)
+		return True
 
 	# --- permisos directos de una persona -------------------------------
 	#

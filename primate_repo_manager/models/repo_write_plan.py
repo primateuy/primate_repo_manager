@@ -33,6 +33,11 @@ _logger = logging.getLogger(__name__)
 
 # Tipos de operación que un plan puede expresar. El ejecutor implementa de a uno; los que
 # todavía no, fallan diciéndolo, en vez de pasar de largo en silencio.
+#
+# ANTES DE AGREGAR UN TIPO: leer la taxonomía en repo_write_apply.py — «dos clases de
+# operación, y cuál lleva un paso más». Decide si el tipo nuevo necesita persistir la
+# identidad que crea, y de eso depende que su rollback funcione cuando el apply se cae a
+# mitad de camino.
 OPERATION_KINDS = [
 	("branch_protection_apply", "Aplicar protección de rama"),
 	("branch_protection_remove", "Quitar protección de rama"),
@@ -189,9 +194,12 @@ class RepoWritePlan(models.Model):
 		aprobado pero cuya huella no coincida NO se ejecuta. Al revés también: sin
 		aprobación previa no hay con qué comparar, y tampoco se ejecuta.
 
-		`estados` es lo único que cambia entre una y otra: el apply corre sobre un plan
-		`approved`, el rollback sobre uno ya aplicado. La huella se exige igual en los
-		dos casos — revertir es escribir, y no tiene por qué pedir menos.
+		`estados` es lo único que cambia entre una y otra. El apply corre sobre un plan
+		`approved`. El rollback pasa `None`, que significa SIN REQUISITO DE ESTADO: su
+		admisibilidad la justifica de otra forma —que existan operaciones cuyo objeto ya
+		está en GitHub— porque una caída puede llevarse el campo de estado y dejar igual
+		los objetos creados. La huella se exige en los dos casos: revertir es escribir, y
+		no tiene por qué pedir menos.
 		"""
 		self.ensure_one()
 		if not self.approval_fingerprint:
@@ -208,7 +216,7 @@ class RepoWritePlan(models.Model):
 				"después se escriben otras. Revisá los cambios y volvé a aprobarlo."
 			) % {"nombre": self.name, "vieja": self.approval_fingerprint[:16],
 				 "nueva": actual[:16]})
-		if self.state not in estados:
+		if estados is not None and self.state not in estados:
 			raise UserError(_(
 				"El plan «%(nombre)s» está en estado «%(estado)s» y esta acción sólo "
 				"corre sobre: %(admitidos)s."

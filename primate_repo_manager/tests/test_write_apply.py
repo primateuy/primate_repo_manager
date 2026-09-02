@@ -24,6 +24,9 @@ DIRECTO_MAINTAIN = [{"login": "primateuy", "role_name": "maintain"}]
 DIRECTO_ADMIN = [{"login": "primateuy", "role_name": "admin"}]
 SIN_DIRECTOS = []
 TEAM_MAINTAIN = [{"slug": "desarrollo", "permission": "maintain"}]
+# Un ruleset preexistente que NO es nuestro y que ninguna reversión puede tocar.
+AJENO = {"id": 111, "name": "ajeno-no-tocar", "enforcement": "active"}
+NUESTRO = {"id": 999, "name": "sonda", "enforcement": "active"}
 PROTECCION = {
 	"required_pull_request_reviews": {"required_approving_review_count": 1},
 	"enforce_admins": {"enabled": False},
@@ -104,6 +107,7 @@ class TestApply(TransactionCase):
 			"backend_id": self.backend.id, "github_id": uuid.uuid4().hex[:8],
 			"name": "sbx", "full_name": "org/sbx",
 		})
+		self._sin_cursor_aparte()
 
 	def _plan(self, kind="branch_protection_apply", payload=None):
 		plan = self.env["repo.write.plan"].create({
@@ -117,6 +121,21 @@ class TestApply(TransactionCase):
 		})
 		plan.action_approve()
 		return plan
+
+	def _sin_cursor_aparte(self):
+		"""En un test nada está confirmado, así que una conexión nueva no vería los
+		registros. Se reemplaza por la actual: con eso se prueba QUÉ se guarda y que el
+		rollback lo use, NO la durabilidad — eso va contra el sandbox, en dos procesos."""
+		import contextlib
+		def falso(self):
+			return contextlib.nullcontext(self.env.cr)
+
+		for modelo in ("repo.write.operation", "repo.write.plan"):
+			clase = self.env[modelo].__class__
+			original = clase._cursor_durable
+			clase._cursor_durable = falso
+			self.addCleanup(
+				lambda c=clase, o=original: setattr(c, "_cursor_durable", o))
 
 	def _correr(self, plan, transporte):
 		"""Inyecta el transporte en la única puerta y aplica."""
@@ -576,6 +595,128 @@ class TestApply(TransactionCase):
 		self.assertEqual(previo["otros_teams"],
 						 [{"slug": "owners", "permission": "admin"}])
 
+	# --- rulesets: la clase que crea identidad --------------------------------
+
+	def _plan_ruleset(self):
+		plan = self.env["repo.write.plan"].create({
+			"name": "Ruleset", "backend_id": self.backend.id})
+		self.env["repo.write.operation"].create({
+			"plan_id": plan.id, "kind": "ruleset_create",
+			"repository_id": self.repo.id, "target": "19.0",
+			"payload_json": json.dumps({"name": "sonda", "target": "branch",
+										"enforcement": "active"}),
+		})
+		plan.action_approve()
+		return plan
+
+	def test_la_identidad_se_guarda_antes_de_verificar(self):
+		transporte = Transporte(
+			gets=[Respuesta(200, [AJENO]),            # previo
+				  Respuesta(200, [AJENO, NUESTRO])],  # verificación
+			escrituras={"POST": Respuesta(201, NUESTRO)})
+		plan = self._plan_ruleset()
+		self._correr(plan, transporte)
+
+		op = plan.operation_ids
+		self.assertEqual(op.state, "applied")
+		identidad = self.env["repo.audit.log"].search(
+			[("operation_id", "=", op.id), ("event_type", "=", "write_identity")])
+		self.assertEqual(len(identidad), 1)
+		self.assertEqual(json.loads(identidad.payload_json)["identidad"], 999)
+
+	def test_si_muere_entre_crear_y_verificar_el_rollback_encuentra_el_id(self):
+		"""EL escenario del paso 2b.
+
+		El apply crea el ruleset y se cae antes de verificar. La identidad ya quedó
+		guardada en su propia entrada, así que el rollback sabe exactamente qué borrar —y
+		el ruleset ajeno que estaba antes no se toca.
+		"""
+		class TransporteQueMuere(Transporte):
+			"""Muere en la SEGUNDA lectura de rulesets, que es la verificación.
+
+			La primera es el estado previo y tiene que salir bien: el escenario que
+			importa es el de un objeto YA CREADO cuyo ciclo no llegó a terminar.
+			"""
+
+			def __init__(self, *a, **kw):
+				super().__init__(*a, **kw)
+				self.lecturas_de_rulesets = 0
+
+			def get(self, url, headers=None, timeout=None):
+				if "/rulesets" in url:
+					self.lecturas_de_rulesets += 1
+					if self.lecturas_de_rulesets == 2:
+						raise RuntimeError("se cortó la red a mitad del ciclo")
+				return super().get(url, headers=headers, timeout=timeout)
+
+		transporte = TransporteQueMuere(
+			gets=[Respuesta(200, [AJENO])],
+			escrituras={"POST": Respuesta(201, NUESTRO)})
+		plan = self._plan_ruleset()
+		# try/except PLANO, y no `assertRaises`: el de Odoo abre un savepoint y hace
+		# rollback al capturar la excepción, que es exactamente lo que el cursor durable
+		# existe para sobrevivir. Como en un test la conexión durable es la actual (ver
+		# `_sin_cursor_aparte`), ese savepoint se llevaría puesta la identidad y el test
+		# probaría lo contrario de lo que quiere probar.
+		murio = False
+		try:
+			self._correr(plan, transporte)
+		except RuntimeError:
+			murio = True
+		self.assertTrue(murio, "el apply tenía que morir en la verificación")
+
+		op = plan.operation_ids
+		self.assertEqual(op.state, "created",
+						 "el objeto existe en GitHub: el estado tiene que decirlo")
+		self.assertEqual(op._identidad_guardada(), 999)
+
+		# El rollback, con la red de vuelta.
+		transporte2 = Transporte(gets=[
+			Respuesta(200, [AJENO, NUESTRO]),   # antes de revertir
+			Respuesta(200, [AJENO]),            # post-rollback: sólo queda el ajeno
+		])
+		self._revertir(plan, transporte2)
+
+		self.assertEqual(op.state, "rolled_back")
+		self.assertIn(
+			("DELETE", "https://api.github.com/repos/org/sbx/rulesets/999"),
+			transporte2.llamadas, "borra POR ID el que creamos")
+		self.assertFalse(
+			[c for c in transporte2.llamadas if c[1].endswith("/rulesets/111")],
+			"el ruleset ajeno no se toca ni de casualidad")
+
+	def test_no_se_borra_un_ruleset_que_ya_existia(self):
+		"""Si el id registrado estaba en la lista previa, no lo creamos nosotros."""
+		transporte = Transporte(
+			gets=[Respuesta(200, [AJENO]), Respuesta(200, [AJENO])],
+			escrituras={"POST": Respuesta(201, AJENO)})   # GitHub devuelve el id ajeno
+		plan = self._plan_ruleset()
+		self._correr(plan, transporte)
+
+		with self.assertRaises(UserError) as ctx:
+			self._revertir(plan, Transporte(gets=[Respuesta(200, [AJENO])]))
+		self.assertIn("ya existía antes", str(ctx.exception))
+
+	def test_sin_identidad_devuelta_la_operacion_no_sigue(self):
+		transporte = Transporte(
+			gets=[Respuesta(200, [AJENO])],
+			escrituras={"POST": Respuesta(201, {"name": "sonda"})})   # sin id
+		plan = self._plan_ruleset()
+		with self.assertRaises(UserError) as ctx:
+			self._correr(plan, transporte)
+		self.assertIn("no devolvió el id", str(ctx.exception))
+
+	def test_el_estado_previo_de_un_ruleset_es_la_lista_con_ids(self):
+		transporte = Transporte(
+			gets=[Respuesta(200, [AJENO]), Respuesta(200, [AJENO, NUESTRO])],
+			escrituras={"POST": Respuesta(201, NUESTRO)})
+		plan = self._plan_ruleset()
+		self._correr(plan, transporte)
+		previo = json.loads(plan.operation_ids.audit_log_id.previous_state_json)
+		self.assertEqual(previo["rulesets"],
+						 [{"id": 111, "name": "ajeno-no-tocar",
+						   "enforcement": "active"}])
+
 	# --- las guardas de arriba siguen mandando ---------------------------------
 
 	def test_un_plan_que_cambio_despues_de_aprobar_no_se_aplica(self):
@@ -604,7 +745,7 @@ class TestApply(TransactionCase):
 		self.assertIn("sólo lectura", str(ctx.exception))
 
 	def test_un_tipo_no_implementado_falla_diciendolo(self):
-		plan = self._plan(kind="ruleset_create", payload={"name": "x"})
+		plan = self._plan(kind="ruleset_delete", payload={"name": "x"})
 		with self.assertRaises(UserError) as ctx:
 			self._correr(plan, Transporte(gets=[]))
 		self.assertIn("todavía no está implementado", str(ctx.exception))
