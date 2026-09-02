@@ -177,11 +177,16 @@ class GithubReadClient:
 			raise GithubError(response.status_code, _cuerpo(response), path)
 		return response.json()
 
-	def paginate(self, path, params=None, max_items=None):
+	def paginate(self, path, params=None, max_items=None, envoltorio=None):
 		"""Recorre una colección paginada siguiendo la cabecera Link.
 
 		:param max_items: corta la lectura al llegar a esa cantidad. Se usa para las
 			muestras de commits, donde no se quiere la historia sino los últimos N.
+		:param envoltorio: clave bajo la cual viene la lista cuando el endpoint devuelve
+			un objeto en vez de un array. `/installation/repositories` la envuelve en
+			`repositories`; las búsquedas, en `items`. Sin este dato la respuesta se lee
+			como vacía y el recorrido termina en silencio sin haber visto nada, que es
+			exactamente el error que hay que hacer imposible acá.
 		"""
 		items = []
 		params = dict(params or {})
@@ -201,7 +206,14 @@ class GithubReadClient:
 			lote = response.json()
 			if not isinstance(lote, list):
 				# Endpoints que envuelven la lista, p. ej. búsquedas: {items: [...]}.
-				lote = lote.get("items", [])
+				clave = envoltorio or "items"
+				if clave not in lote:
+					raise GithubError(
+						response.status_code,
+						"la respuesta no es una lista ni trae la clave «%s» (claves: %s)"
+						% (clave, ", ".join(sorted(lote))[:200]),
+						path)
+				lote = lote.get(clave) or []
 			items.extend(lote)
 			if max_items and len(items) >= max_items:
 				return items[:max_items]

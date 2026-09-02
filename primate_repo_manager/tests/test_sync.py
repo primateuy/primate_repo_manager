@@ -70,8 +70,15 @@ class TransporteAuditoria:
 
 	def get(self, url, headers=None, timeout=None):
 		self.llamadas.append(url)
-		if "/repos?" in url or url.endswith("/repos"):
-			return RespuestaFalsa(200, self.repos)
+		if "/installation/repositories" in url:
+			# Igual que GitHub: la lista viene ENVUELTA, no como array suelto.
+			return RespuestaFalsa(200, {
+				"total_count": len(self.repos), "repositories": self.repos})
+		if "/users/" in url and "/repos" in url:
+			# El endpoint equivocado: sólo públicos. Si el módulo vuelve a usarlo, el
+			# repo privado desaparece del enumerado y el test lo caza.
+			return RespuestaFalsa(
+				200, [r for r in self.repos if not r.get("private")])
 		if "/branches?" in url or url.endswith("/branches"):
 			return RespuestaFalsa(200, BRANCHES)
 		if "/protection" in url:
@@ -143,6 +150,39 @@ class TestSync(TransactionCase):
 		self.assertEqual(len(segunda.mapped("collaborator_ids")), conteos["colaboradores"])
 		self.assertEqual(len(segunda.mapped("commit_sample_ids")), conteos["commits"])
 		self.assertEqual(len(segunda.mapped("workflow_ids")), conteos["workflows"])
+
+	# --- el enumerado mira TODO lo que abarca la instalación ---
+
+	def test_el_enumerado_incluye_los_privados(self):
+		"""`/users/{login}/repos` devuelve sólo públicos: perdía los 31 privados de
+		primateuy y la auditoría terminaba en verde igual. Se enumera por la instalación."""
+		repos = self._sincronizar()
+
+		self.assertEqual(len(repos), 2)
+		self.assertIn("primateuy/LocalizacionUy", repos.mapped("full_name"),
+					  "el repo privado tiene que estar en el enumerado")
+		self.assertTrue(
+			any("/installation/repositories" in u for u in self.transporte.llamadas),
+			"el enumerado debe pedir /installation/repositories")
+		self.assertFalse(
+			any("/users/" in u and "/repos" in u for u in self.transporte.llamadas),
+			"no se puede volver a enumerar por /users/{login}/repos: oculta los privados")
+
+	def test_una_respuesta_envuelta_inesperada_no_pasa_como_vacia(self):
+		"""Si GitHub cambia la forma de la respuesta, el recorrido falla y lo dice; no
+		devuelve cero repos como si la cuenta estuviera vacía."""
+		from odoo.addons.primate_repo_manager.models.github_client import GithubError
+
+		class TransporteRaro(TransporteAuditoria):
+			def get(self, url, headers=None, timeout=None):
+				self.llamadas.append(url)
+				if "/installation/repositories" in url:
+					return RespuestaFalsa(200, {"total_count": 2, "repos": self.repos})
+				return super().get(url, headers=headers, timeout=timeout)
+
+		self.transporte = TransporteRaro([REPO_PRIVADO_SIN_ADMIN, REPO_FORK])
+		with self.assertRaises(GithubError):
+			self._sincronizar()
 
 	# --- los tres estados de protección ---
 

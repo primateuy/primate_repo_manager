@@ -45,15 +45,43 @@ class RepoRepositorySync(models.Model):
 
 	@api.model
 	def _sync_from_backend(self, backend):
-		"""Trae la lista de repos de la cuenta y los upsertea. Devuelve el recordset."""
+		"""Trae la lista de repos que abarca la instalación y los upsertea.
+
+		POR QUÉ `/installation/repositories` Y NO `/users/{login}/repos`. El segundo
+		devuelve SÓLO los repositorios públicos de la cuenta, aunque se lo llame con un
+		token de instalación que tiene acceso a los privados: el token no amplía lo que
+		ese endpoint muestra. Contra la cuenta `primateuy` la diferencia es 83 contra 113
+		— se perdían los 31 privados enteros, que son justamente donde caen el límite de
+		plan para proteger ramas y la mayoría de los repos de cliente.
+
+		Y el modo de falla era el peor posible: la auditoría terminaba en verde, con un
+		informe que afirmaba sobre "todos los repositorios" habiendo mirado el 73%. Nada
+		en el resultado delataba lo que faltaba.
+
+		`/installation/repositories` es la fuente autoritativa para una GitHub App:
+		devuelve exactamente los repos que la instalación puede ver, públicos y privados,
+		y sirve igual para una cuenta de usuario que para una organización.
+		"""
 		client = backend.client()
-		ruta = "/orgs/%s/repos" if backend.owner_type == "organization" else "/users/%s/repos"
-		datos = client.paginate(ruta % backend.owner_login, params={"type": "all"})
+		datos = client.paginate(
+			"/installation/repositories", envoltorio="repositories")
 		backend.rate_remaining = client.last_rate_remaining or 0
 
 		repos = self.browse()
+		ajenos = []
 		for item in datos:
+			login = ((item.get("owner") or {}).get("login") or "")
+			if login and login.lower() != (backend.owner_login or "").lower():
+				# La instalación podría abarcar repos de otra cuenta. No se auditan bajo
+				# esta conexión —su dueño es otro— pero tampoco se ocultan.
+				ajenos.append(item.get("full_name"))
+				continue
 			repos |= self._upsert(backend, item)
+		if ajenos:
+			_logger.warning(
+				"Repo Manager: la instalación abarca %s repositorio(s) de otra cuenta, "
+				"fuera del alcance de «%s»: %s",
+				len(ajenos), backend.owner_login, ", ".join(ajenos))
 		return repos
 
 	@api.model
