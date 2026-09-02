@@ -89,9 +89,30 @@ signing keys públicas registradas) pero no crear ni instalar: la clave privada 
 máquina de cada uno y no debe salir de ahí. El onboarding incluye la guía; configurarla es
 tarea de la persona.
 
-**Transferir un repositorio entre cuentas.** La API expone la operación, pero requiere
-aceptación de la cuenta destino y permisos que exceden los de una App. En la práctica se
-hace a mano.
+**Transferir un repositorio entre cuentas.** El endpoint existe
+(`POST /repos/{owner}/{repo}/transfer`) y la documentación no lo prohíbe, pero **un token
+de instalación está acotado a una sola cuenta** y una transferencia es, por definición,
+una operación entre dos. Verificado en septiembre de 2026:
+
+| Credencial | Resultado |
+|---|---|
+| Token de instalación de App | `Resource not accessible by integration` |
+| Token de usuario de App (user-to-server) | `Resource not accessible by integration` |
+| PAT fine-grained | `Resource not accessible by personal access token` |
+| PAT clásico | funciona |
+
+Fuente: [community discussion #60014](https://github.com/orgs/community/discussions/60014),
+con la explicación de gr2m (mantenedor de Octokit) sobre el alcance de los tokens.
+
+El segundo renglón importa especialmente: el módulo va a usar OAuth user-to-server en F4
+para atribuir las aprobaciones de PR a la persona real, y **ese camino tampoco sirve para
+transferir**. Lo único que funciona es un PAT clásico, que la spec descarta en §3.
+
+> **Consecuencia para la migración cuenta → organización:** no es orquestable desde el
+> módulo. Va por procedimiento aparte, desde la interfaz de GitHub o con un PAT clásico de
+> un solo uso fuera del módulo. Lo que el módulo sí puede hacer alrededor: identificar qué
+> repositorios faltan migrar, ordenarlos, y verificar después de cada transferencia que el
+> repositorio llegó y aplicarle la gobernanza que corresponda.
 
 **El contenido de un repositorio.** El módulo no clona ni ejecuta git: todo es REST/GraphQL.
 No hay checkout, no hay build, no hay acceso al árbol de archivos más allá de lo que

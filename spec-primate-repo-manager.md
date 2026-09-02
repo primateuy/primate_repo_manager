@@ -291,6 +291,23 @@ Rol mirror/patch, job de sync ff-only + reaplicación de parches, `repo.patch`, 
 `primate_repo_manager_pcm_bridge`: menú en PCM, vínculo de repos, pre-validación de promociones consultando deploy/health de staging en PCM.
 *DoD:* menú visible solo con PCM instalado; promoción a prod bloqueada si staging no está healthy en PCM.
 
+## 10.1 Límite verificado: la transferencia de repositorios no es orquestable
+
+**Verificado en septiembre de 2026.** El endpoint `POST /repos/{owner}/{repo}/transfer`
+existe, pero un token de instalación de App está acotado a UNA cuenta y la transferencia
+es una operación entre dos. Falla con `Resource not accessible by integration` tanto con
+token de instalación como con **token de usuario user-to-server** —el mismo que §3 prevé
+para atribuir las aprobaciones de PR en F4—. El único que funciona es un PAT clásico, que
+§3 descarta explícitamente.
+
+Fuente: https://github.com/orgs/community/discussions/60014 (explicación de gr2m,
+mantenedor de Octokit, más errores reproducidos por usuarios con los tres tipos de token).
+
+**Consecuencia:** la migración de la cuenta `primateuy` a la organización `PrimateUy-SAS`
+NO se puede ejecutar desde el módulo. Va por procedimiento aparte. El módulo sí puede
+identificar qué falta migrar, ordenar el trabajo y verificar cada transferencia después de
+hecha, aplicando la gobernanza al repositorio ya movido.
+
 ## 11. Decisiones registradas (29-jul-2026)
 
 1. Nombre: `primate_repo_manager`. Odoo 19.0 Enterprise.
