@@ -308,6 +308,54 @@ NO se puede ejecutar desde el módulo. Va por procedimiento aparte. El módulo s
 identificar qué falta migrar, ordenar el trabajo y verificar cada transferencia después de
 hecha, aplicando la gobernanza al repositorio ya movido.
 
+### 10.1.1 La ruta vieja MIENTE después de una transferencia
+
+**Verificado en el ensayo del 2-sep-2026**, contra repositorios descartables creados en
+`primateuy` y transferidos a la organización de pruebas.
+
+GitHub deja una **redirección permanente** desde la ruta anterior. Después de mover
+`primateuy/X` a `destino/X`:
+
+```
+GET /repos/primateuy/X   ->  200 OK
+                             { "full_name": "destino/X",
+                               "owner": { "login": "destino" } }
+```
+
+Es decir: **el código de estado de la ruta vieja no sirve para verificar nada.** Quien
+compruebe «ya no está en el origen» pidiendo la ruta vieja y mirando si da 404 va a
+concluir que la transferencia no ocurrió, cuando ocurrió.
+
+Y hay una consecuencia peor que un informe equivocado. Un procedimiento de limpieza que
+recorra los dueños posibles borrando «lo que responda 200» va a emitir un
+`DELETE /repos/primateuy/X` creyendo que limpia el origen — y esa ruta **apunta al
+repositorio en su dueño nuevo**. Borraría el repositorio ya migrado.
+
+**REGLA PARA LA MIGRACIÓN REAL. Toda verificación va por `owner.login` del cuerpo de la
+respuesta, nunca por el código de estado ni por la ruta consultada.** Un repositorio está
+migrado cuando su `owner.login` es el destino, y sólo entonces.
+
+El script del ensayo lo resuelve en `duenio_real()`
+(`scripts/sandbox/ensayo_migracion.py`), que pregunta por ambos dueños posibles y devuelve
+el que declara el cuerpo; la fase `verificar` compara dueños, y la limpieza borra una sola
+vez por la ruta real. El procedimiento definitivo tiene que hacer lo mismo.
+
+### 10.1.2 Lo demás que dejó el ensayo
+
+- **El PAT clásico tiene que ser de la cuenta dueña** (`primateuy`), no de un colaborador
+  con permiso de escritura: sólo el dueño puede crear repositorios en su propia cuenta.
+- **La cuenta que transfiere necesita poder crear repositorios en el destino.** Con
+  `members_can_create_repositories` cerrado en la organización, la vía elegida fue subir
+  la cuenta a Owner durante la ventana y bajarla al terminar — puntual, visible y
+  reversible, en vez de abrir la política global.
+- **La revocación del PAT se comprueba, no se declara.** Se reintenta una llamada con el
+  mismo token y se exige 401. En el ensayo, la primera comprobación devolvió 200 y la
+  segunda 401: entre revocar y que el token deje de responder puede pasar un momento, así
+  que la fase se reintenta hasta el 401 en vez de darla por buena.
+- **La transferencia es asincrónica**: responde y el repositorio aparece en el destino
+  unos segundos después. Se confirma releyendo, no por la respuesta del POST.
+
+
 ## 10.2 Decisiones abiertas
 
 **Doble aprobación de planes de escritura — sin resolver, para el rollout de F3.**

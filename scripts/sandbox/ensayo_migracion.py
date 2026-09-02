@@ -246,11 +246,18 @@ def revocacion(gh):
 	se comprueba acá es el efecto: el mismo token tiene que dejar de servir. Sin esta
 	comprobación, «lo revoqué» es una creencia.
 	"""
-	cod, cuerpo, _h = gh._pedir("GET", "/user", tolerar=(401, 403, 404))
-	print("GET /user con el PAT del ensayo -> %s" % cod)
-	if cod == 401:
-		print("\nREVOCACIÓN COMPROBADA: el token ya no sirve.")
-		return
+	# REINTENTA HASTA EL 401. En el ensayo la primera comprobación devolvió 200 y la
+	# segunda, segundos después, 401: entre revocar y que el token deje de responder
+	# puede pasar un momento. Fallar en el primer 200 haría creer que no se revocó.
+	for intento in range(6):
+		cod, cuerpo, _h = gh._pedir("GET", "/user", tolerar=(401, 403, 404))
+		print("GET /user con el PAT del ensayo -> %s" % cod)
+		if cod == 401:
+			print("\nREVOCACIÓN COMPROBADA: el token ya no sirve.")
+			return
+		if intento < 5:
+			print("  todavía responde; reintento en 5s (%s/5)" % (intento + 1))
+			time.sleep(5)
 	print("\nEL TOKEN SIGUE VIVO. Revocalo en GitHub → Settings → Developer settings →")
 	print("Personal access tokens → Tokens (classic) → prm-ensayo-migracion → Delete,")
 	print("y volvé a correr esta fase.")
