@@ -63,17 +63,26 @@ class TestGuardasDeEscritura(TransactionCase):
 
 	# --- guarda 2: una sola puerta, y cerrada fuera del sandbox -------------
 
-	def test_produccion_no_puede_instanciar_el_cliente_de_escritura(self):
-		backend = self._backend("production")
-		with self.assertRaises(UserError) as ctx:
-			backend.write_client()
-		mensaje = str(ctx.exception)
-		self.assertIn("sólo lectura", mensaje)
-		self.assertIn("cambio de código", mensaje,
-					  "el mensaje tiene que decir que no hay interruptor de configuración")
+	def test_sin_app_de_escritura_no_hay_cliente(self):
+		"""La compuerta es ESTRUCTURAL: sin credenciales de la App de escritura, nada.
 
-	def test_sandbox_si_puede(self):
-		backend = self._backend("sandbox")
+		Vale para cualquier entorno. La App de auditoría no sirve para esto ni pasándola
+		por acá: sus permisos son de lectura y GitHub la frena del otro lado.
+		"""
+		for entorno in ("production", "sandbox"):
+			backend = self._backend(entorno)
+			with self.assertRaises(UserError) as ctx:
+				backend.write_client()
+			mensaje = str(ctx.exception)
+			self.assertIn("App de escritura", mensaje)
+			self.assertIn("sólo lectura", mensaje,
+						  "el mensaje explica que la de auditoría no se usa para esto")
+
+	def test_con_app_de_escritura_si_hay_cliente(self):
+		backend = self._backend("production")
+		backend.write_app_id = "10"
+		backend.write_installation_id = "20"
+		backend.write_private_key = self.clave
 
 		class Transporte:
 			def post(self, url, headers=None, timeout=None):
@@ -81,6 +90,21 @@ class TestGuardasDeEscritura(TransactionCase):
 
 		cliente = backend.write_client(transport=Transporte())
 		self.assertIsInstance(cliente, github_write_client.GithubWriteClient)
+
+	def test_las_dos_credenciales_son_distintas_y_no_se_mezclan(self):
+		"""Cada camino usa la suya. Si se cruzaran, la separación sería decorativa."""
+		backend = self._backend("production")
+		backend.write_app_id = "10"
+		backend.write_installation_id = "20"
+		backend.write_private_key = self.clave
+
+		fuente = inspect.getsource(repo_backend.RepoBackend.client)
+		self.assertIn("self.app_id", fuente)
+		self.assertNotIn("write_app_id", fuente,
+						 "el cliente de lectura no puede tocar la credencial de escritura")
+		fuente_w = inspect.getsource(repo_backend.RepoBackend.write_client)
+		self.assertIn("write_app_id", fuente_w)
+		self.assertIn("_descifrar_escritura", fuente_w)
 
 	def test_la_unica_puerta_es_write_client(self):
 		"""Nadie más instancia GithubWriteClient.
@@ -114,8 +138,14 @@ class TestGuardasDeEscritura(TransactionCase):
 			"GithubWriteClient sólo puede construirse en repo_backend.write_client; "
 			"apareció en: %s" % culpables)
 
-	def test_la_compuerta_esta_en_write_client_y_mira_environment(self):
-		"""Y la puerta comprueba el entorno, no otra cosa."""
+	def test_la_compuerta_exige_las_credenciales_de_escritura(self):
+		"""La puerta comprueba que la App de escritura exista, que es lo estructural.
+
+		Hasta el cierre de F2 la compuerta miraba `environment` y prohibía producción sin
+		excepción. Eso era un «todavía no», y se levantó con el criterio de salida
+		cumplido: ahora lo que acota el daño es el ALCANCE de la instalación de la App de
+		escritura, que GitHub hace cumplir del otro lado.
+		"""
 		fuente = inspect.getsource(repo_backend.RepoBackend.write_client)
-		self.assertIn("self.environment", fuente)
-		self.assertIn("sandbox", fuente)
+		self.assertIn("write_private_key_encrypted", fuente)
+		self.assertIn("write_installation_id", fuente)

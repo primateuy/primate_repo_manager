@@ -49,6 +49,64 @@ class RepoBackend(models.Model):
 	private_key_set = fields.Boolean(
 		string="Clave cargada", compute="_compute_private_key_set", store=True)
 
+	# ------------------------------------------------------------------
+	# Credenciales de ESCRITURA — una App distinta, a propósito
+	# ------------------------------------------------------------------
+	#
+	# La App de auditoría queda de sólo lectura PARA SIEMPRE. La escritura entra por una
+	# segunda App con su propia instalación, y esa separación no es organizativa: es lo
+	# que hace que el camino de lectura no PUEDA escribir aunque alguien se equivoque de
+	# método. `client()` usa una credencial; `write_client()` usa la otra, y no hay
+	# ninguna forma de que la primera adquiera verbos de escritura.
+	#
+	# Además permite lo que la de auditoría no puede permitirse: instalarla sobre un
+	# SUBCONJUNTO de repositorios. La auditoría necesita verlo todo o su informe miente;
+	# la escritura no, y acotarla por instalación pone un límite que GitHub hace cumplir,
+	# fuera del alcance de cualquier bug del módulo.
+
+	write_app_id = fields.Char(string="App ID de escritura", tracking=True)
+	write_installation_id = fields.Char(
+		string="Installation ID de escritura", tracking=True)
+	write_private_key = fields.Text(
+		string="Private key de escritura (PEM)", compute="_compute_write_private_key",
+		inverse="_inverse_write_private_key", store=False)
+	write_private_key_encrypted = fields.Text(
+		string="Private key de escritura cifrada", copy=False)
+	write_key_set = fields.Boolean(
+		string="Clave de escritura cargada", compute="_compute_write_key_set",
+		store=True)
+
+	def _compute_write_private_key(self):
+		for backend in self:
+			backend.write_private_key = False
+
+	def _inverse_write_private_key(self):
+		for backend in self:
+			if backend.write_private_key:
+				backend.write_private_key_encrypted = backend._cifrar(
+					backend.write_private_key)
+
+	@api.depends("write_private_key_encrypted")
+	def _compute_write_key_set(self):
+		for backend in self:
+			backend.write_key_set = bool(backend.write_private_key_encrypted)
+
+	def _descifrar_escritura(self):
+		self.ensure_one()
+		if not self.write_private_key_encrypted:
+			raise UserError(_(
+				"La conexión «%s» no tiene cargada la private key de la App de "
+				"escritura.") % self.name)
+		from cryptography.fernet import InvalidToken
+
+		try:
+			return self._fernet().decrypt(
+				self.write_private_key_encrypted.encode()).decode()
+		except InvalidToken as exc:
+			raise UserError(_(
+				"La private key de escritura de «%s» no se puede descifrar con el "
+				"secreto actual. Ver «Rotar secreto de cifrado»." ) % self.name) from exc
+
 	state = fields.Selection(
 		[("draft", "Sin probar"), ("connected", "Conectado"), ("error", "Error")],
 		string="Estado", default="draft", required=True, tracking=True, copy=False)
@@ -164,36 +222,50 @@ class RepoBackend(models.Model):
 		return GithubReadClient(auth.token, transport=transport)
 
 	def write_client(self, transport=None):
-		"""Cliente de ESCRITURA. Única puerta de entrada, y sólo para sandbox.
+		"""Cliente de ESCRITURA. Única puerta, y con dos condiciones.
 
-		LA COMPUERTA ES DURA Y NO TIENE INTERRUPTOR. Un parámetro de configuración para
-		habilitar escrituras en producción sería exactamente el tipo de salvaguarda que
-		alguien apaga un martes para destrabar algo. Para escribir sobre la conexión real
-		hay que EDITAR ESTE MÉTODO, y eso es un cambio visible en un diff, revisable, y
-		que obliga a decir en el commit que el criterio de salida se cumplió.
+		LA PRIMERA ES ESTRUCTURAL: hace falta una App de escritura configurada. Sin sus
+		credenciales no hay cliente, y punto — la App de auditoría no sirve para esto ni
+		aunque alguien la pase por acá, porque sus permisos son de lectura y GitHub la
+		frena del otro lado. Es la compuerta más fuerte que tenemos: no depende de un
+		campo de Odoo que alguien pueda editar.
 
-		Mientras tanto: si el backend no es sandbox, no hay cliente de escritura.
+		LA SEGUNDA ES DE ENTORNO, y ya no es un «nunca» sino un «no todavía». Sobre una
+		conexión de producción se exige, además, que la App de escritura esté instalada
+		SÓLO sobre los repositorios de la tanda en curso: el alcance de la instalación es
+		el límite que GitHub hace cumplir, y es lo que reemplaza a la prohibición total
+		que rigió durante toda la fase 2.
 		"""
 		self.ensure_one()
-		if self.environment != "sandbox":
+		if not (self.write_app_id and self.write_installation_id
+				and self.write_private_key_encrypted):
 			raise UserError(_(
-				"«%(nombre)s» es una conexión de entorno «%(entorno)s» y las escrituras "
-				"sobre GitHub están cerradas ahí.\n\n"
-				"La gobernanza se aplica primero sobre la organización de pruebas, y la "
-				"conexión de producción se mantiene de sólo lectura hasta que el criterio "
-				"de salida del banco de pruebas esté cumplido y revisado.\n\n"
-				"No hay una opción de configuración para saltear esto a propósito: "
-				"habilitarlo es un cambio de código."
-			) % {"nombre": self.name, "entorno": self.environment})
+				"«%(nombre)s» no tiene configurada una App de escritura, así que no hay "
+				"forma de escribir sobre GitHub desde esta conexión.\n\n"
+				"La App de auditoría es de sólo lectura de forma permanente y no se usa "
+				"para esto. La escritura entra por una App aparte, con su propia "
+				"instalación y su propio alcance."
+			) % {"nombre": self.name})
 
 		from .github_write_client import GithubWriteClient
 
-		if not self.app_id or not self.installation_id:
-			raise UserError(_(
-				"Falta App ID o Installation ID en «%s».") % self.name)
 		auth = GithubAppAuth(
-			self.app_id, self.installation_id, self._descifrar(), transport=transport)
+			self.write_app_id, self.write_installation_id,
+			self._descifrar_escritura(), transport=transport)
 		return GithubWriteClient(auth.token, transport=transport)
+
+	def alcance_de_escritura(self, transport=None):
+		"""Los repositorios que la App de escritura puede tocar, según GitHub.
+
+		Se pregunta, no se supone. Es lo que permite decirle a alguien «este plan toca un
+		repositorio fuera del alcance de la instalación» ANTES de empezar a escribir, en
+		vez de que se entere con un 404 a mitad de camino y con parte del plan aplicado.
+		"""
+		self.ensure_one()
+		cliente = self.write_client(transport=transport)
+		datos = cliente.paginate(
+			"/installation/repositories", envoltorio="repositories")
+		return {r.get("full_name") for r in datos}
 
 	# ------------------------------------------------------------------
 	# Acciones

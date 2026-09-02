@@ -60,6 +60,7 @@ class Transporte:
 		# Los cuerpos, aparte: verificar que «hubo un PUT» no dice CON QUÉ, y ahí se
 		# esconde toda una clase de bug —restaurar algo distinto de lo que había—.
 		self.cuerpos = []
+		self.abarca = ["org/sbx"]
 
 	def post(self, url, json=None, headers=None, timeout=None):
 		self.llamadas.append(("POST", url))
@@ -71,6 +72,10 @@ class Transporte:
 
 	def get(self, url, headers=None, timeout=None):
 		self.llamadas.append(("GET", url))
+		if "/installation/repositories" in url:
+			# El alcance de la App de escritura. Por defecto abarca el repo del test.
+			return Respuesta(200, {"total_count": 1, "repositories": [
+				{"full_name": r} for r in self.abarca]})
 		return self.gets.pop(0) if self.gets else Respuesta(404, NO_PROTEGIDA)
 
 	def put(self, url, json=None, headers=None, timeout=None):
@@ -109,6 +114,10 @@ class TestApply(TransactionCase):
 			"environment": "sandbox",
 		})
 		self.backend.private_key = self.clave
+		# La App de ESCRITURA es otra: sin sus credenciales no hay cliente de escritura.
+		self.backend.write_app_id = "10"
+		self.backend.write_installation_id = "20"
+		self.backend.write_private_key = self.clave
 		self.repo = self.env["repo.repository"].create({
 			"backend_id": self.backend.id, "github_id": uuid.uuid4().hex[:8],
 			"name": "sbx", "full_name": "org/sbx",
@@ -291,7 +300,7 @@ class TestApply(TransactionCase):
 		plan.operation_ids.write({"state": "applied"})
 		plan.write({"state": "applied"})   # pasa la guarda de estado, no la del retorno
 		with self.assertRaises(UserError) as ctx:
-			plan.action_rollback()
+			self._revertir(plan, Transporte(gets=[]))
 		self.assertIn("no hay punto de retorno", str(ctx.exception).lower())
 
 	# --- el rollback pasa por el mismo embudo, no por una puerta de servicio ---
@@ -392,14 +401,7 @@ class TestApply(TransactionCase):
 		with self.assertRaises(UserError):
 			plan.operation_ids.action_rollback_operation()
 
-	def test_produccion_tampoco_puede_revertir(self):
-		transporte = Transporte(gets=[
-			Respuesta(404, NO_PROTEGIDA), Respuesta(200, PROTECCION)])
-		plan = self._aplicado(transporte)
-		self.backend.environment = "production"
-		with self.assertRaises(UserError) as ctx:
-			plan.action_rollback()
-		self.assertIn("sólo lectura", str(ctx.exception))
+
 
 	# --- grants directos: el estado previo son TRES datos ---------------------
 
@@ -808,23 +810,39 @@ class TestApply(TransactionCase):
 			plan.action_apply()
 		self.assertIn("no tiene aprobación registrada", str(ctx.exception))
 
-	def test_produccion_no_puede_aplicar(self):
-		"""Las dos guardas son capas distintas y esto lo demuestra.
+	def test_un_destino_fuera_del_alcance_se_rechaza_ANTES_de_escribir(self):
+		"""El límite que reemplazó a la prohibición de producción.
 
-		`environment` NO entra en la huella del plan —la huella cubre `backend_id`, no los
-		campos del backend—, así que pasar la conexión a producción deja el plan aprobado
-		e intacto: la guarda de congelamiento lo deja pasar, correctamente. Lo que corta
-		es la compuerta de entorno, que es la que tiene que cortar acá.
+		La App de escritura se instala sobre los repositorios de la tanda en curso. Un
+		plan que toque uno de afuera se rechaza antes de empezar: sin esto se enteraría con
+		un 404 a mitad de camino, con las operaciones anteriores ya aplicadas, y un 404 de
+		GitHub no distingue «no existe» de «no lo podés ver».
 		"""
 		plan = self._plan()
-		self.backend.environment = "production"
-
-		self.assertTrue(plan.is_frozen, "el plan sigue intacto: no lo tocó nadie")
-		self.assertTrue(plan._verificar_congelado(), "la guarda de congelamiento pasa")
+		transporte = Transporte(gets=[Respuesta(404, NO_PROTEGIDA)])
+		transporte.abarca = ["org/otro-repo"]      # el destino NO está en la instalación
 
 		with self.assertRaises(UserError) as ctx:
-			plan.action_apply()
-		self.assertIn("sólo lectura", str(ctx.exception))
+			self._correr(plan, transporte)
+		self.assertIn("no abarca", str(ctx.exception))
+		self.assertIn("org/sbx", str(ctx.exception))
+		self.assertEqual(transporte.escrituras_hechas(), [],
+						 "se rechaza antes de tocar nada")
+
+	def test_el_alcance_tambien_se_comprueba_al_revertir(self):
+		"""Sacar un repositorio de la instalación entre el apply y el rollback dejaría la
+		reversión a medias; se avisa antes."""
+		transporte = Transporte(gets=[
+			Respuesta(404, NO_PROTEGIDA), Respuesta(200, PROTECCION),
+			Respuesta(200, PROTECCION), Respuesta(404, NO_PROTEGIDA)])
+		plan = self._plan()
+		self._correr(plan, transporte)
+		self.assertEqual(plan.operation_ids.state, "applied")
+
+		transporte.abarca = []
+		with self.assertRaises(UserError) as ctx:
+			self._revertir(plan, transporte)
+		self.assertIn("no abarca", str(ctx.exception))
 
 	def test_un_tipo_no_implementado_falla_diciendolo(self):
 		plan = self._plan(kind="ruleset_delete", payload={"name": "x"})

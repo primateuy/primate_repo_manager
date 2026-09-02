@@ -43,6 +43,13 @@
 							<field name="installation_id"
 								   help="Está en la URL de la app instalada: /installations/&lt;número&gt;"/>
 							<field name="private_key_set"/>
+						</group>
+						<group string="App de escritura (separada, sólo para aplicar cambios)">
+							<field name="write_app_id"/>
+							<field name="write_installation_id"/>
+							<field name="write_private_key" password="True"
+								   placeholder="Se guarda cifrada; no se vuelve a mostrar."/>
+							<field name="write_key_set"/>
 							<field name="private_key" password="True" widget="text"
 								   placeholder="-----BEGIN RSA PRIVATE KEY----- …"
 								   invisible="private_key_set"/>

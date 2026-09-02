@@ -113,6 +113,7 @@ class RepoWritePlanApply(models.Model):
 		self._verificar_congelado()
 
 		cliente = self.backend_id.write_client()
+		self._verificar_alcance(cliente)
 		# Escritura normal, en esta transacción. Marcarlo desde una conexión aparte fue el
 		# primer intento y es un error: actualizar la MISMA FILA desde dos conexiones
 		# dentro de una sola operación lógica termina en «could not serialize access due
@@ -141,6 +142,33 @@ class RepoWritePlanApply(models.Model):
 		})
 		return True
 
+	def _verificar_alcance(self, cliente):
+		"""Ningún destino del plan puede estar fuera del alcance de la instalación.
+
+		Se comprueba ANTES de empezar. Sin esto, un plan que toca un repositorio fuera del
+		alcance se entera con un 404 a mitad de camino, con las operaciones anteriores ya
+		aplicadas — y un 404 de GitHub no distingue «no existe» de «no lo podés ver», así
+		que el mensaje tampoco ayudaría.
+
+		Preguntarle a la instalación qué abarca cuesta una llamada y convierte un fallo
+		confuso a mitad de plan en un rechazo claro antes de tocar nada.
+		"""
+		self.ensure_one()
+		abarcados = {r.get("full_name") for r in cliente.paginate(
+			"/installation/repositories", envoltorio="repositories")}
+		destinos = {op.repository_id.full_name for op in self.operation_ids
+					if op.repository_id}
+		afuera = sorted(destinos - abarcados)
+		if afuera:
+			raise UserError(_(
+				"El plan «%(nombre)s» toca repositorios que la App de escritura no "
+				"abarca:\n\n  %(afuera)s\n\n"
+				"El alcance de la instalación es deliberado: la escritura se habilita por "
+				"tandas. Agregá esos repositorios a la instalación de la App —o sacalos "
+				"del plan— y volvé a aprobarlo."
+			) % {"nombre": self.name, "afuera": "\n  ".join(afuera)})
+		return True
+
 	def action_rollback(self):
 		"""Revierte en ORDEN INVERSO. Una operación puede depender de la anterior.
 
@@ -159,6 +187,7 @@ class RepoWritePlanApply(models.Model):
 		# La huella se sigue exigiendo: eso no se negocia.
 		self._verificar_congelado(estados=None)
 		cliente = self.backend_id.write_client()
+		self._verificar_alcance(cliente)
 		# `created` entra: el objeto existe en GitHub aunque el ciclo no haya terminado, y
 		# no poder revertirlo sería dejarlo huérfano.
 		aplicadas = self.operation_ids.filtered(
