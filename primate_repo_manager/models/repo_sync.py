@@ -6,17 +6,34 @@ Todo upsert va por `github_id` o por la clave natural del registro, así que cor
 auditoría N veces actualiza en lugar de duplicar.
 
 LOS TRES ESTADOS DE PROTECCIÓN. GitHub devuelve 404 en el endpoint de protección tanto
-cuando la rama no está protegida como cuando el token no tiene admin sobre el repo. Para
-no confundirlos se mira `permissions.admin` del propio repo: con admin, un 404 significa
-de verdad "sin protección"; sin admin, significa "no puedo saberlo" y así se registra.
-Colapsar los dos casos haría que el informe afirme cosas que nadie verificó.
+cuando la rama no está protegida como cuando quien pregunta no puede verla. Para no
+confundirlos se mira el MENSAJE de la respuesta, que es lo único que los separa:
+«Branch not protected» es un dato ("no está protegida"); «Not Found» es la ausencia de un
+dato ("no puedo saberlo"). El 403 «Upgrade to GitHub Pro» es el tercero: techo de plan.
+
+POR QUÉ NO SE MIRA `permissions.admin`. Fue el primer intento y es sencillamente FALSO
+bajo autenticación de GitHub App: en `GET /repos/{owner}/{repo}` ese objeto describe el
+permiso de un USUARIO colaborador, y con un token de instalación vuelve
+`{admin: False, push: False, pull: False, ...}` SIEMPRE — incluso con el permiso
+`administration: read` concedido, que es justo el que habilita leer la protección.
+Usarlo como compuerta hacía que el recorrido no consultara el endpoint ni una sola vez y
+que los 113 repositorios de primateuy salieran como "protección no legible". El informe
+declaraba no saber algo que la credencial podía averiguar perfectamente.
+
+La lección general: no se deduce lo que la credencial puede hacer; se le pregunta a la
+API y se clasifica la respuesta.
 """
 import logging
 from datetime import datetime
 
 from odoo import _, api, fields, models
 
-from .github_client import GithubError, GithubPlanLimit, GithubRateLimit
+from .github_client import (
+	GithubError,
+	GithubNotFound,
+	GithubPlanLimit,
+	GithubRateLimit,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -123,13 +140,9 @@ class RepoRepositorySync(models.Model):
 		no_legible = []
 		try:
 			client = self.backend_id.client()
-			detalle = client.get("/repos/%s" % self.full_name) or {}
-			# La señal que separa "sin protección" de "no pude leerlo".
-			es_admin = bool((detalle.get("permissions") or {}).get("admin"))
-			if not es_admin:
-				no_legible.append("branch_protection")
+			client.get("/repos/%s" % self.full_name)
 
-			self._sync_branches(client, detalle, es_admin, no_legible)
+			self._sync_branches(client, no_legible)
 			self._sync_collaborators(client, no_legible)
 			self._sync_pull_requests(client)
 			self._sync_commit_samples(client)
@@ -160,7 +173,7 @@ class RepoRepositorySync(models.Model):
 	# Piezas
 	# ------------------------------------------------------------------
 
-	def _sync_branches(self, client, detalle, es_admin, no_legible=None):
+	def _sync_branches(self, client, no_legible=None):
 		"""Ramas relevantes, su rol y el estado real de protección."""
 		self.ensure_one()
 		Rama = self.env["repo.branch"]
@@ -189,21 +202,23 @@ class RepoRepositorySync(models.Model):
 			protection_json = False
 			legible = True
 			causa = False
-			if es_admin:
-				try:
-					datos = client.get(
-						"/repos/%s/branches/%s/protection" % (self.full_name, nombre),
-						tolerar_404=True)
-					protection_json = str(datos) if datos else False
-					protegida = bool(datos)
-				except GithubPlanLimit:
-					# Con admin y aun así bloqueado: es el techo del plan. Se distingue
-					# porque se resuelve pagando, no reinstalando la App.
-					legible, causa = False, "plan_limit"
-			else:
-				# Sin admin no se puede afirmar nada: `protected` del listado no viene
-				# poblado de forma confiable para quien no administra el repo.
-				legible, causa = False, "no_admin_permission"
+			try:
+				datos = client.get(
+					"/repos/%s/branches/%s/protection" % (self.full_name, nombre))
+				protection_json = str(datos) if datos else False
+				protegida = bool(datos)
+			except GithubNotFound as exc:
+				# Los dos 404 que hay que separar. Ver el docstring del módulo.
+				if "not protected" in (exc.message or "").lower():
+					protegida = False
+				else:
+					legible, causa = False, "no_admin_permission"
+			except GithubPlanLimit:
+				# Repo privado en plan free: proteger ramas no está disponible. Se
+				# distingue porque se resuelve pagando, no cambiando permisos.
+				legible, causa = False, "plan_limit"
+			if not legible and "branch_protection" not in no_legible:
+				no_legible.append("branch_protection")
 
 			valores = {
 				"repository_id": self.id, "name": nombre, "role": rol,

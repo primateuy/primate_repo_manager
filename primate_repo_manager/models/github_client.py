@@ -45,6 +45,21 @@ class GithubRateLimit(GithubError):
 	"""Cuota agotada. Se distingue del resto para poder reintentar con criterio."""
 
 
+class GithubNotFound(GithubError):
+	"""404, con el mensaje intacto.
+
+	El mensaje IMPORTA y por eso esta clase existe en vez de devolver None. En el endpoint
+	de protección de ramas GitHub usa el mismo 404 para dos cosas opuestas, y las separa
+	sólo por el texto:
+
+	  «Branch not protected» → la rama existe y NO tiene protección. Es un dato.
+	  «Not Found»            → no se puede ver. Es la ausencia de un dato.
+
+	Quien llama necesita poder distinguirlas; `tolerar_404=True` las colapsa en None y
+	sirve para los endpoints donde el 404 significa una sola cosa.
+	"""
+
+
 class GithubPlanLimit(GithubError):
 	"""La cuenta no tiene plan para esa función.
 
@@ -165,8 +180,10 @@ class GithubReadClient:
 		response = self._transport.get(url, headers=self._headers(), timeout=TIMEOUT)
 		self._registrar_cuota(response)
 
-		if response.status_code == 404 and tolerar_404:
-			return None
+		if response.status_code == 404:
+			if tolerar_404:
+				return None
+			raise GithubNotFound(404, _cuerpo(response), path)
 		if response.status_code == 403 and self._sin_cuota(response):
 			raise GithubRateLimit(403, "cuota de API agotada", path)
 		if response.status_code == 403:

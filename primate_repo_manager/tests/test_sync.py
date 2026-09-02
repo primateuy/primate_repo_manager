@@ -27,7 +27,9 @@ REPO_FORK = {
 	"private": False, "fork": True, "default_branch": "17.0",
 	"archived": False, "pushed_at": "2026-07-13T22:14:54Z",
 	"parent": {"full_name": "OCA/web"},
-	"permissions": {"admin": True, "maintain": True, "push": True},
+	# Como responde GitHub a un token de instalación: SIEMPRE todo en False, aunque la
+	# App tenga `administration: read`. Ver el docstring de repo_sync.
+	"permissions": {"admin": False, "maintain": False, "push": False},
 }
 
 BRANCHES = [
@@ -82,6 +84,11 @@ class TransporteAuditoria:
 		if "/branches?" in url or url.endswith("/branches"):
 			return RespuestaFalsa(200, BRANCHES)
 		if "/protection" in url:
+			# Los dos 404 del endpoint de protección, con los mensajes reales de GitHub.
+			# webOCA: la rama existe y no está protegida (dato). LocalizacionUy: no se
+			# puede ver (ausencia de dato). Sólo el texto los distingue.
+			if "/webOCA/" in url:
+				return RespuestaFalsa(404, {"message": "Branch not protected"})
 			return RespuestaFalsa(404, {"message": "Not Found"})
 		if "/collaborators" in url:
 			return RespuestaFalsa(200, COLABORADORES)
@@ -232,8 +239,8 @@ class TestSync(TransactionCase):
 
 	# --- los tres estados de protección ---
 
-	def test_sin_admin_la_proteccion_queda_como_no_legible(self):
-		"""El caso que no puede colapsarse: 404 sin permiso NO es 'sin protección'."""
+	def test_un_404_de_not_found_no_es_sin_proteccion(self):
+		"""El caso que no puede colapsarse: «Not Found» NO es «no está protegida»."""
 		repos = self._sincronizar()
 		loca = repos.filtered(lambda r: r.name == "LocalizacionUy")
 		rama = loca.branch_ids.filtered(lambda b: b.name == "17.0")
@@ -243,7 +250,8 @@ class TestSync(TransactionCase):
 						 "sin admin no se puede afirmar nada sobre la protección")
 		self.assertIn("branch_protection", loca.unreadable_json or "")
 
-	def test_con_admin_un_404_si_significa_sin_proteccion(self):
+	def test_un_404_de_branch_not_protected_si_es_un_dato(self):
+		"""«Branch not protected» afirma algo: la rama existe y no tiene protección."""
 		repos = self._sincronizar()
 		fork = repos.filtered(lambda r: r.name == "webOCA")
 		rama = fork.branch_ids.filtered(lambda b: b.name == "17.0")
@@ -251,6 +259,21 @@ class TestSync(TransactionCase):
 		self.assertEqual(len(rama), 1)
 		self.assertTrue(rama.protection_readable)
 		self.assertFalse(rama.protected)
+
+	def test_la_proteccion_se_consulta_aunque_permissions_admin_sea_false(self):
+		"""Bajo GitHub App `permissions.admin` vuelve False SIEMPRE, aun con
+		`administration: read`. Si se usa como compuerta, el endpoint no se consulta nunca
+		y los 113 repos salen como «no legible». Se consulta y se clasifica la respuesta."""
+		repos = self._sincronizar()
+		fork = repos.filtered(lambda r: r.name == "webOCA")
+
+		self.assertFalse(REPO_FORK["permissions"]["admin"],
+						 "el fixture imita el token de instalación: admin siempre False")
+		self.assertTrue(
+			any("/webOCA/branches/" in u and u.endswith("/protection")
+				for u in self.transporte.llamadas),
+			"el endpoint de protección tiene que consultarse, no deducirse")
+		self.assertTrue(fork.branch_ids.filtered("protection_readable"))
 
 	# --- lo que se persiste y lo que no ---
 
