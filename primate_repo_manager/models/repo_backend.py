@@ -163,6 +163,38 @@ class RepoBackend(models.Model):
 			self.app_id, self.installation_id, self._descifrar(), transport=transport)
 		return GithubReadClient(auth.token, transport=transport)
 
+	def write_client(self, transport=None):
+		"""Cliente de ESCRITURA. Única puerta de entrada, y sólo para sandbox.
+
+		LA COMPUERTA ES DURA Y NO TIENE INTERRUPTOR. Un parámetro de configuración para
+		habilitar escrituras en producción sería exactamente el tipo de salvaguarda que
+		alguien apaga un martes para destrabar algo. Para escribir sobre la conexión real
+		hay que EDITAR ESTE MÉTODO, y eso es un cambio visible en un diff, revisable, y
+		que obliga a decir en el commit que el criterio de salida se cumplió.
+
+		Mientras tanto: si el backend no es sandbox, no hay cliente de escritura.
+		"""
+		self.ensure_one()
+		if self.environment != "sandbox":
+			raise UserError(_(
+				"«%(nombre)s» es una conexión de entorno «%(entorno)s» y las escrituras "
+				"sobre GitHub están cerradas ahí.\n\n"
+				"La gobernanza se aplica primero sobre la organización de pruebas, y la "
+				"conexión de producción se mantiene de sólo lectura hasta que el criterio "
+				"de salida del banco de pruebas esté cumplido y revisado.\n\n"
+				"No hay una opción de configuración para saltear esto a propósito: "
+				"habilitarlo es un cambio de código."
+			) % {"nombre": self.name, "entorno": self.environment})
+
+		from .github_write_client import GithubWriteClient
+
+		if not self.app_id or not self.installation_id:
+			raise UserError(_(
+				"Falta App ID o Installation ID en «%s».") % self.name)
+		auth = GithubAppAuth(
+			self.app_id, self.installation_id, self._descifrar(), transport=transport)
+		return GithubWriteClient(auth.token, transport=transport)
+
 	# ------------------------------------------------------------------
 	# Acciones
 	# ------------------------------------------------------------------

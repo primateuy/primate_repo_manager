@@ -1,4 +1,5 @@
 from . import github_client
+from . import github_write_client
 from . import repo_rules
 from . import repo_backend
 from . import repo_policy
