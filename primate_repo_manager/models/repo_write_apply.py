@@ -298,6 +298,18 @@ class RepoWriteOperationApply(models.Model):
 				"verificar": "_verificar_revocacion",
 				"revertir": "_revertir_grant",
 			},
+			"team_repo_grant": {
+				"leer": "_leer_team_grant",
+				"ejecutar": "_aplicar_team_grant",
+				"verificar": "_verificar_team_grant",
+				"revertir": "_revertir_team_grant",
+			},
+			"team_repo_revoke": {
+				"leer": "_leer_team_grant",
+				"ejecutar": "_revocar_team_grant",
+				"verificar": "_verificar_team_revocacion",
+				"revertir": "_revertir_team_grant",
+			},
 		}
 
 	# --- permisos directos de una persona -------------------------------
@@ -335,15 +347,76 @@ class RepoWriteOperationApply(models.Model):
 
 		teams = cliente.get("/repos/%s/teams" % full, tolerar_404=True) or []
 		return {
-			"efectivo": role,
-			"directo": directo,
+			"efectivo": _a_escritura(role),
+			"directo": _a_escritura(directo),
 			# `permission` acá viene en vocabulario de ESCRITURA («push»), a diferencia
 			# de `/orgs/{org}/teams/{slug}/repos`, que devuelve role_name («write»).
 			# Ver el mapa de vocabularios en github_client.
-			"teams": sorted(
-				[{"slug": t.get("slug"), "permission": t.get("permission")}
-				 for t in teams], key=lambda t: t["slug"] or ""),
+			"teams": _teams_normalizados(teams),
 		}
+
+	# --- permisos por team: el espejo del mismo problema -----------------
+	#
+	# Quitarle el acceso a un team NO deja sin acceso a sus integrantes: los que además
+	# tengan grant directo lo conservan. Y al revés, el permiso efectivo de una persona
+	# no dice nada sobre el permiso DEL TEAM. Por eso el estado previo guarda el permiso
+	# del team por separado, los otros teams con acceso, y la lista de directos — que la
+	# operación no toca y por eso tienen que quedar idénticos después de revertir.
+	#
+	# Es la misma lección del grant directo, vista desde el otro lado: se verifica la
+	# capa exacta que se tocó, no el agregado.
+
+	def _ruta_team(self):
+		return "/orgs/%s/teams/%s/repos/%s" % (
+			self.plan_id.backend_id.owner_login, self.target,
+			self.repository_id.full_name)
+
+	def _leer_team_grant(self, cliente):
+		full = self.repository_id.full_name
+		teams = _teams_normalizados(
+			cliente.paginate("/repos/%s/teams" % full))
+		propio = next(
+			(t["permission"] for t in teams if t["slug"] == self.target), None)
+		directos = cliente.paginate(
+			"/repos/%s/collaborators" % full, params={"affiliation": "direct"})
+		return {
+			"team": self.target,
+			"permiso_del_team": propio,
+			"otros_teams": [t for t in teams if t["slug"] != self.target],
+			# No se tocan; están acá para que la comparación byte a byte lo demuestre.
+			"directos": sorted(
+				[{"login": u.get("login"),
+				  "permission": _a_escritura(u.get("role_name"))} for u in directos],
+				key=lambda u: u["login"] or ""),
+		}
+
+	def _aplicar_team_grant(self, cliente):
+		return cliente.put(self._ruta_team(), {"permission": self._permiso_pedido()})
+
+	def _revocar_team_grant(self, cliente):
+		return cliente.delete(self._ruta_team(), tolerar_404=True)
+
+	def _verificar_team_grant(self, cliente):
+		estado = self._leer_team_grant(cliente)
+		pedido = _a_escritura(self._permiso_pedido())
+		if estado["permiso_del_team"] != pedido:
+			return False, _("el team quedó con %(real)s y se pidió %(pedido)s") % {
+				"real": estado["permiso_del_team"] or "ninguno", "pedido": pedido}
+		return True, estado
+
+	def _verificar_team_revocacion(self, cliente):
+		estado = self._leer_team_grant(cliente)
+		if estado["permiso_del_team"] is not None:
+			return False, _("el team sigue con %s") % estado["permiso_del_team"]
+		return True, estado
+
+	def _revertir_team_grant(self, cliente, previo):
+		anterior = previo.get("permiso_del_team")
+		if anterior is None:
+			cliente.delete(self._ruta_team(), tolerar_404=True)
+		else:
+			cliente.put(self._ruta_team(), {"permission": anterior})
+		return True
 
 	def _permiso_pedido(self):
 		"""El permiso del payload, en vocabulario de escritura."""
@@ -368,8 +441,8 @@ class RepoWriteOperationApply(models.Model):
 	def _verificar_grant(self, cliente):
 		estado = self._leer_grant(cliente)
 		pedido = self._permiso_pedido()
-		directo = _a_escritura(estado.get("directo"))
-		if directo != pedido:
+		directo = estado.get("directo")
+		if directo != _a_escritura(pedido):
 			return False, _("el permiso directo quedó en %(real)s y se pidió %(pedido)s") % {
 				"real": directo or "ninguno", "pedido": pedido}
 		return True, estado
@@ -393,7 +466,7 @@ class RepoWriteOperationApply(models.Model):
 		if anterior is None:
 			cliente.delete(ruta, tolerar_404=True)
 		else:
-			cliente.put(ruta, {"permission": _a_escritura(anterior)})
+			cliente.put(ruta, {"permission": anterior})
 		return True
 
 	# --- protección de rama ---------------------------------------------
@@ -442,11 +515,30 @@ class RepoWriteOperationApply(models.Model):
 		return True
 
 
-def _a_escritura(role_name):
-	"""role_name (lectura) -> vocabulario del setter. Ver el mapa en github_client."""
-	if role_name is None:
+def _teams_normalizados(teams):
+	"""Lista de teams con su permiso, ordenada y en un solo vocabulario."""
+	return sorted(
+		[{"slug": t.get("slug"),
+		  "permission": _a_escritura(t.get("permission") or t.get("role_name"))}
+		 for t in (teams or [])],
+		key=lambda t: t["slug"] or "")
+
+
+def _a_escritura(valor):
+	"""Normaliza CUALQUIER permiso al vocabulario del setter (pull/triage/push/…).
+
+	TODO lo que se guarda como estado previo pasa por acá, venga del endpoint que venga.
+	El motivo es la razón de ser del mapa de vocabularios de github_client: los grants
+	directos se leen en vocabulario de lectura («write») y los de team, según el
+	endpoint, en el de escritura («push»). Guardar cada uno como vino dejaría dos
+	vocabularios conviviendo dentro del mismo punto de retorno, y la próxima comparación
+	entre ellos sería una trampa esperando.
+
+	Es idempotente: un valor que ya está en vocabulario de escritura pasa igual.
+	"""
+	if valor is None:
 		return None
-	return {"read": "pull", "write": "push"}.get(role_name, role_name)
+	return {"read": "pull", "write": "push"}.get(valor, valor)
 
 
 def _cargar(texto):

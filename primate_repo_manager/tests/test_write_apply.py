@@ -421,7 +421,8 @@ class TestApply(TransactionCase):
 		self.assertEqual(previo["efectivo"], "maintain")
 		self.assertIsNone(previo["directo"], "no había grant directo")
 		self.assertEqual(previo["teams"],
-						 [{"slug": "desarrollo", "permission": "maintain"}])
+						 [{"slug": "desarrollo", "permission": "maintain"}],
+						 "normalizado al vocabulario de escritura, como todo el previo")
 
 		self._revertir(plan, transporte)
 		self.assertEqual(op.state, "rolled_back")
@@ -482,6 +483,98 @@ class TestApply(TransactionCase):
 				Respuesta(200, PERM_MAINTAIN), Respuesta(200, SIN_DIRECTOS),
 				Respuesta(200, TEAM_MAINTAIN)]))
 		self.assertIn("falta `permission`", str(ctx.exception))
+
+	# --- grants por team: el espejo del mismo problema ------------------------
+
+	def _plan_team(self, kind="team_repo_grant", permiso="admin"):
+		plan = self.env["repo.write.plan"].create({
+			"name": "Team grant", "backend_id": self.backend.id})
+		self.env["repo.write.operation"].create({
+			"plan_id": plan.id, "kind": kind,
+			"repository_id": self.repo.id, "target": "desarrollo",
+			"payload_json": json.dumps({"permission": permiso}),
+		})
+		plan.action_approve()
+		return plan
+
+	def _gets_team(self, secuencia):
+		"""Cada lectura de estado de team son 2 GETs: teams del repo y directos."""
+		gets = []
+		for teams, directos in secuencia:
+			gets += [Respuesta(200, teams), Respuesta(200, directos)]
+		return Transporte(gets=gets)
+
+	def test_revertir_un_team_grant_no_toca_los_directos(self):
+		"""Quitarle acceso a un team no se lo quita a quien lo tiene directo.
+
+		Los directos van en el estado previo justamente para que la comparación byte a
+		byte lo demuestre: si la reversión los rozara, no coincidirían.
+		"""
+		TEAM_PUSH = [{"slug": "desarrollo", "permission": "push"}]
+		TEAM_ADMIN = [{"slug": "desarrollo", "permission": "admin"}]
+		DIRECTOS = [{"login": "primateuy", "role_name": "maintain"}]
+		transporte = self._gets_team([
+			(TEAM_PUSH, DIRECTOS),      # previo
+			(TEAM_ADMIN, DIRECTOS),     # verificación del apply
+			(TEAM_ADMIN, DIRECTOS),     # antes de revertir
+			(TEAM_PUSH, DIRECTOS),      # post-rollback
+		])
+		plan = self._plan_team()
+		self._correr(plan, transporte)
+		op = plan.operation_ids
+		self.assertEqual(op.state, "applied")
+
+		previo = json.loads(op.audit_log_id.previous_state_json)
+		self.assertEqual(previo["permiso_del_team"], "push")
+		self.assertEqual(previo["directos"],
+						 [{"login": "primateuy", "permission": "maintain"}])
+
+		self._revertir(plan, transporte)
+		self.assertEqual(op.state, "rolled_back")
+
+	def test_revertir_un_team_que_no_tenia_acceso_lo_quita(self):
+		SIN_TEAMS = []
+		TEAM_ADMIN = [{"slug": "desarrollo", "permission": "admin"}]
+		transporte = self._gets_team([
+			(SIN_TEAMS, []), (TEAM_ADMIN, []), (TEAM_ADMIN, []), (SIN_TEAMS, []),
+		])
+		plan = self._plan_team()
+		self._correr(plan, transporte)
+		previo = json.loads(plan.operation_ids.audit_log_id.previous_state_json)
+		self.assertIsNone(previo["permiso_del_team"])
+
+		self._revertir(plan, transporte)
+		self.assertIn(
+			("DELETE", "https://api.github.com/orgs/%s/teams/desarrollo/repos/org/sbx"
+			 % self.backend.owner_login), transporte.llamadas)
+
+	def test_el_team_grant_se_verifica_por_el_permiso_DEL_TEAM(self):
+		"""No por el efectivo de nadie: son capas distintas."""
+		TEAM_PUSH = [{"slug": "desarrollo", "permission": "push"}]
+		DIRECTOS = [{"login": "primateuy", "role_name": "admin"}]
+		transporte = self._gets_team([
+			(TEAM_PUSH, DIRECTOS),
+			# alguien tiene admin directo, pero el TEAM sigue en push: no se escribió.
+			(TEAM_PUSH, DIRECTOS),
+		])
+		plan = self._plan_team()
+		self._correr(plan, transporte)
+		self.assertEqual(plan.operation_ids.state, "failed")
+		self.assertIn("el team quedó con push", plan.operation_ids.error)
+
+	def test_los_otros_teams_entran_en_el_estado_previo(self):
+		VARIOS = [{"slug": "desarrollo", "permission": "push"},
+				  {"slug": "owners", "permission": "admin"}]
+		transporte = self._gets_team([
+			(VARIOS, []),
+			([{"slug": "desarrollo", "permission": "admin"},
+			  {"slug": "owners", "permission": "admin"}], []),
+		])
+		plan = self._plan_team()
+		self._correr(plan, transporte)
+		previo = json.loads(plan.operation_ids.audit_log_id.previous_state_json)
+		self.assertEqual(previo["otros_teams"],
+						 [{"slug": "owners", "permission": "admin"}])
 
 	# --- las guardas de arriba siguen mandando ---------------------------------
 
