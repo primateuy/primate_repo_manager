@@ -246,6 +246,18 @@ class RepoAuditRun(models.Model):
 			filas.append(fila)
 		return filas
 
+	def _report_parcialmente_legibles(self):
+		"""Cuántos repositorios tuvieron alguna lectura que GitHub no permitió.
+
+		Distinto de `repos_error`: esos no se recorrieron. Estos sí, y por eso el resumen
+		de cobertura no puede decir «se pudo revisar la totalidad» a secas cuando arriba,
+		en la misma página, hay una sección diciendo que en 30 no se pudo leer la
+		protección. Una de las dos frases sobra, y la que sobra es la optimista.
+		"""
+		self.ensure_one()
+		return len(self.backend_id.repository_ids.filtered(
+			lambda r: not r.archived and r.unreadable_json))
+
 	def _report_unreadable(self, causa):
 		"""Agrupado POR REPOSITORIO, no por rama.
 
@@ -258,6 +270,31 @@ class RepoAuditRun(models.Model):
 		return self._agrupar_por_repo(
 			self._ramas_ilegibles().filtered(
 				lambda b: (b.protection_cause or "unknown") == causa))
+
+	def _report_unreadable_otras(self):
+		"""Las causas de ilegibilidad que NO tienen sección propia en el informe.
+
+		Existe para que agregar una causa nueva a `UNREADABLE_CAUSES` no la haga
+		desaparecer del documento en silencio. Hoy debería dar vacío; el día que no, el
+		informe lo dice en vez de perderlo.
+		"""
+		self.ensure_one()
+		etiquetas = dict(
+			self.env["repo.branch"]._fields["protection_cause"].selection)
+		con_seccion = ("plan_limit", "no_admin_permission")
+		ramas = self._ramas_ilegibles().filtered(
+			lambda b: (b.protection_cause or "unknown") not in con_seccion)
+		por_clave = {}
+		for rama in ramas:
+			clave = (rama.repository_id, rama.protection_cause or "unknown")
+			por_clave.setdefault(clave, []).append(rama.name or "")
+		return [
+			{"repository": repo, "cause": causa,
+			 "cause_label": etiquetas.get(causa, causa),
+			 "branches": sorted(nombres), "count": len(nombres)}
+			for (repo, causa), nombres in sorted(
+				por_clave.items(), key=lambda kv: (kv[0][0].full_name or "", kv[0][1]))
+		]
 
 	def _report_unaudited(self):
 		"""Repos no auditados, con el motivo en lenguaje del informe.

@@ -22,7 +22,9 @@
 		<field name="margin_right">12</field>
 		<field name="header_line" eval="False"/>
 		<field name="header_spacing">6</field>
-		<field name="dpi">90</field>
+		<!-- 96 dpi es el mapeo estándar de CSS (1px = 0.75pt). Con 90 el cuerpo de 11px
+			 aterrizaba en 7pt, que en papel es letra chica de contrato. -->
+		<field name="dpi">96</field>
 	</record>
 
 	<record id="action_report_audit" model="ir.actions.report">
@@ -40,7 +42,25 @@
 		<t t-call="web.html_container">
 			<t t-foreach="docs" t-as="run">
 				<t t-call="web.basic_layout">
-					<div class="page" style="font-size: 11px;">
+					<!--
+						LA FUENTE SE FUERZA A UNA LOCAL, Y NO ES CAPRICHO. Odoo sirve Lato
+						como webfont (woff2) y wkhtmltopdf 0.12.6 la embebe con los glifos
+						VACÍOS: el PDF sale con los recuadros, las tablas y las viñetas
+						dibujados, y el texto invisible. Se extrae con cualquier lector
+						—está ahí, con su color y su tamaño— pero en pantalla y en papel
+						no se ve nada. Un `!important` acá evita que la regla de `body`
+						del layout de Odoo la vuelva a imponer.
+
+						El stack cubre las dos casas: Helvetica en macOS, Liberation/DejaVu
+						en el contenedor Linux de odoo.sh.
+					-->
+					<style>
+						.page, .page * {
+							font-family: Helvetica, Arial, "Liberation Sans",
+										 "DejaVu Sans", sans-serif !important;
+						}
+					</style>
+					<div class="page" style="font-size: 12px;">
 
 						<!-- ============ Portada: qué se pudo mirar ============ -->
 						<h1 class="mt0">Auditoría de repositorios</h1>
@@ -60,6 +80,14 @@
 								Los repositorios con error <strong>no fueron revisados</strong>:
 								lo que este informe dice no aplica a ellos. Aparecen listados
 								más abajo con el motivo.
+							</p>
+							<p class="mb-0" t-elif="run._report_parcialmente_legibles()">
+								Se recorrieron todos, pero en
+								<strong t-esc="run._report_plural(
+									run._report_parcialmente_legibles(), 'repositorio')"/>
+								hubo consultas que GitHub no permitió responder, así que
+								<strong>no todo lo que dice este informe cubre a todos</strong>.
+								El detalle está en la sección siguiente.
 							</p>
 							<p class="mb-0" t-else="">
 								Se pudo revisar la totalidad de los repositorios.
@@ -108,8 +136,9 @@
 						<!-- ============ Lo que no se pudo revisar ============ -->
 						<t t-set="plan" t-value="run._report_unreadable('plan_limit')"/>
 						<t t-set="permiso" t-value="run._report_unreadable('no_admin_permission')"/>
+						<t t-set="otras" t-value="run._report_unreadable_otras()"/>
 
-						<div t-if="plan or permiso">
+						<div t-if="plan or permiso or otras">
 							<h3>Repositorios que no se pudieron revisar del todo</h3>
 
 							<div t-if="plan" class="mb-3">
@@ -139,25 +168,47 @@
 							</div>
 
 							<div t-if="permiso" class="mb-3">
-								<h5>Por permisos de la aplicación</h5>
+								<h5>Por acceso de la aplicación</h5>
 								<p>
-									En estos repositorios la aplicación que hace la auditoría no
-									tiene nivel de administrador, y GitHub no le permite leer la
-									configuración de protección. <strong>No quiere decir que
-									estén desprotegidos</strong>: quiere decir que no lo sabemos,
-									y mientras no lo sepamos no podemos garantizar reglas sobre
-									esos repositorios.
+									Acá GitHub respondió «no encontrado» en vez de decir si la
+									rama está protegida: es la respuesta que da cuando quien
+									pregunta no puede ver esa configuración. <strong>No quiere
+									decir que estén desprotegidos</strong>: quiere decir que no
+									lo sabemos, y mientras no lo sepamos no podemos garantizar
+									reglas sobre esos repositorios.
 									Son <strong t-esc="run._report_plural(len(permiso), 'repositorio')"/>.
 								</p>
 								<p class="text-muted small">
-									Se resuelve reinstalando la aplicación desde la cuenta dueña
-									de los repositorios. No requiere ningún gasto.
+									Se resuelve revisando el alcance de la aplicación: que tenga
+									el permiso <em>Administration: Read-only</em> y que estos
+									repositorios estén incluidos en la instalación. No requiere
+									ningún gasto.
 								</p>
 								<ul>
 									<li t-foreach="permiso" t-as="fila">
 										<span t-field="fila['repository'].full_name"/>
 										<span class="text-muted small">
 											— <span t-esc="run._report_plural(fila['count'], 'rama')"/>
+										</span>
+									</li>
+								</ul>
+							</div>
+
+							<div t-if="otras" class="mb-3">
+								<h5>Por un motivo no clasificado</h5>
+								<p>
+									La auditoría no pudo leer la protección de estos
+									repositorios y tampoco pudo atribuirlo al plan ni al acceso
+									de la aplicación. Se listan igual: un dato que falta sin
+									explicación es peor que uno explicado, pero mucho mejor que
+									uno que no aparece.
+								</p>
+								<ul>
+									<li t-foreach="otras" t-as="fila">
+										<span t-field="fila['repository'].full_name"/>
+										<span class="text-muted small">
+											— <span t-esc="run._report_plural(fila['count'], 'rama')"/>
+											(<span t-esc="fila['cause_label']"/>)
 										</span>
 									</li>
 								</ul>

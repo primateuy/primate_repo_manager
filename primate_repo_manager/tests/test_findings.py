@@ -274,6 +274,22 @@ class TestFindings(TransactionCase):
 		self.assertIn("1 más", adopcion.detail,
 					  "los no evaluados se dicen aparte, no se esconden")
 
+	# --- ninguna causa desaparece del informe ---
+
+	def test_una_causa_de_ilegibilidad_sin_seccion_no_desaparece(self):
+		repo = self._repo("causa-rara")
+		self.env["repo.branch"].create({
+			"repository_id": repo.id, "name": "19.0", "role": "base",
+			"protection_readable": False, "protection_cause": "unknown"})
+
+		self.env["repo.audit.engine"].evaluate(self.run)
+
+		otras = self.run._report_unreadable_otras()
+		self.assertEqual(len(otras), 1)
+		self.assertEqual(otras[0]["cause"], "unknown")
+		self.assertEqual(otras[0]["repository"], repo)
+		self.assertFalse(self.run._report_unreadable("plan_limit"))
+
 	def test_sin_clasificar_es_un_hallazgo(self):
 		self._repo("desconocido", clasificacion=False)
 
@@ -369,6 +385,30 @@ class TestFindings(TransactionCase):
 		self.assertEqual(
 			sorted(f["repository"].full_name for f in filas),
 			["cuenta/evaluado", "cuenta/sin-clasificar"])
+
+	def test_la_cobertura_no_dice_totalidad_si_hubo_lecturas_bloqueadas(self):
+		"""«Se pudo revisar la totalidad» no puede convivir con una sección que dice que
+		en 30 repos no se pudo leer la protección."""
+		self._repo("todo-ok")
+		self.assertEqual(self.run._report_parcialmente_legibles(), 0)
+
+		self._repo("a-medias", unreadable_json="branch_protection, rulesets")
+		self.assertEqual(self.run._report_parcialmente_legibles(), 1)
+
+	def test_el_informe_no_depende_de_una_webfont(self):
+		"""wkhtmltopdf embebe Lato —la webfont de Odoo— con los glifos VACÍOS: el PDF sale
+		con recuadros y tablas dibujados y el texto invisible, y como el texto igual se
+		extrae, nada avisa. La fuente local se declara en la plantilla; esto lo custodia."""
+		self._repo("cualquiera")
+		self.env["repo.audit.engine"].evaluate(self.run)
+
+		html = self.env["ir.actions.report"]._render_qweb_html(
+			"primate_repo_manager.action_report_audit", self.run.ids)[0].decode()
+
+		self.assertIn("Helvetica", html,
+					  "la plantilla tiene que imponer una fuente instalada localmente")
+		self.assertIn("!important", html,
+					  "sin !important la regla de body del layout de Odoo vuelve a Lato")
 
 	def test_el_motivo_del_repo_no_auditado_esta_en_lenguaje_del_informe(self):
 		self._repo("sin-acceso", sync_state="error",
