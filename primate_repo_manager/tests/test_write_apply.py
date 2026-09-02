@@ -130,12 +130,12 @@ class TestApply(TransactionCase):
 		def falso(self):
 			return contextlib.nullcontext(self.env.cr)
 
-		for modelo in ("repo.write.operation", "repo.write.plan"):
-			clase = self.env[modelo].__class__
-			original = clase._cursor_durable
-			clase._cursor_durable = falso
-			self.addCleanup(
-				lambda c=clase, o=original: setattr(c, "_cursor_durable", o))
+		# Sólo la operación: el plan ya no usa conexión aparte —marcar su estado desde
+		# otra conexión colisionaba con la transacción principal— y no tiene el método.
+		clase = self.env["repo.write.operation"].__class__
+		original = clase._cursor_durable
+		clase._cursor_durable = falso
+		self.addCleanup(lambda: setattr(clase, "_cursor_durable", original))
 
 	def _correr(self, plan, transporte):
 		"""Inyecta el transporte en la única puerta y aplica."""

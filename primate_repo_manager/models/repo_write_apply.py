@@ -113,9 +113,12 @@ class RepoWritePlanApply(models.Model):
 		self._verificar_congelado()
 
 		cliente = self.backend_id.write_client()
-		# Durable: si esto se escribiera sólo en la transacción del apply, una caída lo
-		# devolvería a «aprobado» y el plan mentiría sobre lo que llegó a pasar.
-		self._marcar_aplicando()
+		# Escritura normal, en esta transacción. Marcarlo desde una conexión aparte fue el
+		# primer intento y es un error: actualizar la MISMA FILA desde dos conexiones
+		# dentro de una sola operación lógica termina en «could not serialize access due
+		# to concurrent update». Y no hace falta: si una caída se lleva este estado, la
+		# admisibilidad del rollback no depende de él.
+		self.write({"state": "applying"})
 
 		for operacion in self.operation_ids.sorted(lambda o: (o.sequence, o.id)):
 			if operacion.state in ("applied", "blocked"):
@@ -138,18 +141,6 @@ class RepoWritePlanApply(models.Model):
 		})
 		return True
 
-	def _cursor_durable(self):
-		"""Ver el homónimo en la operación: conexión aparte, y por qué."""
-		return self.pool.cursor()
-
-	def _marcar_aplicando(self):
-		self.ensure_one()
-		with self._cursor_durable() as cr:
-			entorno = self.env(cr=cr)
-			entorno["repo.write.plan"].browse(self.id).state = "applying"
-			entorno.flush_all()
-		self.invalidate_recordset(["state"])
-
 	def action_rollback(self):
 		"""Revierte en ORDEN INVERSO. Una operación puede depender de la anterior.
 
@@ -171,7 +162,7 @@ class RepoWritePlanApply(models.Model):
 		# `created` entra: el objeto existe en GitHub aunque el ciclo no haya terminado, y
 		# no poder revertirlo sería dejarlo huérfano.
 		aplicadas = self.operation_ids.filtered(
-			lambda o: o.state in ("applied", "created")).sorted(
+			lambda o: o._tiene_efecto_en_github()).sorted(
 				lambda o: (o.sequence, o.id), reverse=True)
 		if not aplicadas:
 			raise UserError(_(
@@ -271,7 +262,7 @@ class RepoWriteOperationApply(models.Model):
 	def _revertir(self, cliente):
 		"""Restaura el estado previo guardado en la bitácora, y lo verifica releyendo."""
 		self.ensure_one()
-		if not self.audit_log_id and self.state == "created":
+		if not self.audit_log_id and self.state in ("created", "pending"):
 			# Se cayó antes de dejar la entrada final. El punto de retorno es el que se
 			# guardó en el paso 2b, que está en su propia entrada.
 			self.audit_log_id = self._entrada_de_identidad()
@@ -325,7 +316,7 @@ class RepoWriteOperationApply(models.Model):
 		"""
 		self.ensure_one()
 		self.plan_id._verificar_congelado(estados=None)
-		if self.state not in ("applied", "created"):
+		if not self._tiene_efecto_en_github():
 			raise UserError(_(
 				"Sólo se revierte una operación con efecto en GitHub; ésta está en «%s».")
 				% self.state)
@@ -389,12 +380,24 @@ class RepoWriteOperationApply(models.Model):
 				}, default=str),
 				"previous_state_json": json.dumps(previo, default=str),
 			})
-			entorno["repo.write.operation"].browse(self.id).state = "created"
-			# El flush va DENTRO del bloque: sin él la escritura queda en caché, y el
-			# `invalidate_recordset` de abajo la descartaría en vez de releerla.
 			entorno.flush_all()
-		self.invalidate_recordset(["state"])
+		# El estado va por la transacción NORMAL. La conexión durable sólo INSERTA filas
+		# nuevas: actualizar desde ella una fila que después toca la transacción
+		# principal provoca un fallo de serialización. Si una caída se lleva este estado,
+		# la entrada insertada arriba alcanza para saber que el objeto existe.
+		self.state = "created"
 		return identidad
+
+	def _tiene_efecto_en_github(self):
+		"""¿Esta operación dejó algo escrito allá afuera?
+
+		El estado es la respuesta cuando sobrevivió. Cuando no —una caída se lo llevó— lo
+		que queda es la entrada de identidad, que se insertó en su propia conexión
+		justamente para eso. Se miran los dos: el campo dice lo que cree el sistema, la
+		entrada dice lo que pasó.
+		"""
+		self.ensure_one()
+		return self.state in ("applied", "created") or bool(self._entrada_de_identidad())
 
 	def _entrada_de_identidad(self):
 		"""La entrada del paso 2b de esta operación, si la hubo."""
