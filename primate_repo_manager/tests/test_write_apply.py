@@ -17,6 +17,13 @@ from .test_backend import _clave_rsa_de_prueba
 UPGRADE = {"message": "Upgrade to GitHub Pro or make this repository public to "
 					  "enable this feature."}
 NO_PROTEGIDA = {"message": "Branch not protected"}
+# Los tres datos de un grant, con la forma real que devolvió el sandbox.
+PERM_MAINTAIN = {"role_name": "maintain", "permission": "write"}
+PERM_ADMIN = {"role_name": "admin", "permission": "admin"}
+DIRECTO_MAINTAIN = [{"login": "primateuy", "role_name": "maintain"}]
+DIRECTO_ADMIN = [{"login": "primateuy", "role_name": "admin"}]
+SIN_DIRECTOS = []
+TEAM_MAINTAIN = [{"slug": "desarrollo", "permission": "maintain"}]
 PROTECCION = {
 	"required_pull_request_reviews": {"required_approving_review_count": 1},
 	"enforce_admins": {"enabled": False},
@@ -368,6 +375,113 @@ class TestApply(TransactionCase):
 		with self.assertRaises(UserError) as ctx:
 			plan.action_rollback()
 		self.assertIn("sólo lectura", str(ctx.exception))
+
+	# --- grants directos: el estado previo son TRES datos ---------------------
+
+	def _plan_grant(self, permiso="admin"):
+		plan = self.env["repo.write.plan"].create({
+			"name": "Grant", "backend_id": self.backend.id})
+		self.env["repo.write.operation"].create({
+			"plan_id": plan.id, "kind": "collaborator_grant",
+			"repository_id": self.repo.id, "target": "primateuy",
+			"payload_json": json.dumps({"permission": permiso}),
+		})
+		plan.action_approve()
+		return plan
+
+	def test_revertir_un_grant_donde_hay_team_vuelve_AL_TEAM_no_a_nada(self):
+		"""El caso que rompe un rollback ingenuo.
+
+		En un repositorio donde la persona ya tenía `maintain` POR TEAM y ningún grant
+		directo, dar `admin` directo y después revertirlo NO la deja sin acceso: la deja
+		con el maintain del team. Un estado previo que guardara sólo el permiso efectivo
+		—o que asumiera «volver a nada»— daría por fallida una reversión correcta, o
+		dejaría a alguien con más acceso del que tenía.
+		"""
+		transporte = Transporte(gets=[
+			# estado previo: efectivo maintain, SIN directo, team maintain
+			Respuesta(200, PERM_MAINTAIN), Respuesta(200, SIN_DIRECTOS),
+			Respuesta(200, TEAM_MAINTAIN),
+			# verificación del apply: quedó admin directo
+			Respuesta(200, PERM_ADMIN), Respuesta(200, DIRECTO_ADMIN),
+			Respuesta(200, TEAM_MAINTAIN),
+			# antes de revertir
+			Respuesta(200, PERM_ADMIN), Respuesta(200, DIRECTO_ADMIN),
+			Respuesta(200, TEAM_MAINTAIN),
+			# post-rollback: vuelve al maintain DEL TEAM, sin directo
+			Respuesta(200, PERM_MAINTAIN), Respuesta(200, SIN_DIRECTOS),
+			Respuesta(200, TEAM_MAINTAIN),
+		])
+		plan = self._plan_grant()
+		self._correr(plan, transporte)
+		op = plan.operation_ids
+		self.assertEqual(op.state, "applied")
+
+		previo = json.loads(op.audit_log_id.previous_state_json)
+		self.assertEqual(previo["efectivo"], "maintain")
+		self.assertIsNone(previo["directo"], "no había grant directo")
+		self.assertEqual(previo["teams"],
+						 [{"slug": "desarrollo", "permission": "maintain"}])
+
+		self._revertir(plan, transporte)
+		self.assertEqual(op.state, "rolled_back")
+		# Revertir un grant que no existía se hace BORRANDO el directo, no poniendo otro.
+		self.assertIn(
+			("DELETE", "https://api.github.com/repos/org/sbx/collaborators/primateuy"),
+			transporte.llamadas)
+
+	def test_revertir_un_grant_que_ya_existia_lo_restaura_no_lo_borra(self):
+		transporte = Transporte(gets=[
+			Respuesta(200, PERM_MAINTAIN), Respuesta(200, DIRECTO_MAINTAIN),
+			Respuesta(200, TEAM_MAINTAIN),
+			Respuesta(200, PERM_ADMIN), Respuesta(200, DIRECTO_ADMIN),
+			Respuesta(200, TEAM_MAINTAIN),
+			Respuesta(200, PERM_ADMIN), Respuesta(200, DIRECTO_ADMIN),
+			Respuesta(200, TEAM_MAINTAIN),
+			Respuesta(200, PERM_MAINTAIN), Respuesta(200, DIRECTO_MAINTAIN),
+			Respuesta(200, TEAM_MAINTAIN),
+		])
+		plan = self._plan_grant()
+		self._correr(plan, transporte)
+		previo = json.loads(plan.operation_ids.audit_log_id.previous_state_json)
+		self.assertEqual(previo["directo"], "maintain")
+
+		self._revertir(plan, transporte)
+		self.assertEqual(plan.operation_ids.state, "rolled_back")
+		self.assertNotIn(
+			("DELETE", "https://api.github.com/repos/org/sbx/collaborators/primateuy"),
+			transporte.llamadas,
+			"había un grant directo antes: se restaura, no se borra")
+
+	def test_el_grant_se_verifica_por_el_permiso_DIRECTO(self):
+		"""Si se verificara por el efectivo, un team que ya diera admin haría pasar un
+		grant que no se escribió."""
+		transporte = Transporte(gets=[
+			Respuesta(200, PERM_MAINTAIN), Respuesta(200, SIN_DIRECTOS),
+			Respuesta(200, TEAM_MAINTAIN),
+			# el efectivo dice admin (por team) pero NO hay directo
+			Respuesta(200, PERM_ADMIN), Respuesta(200, SIN_DIRECTOS),
+			Respuesta(200, TEAM_MAINTAIN),
+		])
+		plan = self._plan_grant()
+		self._correr(plan, transporte)
+		self.assertEqual(plan.operation_ids.state, "failed")
+		self.assertIn("permiso directo quedó en ninguno", plan.operation_ids.error)
+
+	def test_un_grant_sin_permiso_en_el_payload_falla_diciendolo(self):
+		plan = self.env["repo.write.plan"].create({
+			"name": "Grant sin permiso", "backend_id": self.backend.id})
+		self.env["repo.write.operation"].create({
+			"plan_id": plan.id, "kind": "collaborator_grant",
+			"repository_id": self.repo.id, "target": "primateuy",
+			"payload_json": json.dumps({}),
+		})
+		plan.action_approve()
+		with self.assertRaises(UserError) as ctx:
+			self._correr(plan, Transporte(gets=[
+				Respuesta(200, PERM_MAINTAIN), Respuesta(200, SIN_DIRECTOS),
+				Respuesta(200, TEAM_MAINTAIN)]))
+		self.assertIn("falta `permission`", str(ctx.exception))
 
 	# --- las guardas de arriba siguen mandando ---------------------------------
 

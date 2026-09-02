@@ -286,7 +286,115 @@ class RepoWriteOperationApply(models.Model):
 				"verificar": "_verificar_proteccion",
 				"revertir": "_revertir_proteccion",
 			},
+			"collaborator_grant": {
+				"leer": "_leer_grant",
+				"ejecutar": "_aplicar_grant",
+				"verificar": "_verificar_grant",
+				"revertir": "_revertir_grant",
+			},
+			"collaborator_revoke": {
+				"leer": "_leer_grant",
+				"ejecutar": "_revocar_grant",
+				"verificar": "_verificar_revocacion",
+				"revertir": "_revertir_grant",
+			},
 		}
+
+	# --- permisos directos de una persona -------------------------------
+	#
+	# EL ESTADO PREVIO DE UN GRANT NO ES UN PERMISO: SON TRES DATOS.
+	#
+	# Revertir un grant directo sobre un repositorio donde la persona ADEMÁS está en un
+	# team no la deja sin acceso: la deja con el permiso del team. Guardar sólo el
+	# permiso efectivo haría que el rollback verifique contra el número equivocado y
+	# reporte una reversión fallida que en realidad salió bien — o peor, que dé por
+	# revertido algo que dejó a alguien con más acceso del que tenía.
+	#
+	# Verificado contra el sandbox, que se sembró justo con los tres casos:
+	#   sbx-localizacion     efectivo maintain · directo maintain · team push
+	#   prm-sbx-interno      efectivo admin    · directo admin    · sin teams
+	#   sbx-cliente-publico  efectivo maintain · SIN directo      · team maintain
+	# El tercero es el que prueba que `affiliation=direct` distingue de verdad.
+
+	def _leer_grant(self, cliente):
+		"""Permiso efectivo, permiso directo y de qué teams viene. Los tres."""
+		login = self.target
+		full = self.repository_id.full_name
+		try:
+			efectivo = cliente.get(
+				"/repos/%s/collaborators/%s/permission" % (full, login))
+			role = efectivo.get("role_name")
+		except GithubNotFound:
+			role = None
+
+		directos = cliente.paginate(
+			"/repos/%s/collaborators" % full, params={"affiliation": "direct"})
+		directo = next(
+			(u.get("role_name") for u in directos
+			 if (u.get("login") or "").lower() == (login or "").lower()), None)
+
+		teams = cliente.get("/repos/%s/teams" % full, tolerar_404=True) or []
+		return {
+			"efectivo": role,
+			"directo": directo,
+			# `permission` acá viene en vocabulario de ESCRITURA («push»), a diferencia
+			# de `/orgs/{org}/teams/{slug}/repos`, que devuelve role_name («write»).
+			# Ver el mapa de vocabularios en github_client.
+			"teams": sorted(
+				[{"slug": t.get("slug"), "permission": t.get("permission")}
+				 for t in teams], key=lambda t: t["slug"] or ""),
+		}
+
+	def _permiso_pedido(self):
+		"""El permiso del payload, en vocabulario de escritura."""
+		payload = _cargar(self.payload_json) or {}
+		permiso = payload.get("permission")
+		if not permiso:
+			raise UserError(_(
+				"La operación sobre «%s» no dice qué permiso dar: falta `permission` en "
+				"el payload.") % (self.target or ""))
+		return permiso
+
+	def _aplicar_grant(self, cliente):
+		return cliente.put(
+			"/repos/%s/collaborators/%s" % (self.repository_id.full_name, self.target),
+			{"permission": self._permiso_pedido()})
+
+	def _revocar_grant(self, cliente):
+		return cliente.delete(
+			"/repos/%s/collaborators/%s" % (self.repository_id.full_name, self.target),
+			tolerar_404=True)
+
+	def _verificar_grant(self, cliente):
+		estado = self._leer_grant(cliente)
+		pedido = self._permiso_pedido()
+		directo = _a_escritura(estado.get("directo"))
+		if directo != pedido:
+			return False, _("el permiso directo quedó en %(real)s y se pidió %(pedido)s") % {
+				"real": directo or "ninguno", "pedido": pedido}
+		return True, estado
+
+	def _verificar_revocacion(self, cliente):
+		"""Revocar quita el grant DIRECTO. Lo que venga del team sigue, y está bien."""
+		estado = self._leer_grant(cliente)
+		if estado.get("directo") is not None:
+			return False, _("el permiso directo sigue siendo %s") % estado["directo"]
+		return True, estado
+
+	def _revertir_grant(self, cliente, previo):
+		"""Vuelve al permiso DIRECTO que había, que puede ser ninguno.
+
+		Si no había grant directo, se borra el que pusimos y la persona queda con lo que
+		le dé su team. Volver «a nada» sería sacarle un acceso que tenía antes.
+		"""
+		ruta = "/repos/%s/collaborators/%s" % (
+			self.repository_id.full_name, self.target)
+		anterior = previo.get("directo")
+		if anterior is None:
+			cliente.delete(ruta, tolerar_404=True)
+		else:
+			cliente.put(ruta, {"permission": _a_escritura(anterior)})
+		return True
 
 	# --- protección de rama ---------------------------------------------
 
@@ -332,6 +440,13 @@ class RepoWriteOperationApply(models.Model):
 		else:
 			cliente.delete(self._ruta_proteccion(), tolerar_404=True)
 		return True
+
+
+def _a_escritura(role_name):
+	"""role_name (lectura) -> vocabulario del setter. Ver el mapa en github_client."""
+	if role_name is None:
+		return None
+	return {"read": "pull", "write": "push"}.get(role_name, role_name)
 
 
 def _cargar(texto):

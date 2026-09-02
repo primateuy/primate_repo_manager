@@ -53,6 +53,13 @@ _logger = logging.getLogger(__name__)
 #   al releer, `role_name` devuelve read/write/maintain/admin. Se escribe "push" y se lee
 #   "write": el mismo permiso en la ida y en la vuelta de una sola operación.
 #
+# EPISODIO 4 — sandbox, origen de un grant.
+#   Los dos endpoints que dicen qué permiso tiene un team sobre un repositorio usan
+#   vocabularios DISTINTOS entre sí:
+#       GET /orgs/{org}/teams/{slug}/repos   -> role_name: "write"
+#       GET /repos/{o}/{r}/teams             -> permission: "push"
+#   Es el mismo permiso del mismo team sobre el mismo repo, leído por dos caminos.
+#
 # REGLA PRÁCTICA: para LEER un permiso, usar siempre `role_name` y traducirlo con
 # ROLE_NAME_TO_PERMISSION. Nunca comparar contra el campo `permission`. Para ESCRIBIR,
 # usar el vocabulario del setter (pull/push), que no coincide con el que se lee.
