@@ -53,6 +53,21 @@ class RepoAuditEngine(models.AbstractModel):
 	# ------------------------------------------------------------------
 
 	@api.model
+	def _evaluado_contra_plantilla(self, repo):
+		"""¿Este repo se compara ítem por ítem contra una plantilla?
+
+		Es el mismo criterio que aplica `_evaluate_repository` con sus dos salidas
+		tempranas, en un solo lugar: si el conteo del resumen usa otra definición que la
+		que genera los hallazgos, el informe se contradice a sí mismo.
+		"""
+		if not repo.classification:
+			return False
+		if repo.is_fork and repo.governance_status == "pending_migration":
+			return False
+		return bool(self.env["repo.policy.template"].search(
+			[("classification_default", "=", repo.classification)], limit=1))
+
+	@api.model
 	def _evaluate_repository(self, run, repo):
 		if not repo.classification:
 			self._finding(run, repo, "classification_missing",
@@ -257,8 +272,17 @@ class RepoAuditEngine(models.AbstractModel):
 		por_rol = {}
 		for rama in ramas:
 			por_rol[rama.role] = por_rol.get(rama.role, 0) + 1
-		fuera_de_convencion = repos.filtered(
+		# El conteo se parte en dos A PROPÓSITO. «main/master como rama por defecto» sólo
+		# es un incumplimiento en los repositorios que se evalúan contra una plantilla; en
+		# un fork sin migrar la rama por defecto la puso el upstream, y en uno sin
+		# clasificar no hay convención contra la cual medir. Un número único sobre los 113
+		# no cerraba con las 2 filas de la tabla de hallazgos y dejaba al lector sin saber
+		# cuál de los dos creer.
+		con_main = repos.filtered(
 			lambda r: (r.default_branch or "").lower() in ("main", "master"))
+		fuera_de_convencion = con_main.filtered(
+			lambda r: self._evaluado_contra_plantilla(r))
+		main_no_evaluados = con_main - fuera_de_convencion
 
 		self._finding(
 			run, None, "convention_adoption",
@@ -266,17 +290,20 @@ class RepoAuditEngine(models.AbstractModel):
 			detail=_(
 				"De %(ramas)s ramas relevadas: %(prod)s de producción, %(support)s de "
 				"support, %(staging)s de staging. Con main o master como rama por "
-				"defecto: %(main)s."
+				"defecto: %(main)s entre los evaluados contra plantilla, y %(otros)s más "
+				"entre los que no se evalúan (forks sin migrar y repositorios sin "
+				"clasificar), donde no hay convención contra la cual medirlo."
 			) % {
 				"ramas": len(ramas), "prod": por_rol.get("prod", 0),
 				"support": por_rol.get("support", 0), "staging": por_rol.get("staging", 0),
-				"main": run._report_plural(
-					len(fuera_de_convencion), "repositorio"),
+				"main": run._report_plural(len(fuera_de_convencion), "repositorio"),
+				"otros": len(main_no_evaluados),
 			},
 			observed={
 				"branches_total": len(ramas),
 				"by_role": por_rol,
 				"default_off_convention": fuera_de_convencion.mapped("full_name"),
+				"default_main_not_evaluated": main_no_evaluados.mapped("full_name"),
 			})
 
 	@api.model

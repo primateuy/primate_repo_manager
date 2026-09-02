@@ -213,6 +213,39 @@ class RepoAuditRun(models.Model):
 			"info": "#9CA3AF",
 		}
 
+	def _ramas_ilegibles(self):
+		"""Ramas cuya protección no se pudo leer, en TODO el espejo de la conexión.
+
+		SALE DEL ESPEJO Y NO DE LOS HALLAZGOS, y la diferencia importa. Los hallazgos por
+		rama sólo se emiten para los repositorios que se comparan ítem por ítem contra una
+		plantilla: un fork sin migrar y uno sin clasificar se saltean a propósito, porque
+		no hay contra qué compararlos. Pero la COBERTURA es otra pregunta: "¿de cuántos
+		repositorios no sabemos si están protegidos?" no depende de si los evaluamos.
+
+		Contándolo desde los hallazgos, el informe decía 4 repositorios cuando eran 30, y
+		ese número es justamente el insumo de la decisión de plan.
+		"""
+		self.ensure_one()
+		return self.env["repo.branch"].search([
+			("repository_id", "in",
+			 self.backend_id.repository_ids.filtered(lambda r: not r.archived).ids),
+			("protection_readable", "=", False),
+		])
+
+	@staticmethod
+	def _agrupar_por_repo(ramas, extra=None):
+		"""De un recordset de ramas a filas por repositorio, ordenadas por nombre."""
+		por_repo = {}
+		for rama in ramas:
+			por_repo.setdefault(rama.repository_id, []).append(rama.name or "")
+		filas = []
+		for repo, nombres in sorted(por_repo.items(), key=lambda kv: kv[0].full_name or ""):
+			fila = {"repository": repo, "branches": sorted(nombres), "count": len(nombres)}
+			if extra:
+				fila.update(extra(repo, nombres))
+			filas.append(fila)
+		return filas
+
 	def _report_unreadable(self, causa):
 		"""Agrupado POR REPOSITORIO, no por rama.
 
@@ -222,17 +255,9 @@ class RepoAuditRun(models.Model):
 		manzanas.
 		"""
 		self.ensure_one()
-		hallazgos = self.finding_ids.filtered(
-			lambda f: f.finding_type == "branch_protection_unreadable"
-			and f.unreadable_cause == causa)
-		por_repo = {}
-		for hallazgo in hallazgos:
-			repo = hallazgo.repository_id
-			por_repo.setdefault(repo, []).append(hallazgo.subject or "")
-		return [
-			{"repository": repo, "branches": sorted(ramas), "count": len(ramas)}
-			for repo, ramas in sorted(por_repo.items(), key=lambda kv: kv[0].full_name or "")
-		]
+		return self._agrupar_por_repo(
+			self._ramas_ilegibles().filtered(
+				lambda b: (b.protection_cause or "unknown") == causa))
 
 	def _report_unaudited(self):
 		"""Repos no auditados, con el motivo en lenguaje del informe.

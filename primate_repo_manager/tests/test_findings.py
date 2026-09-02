@@ -5,6 +5,7 @@
 Incluye los tres que el encargo pide demostrar: un permiso excedido, una rama sin
 protección y un fork desfasado.
 """
+import json
 import uuid
 
 from odoo.tests.common import TransactionCase
@@ -202,6 +203,30 @@ class TestFindings(TransactionCase):
 		# Y el repo concreto también tiene el suyo.
 		self.assertTrue(self._hallazgo("default_branch_off_convention"))
 
+	# --- el resumen tiene que cerrar con la tabla ---
+
+	def test_el_conteo_de_main_habla_de_la_poblacion_que_se_evalua(self):
+		"""Contar main/master sobre TODOS y flaggear sólo los evaluados daba dos números
+		distintos para el mismo hecho, y el lector no sabía cuál creer."""
+		evaluado = self._repo("evaluado-con-main", default_branch="main")
+		self.env["repo.branch"].create({
+			"repository_id": evaluado.id, "name": "main", "role": "other",
+			"protection_readable": True, "protected": True})
+		self._repo("sin-clasificar-con-main", clasificacion=False, default_branch="main")
+
+		self.env["repo.audit.engine"].evaluate(self.run)
+
+		flaggeados = self._hallazgo("default_branch_off_convention")
+		self.assertEqual(len(flaggeados), 1, "sólo el evaluado contra plantilla")
+		adopcion = self._hallazgo("convention_adoption")
+		observado = json.loads(adopcion.observed_json)
+		self.assertEqual(observado["default_off_convention"],
+						 ["cuenta/evaluado-con-main"])
+		self.assertEqual(observado["default_main_not_evaluated"],
+						 ["cuenta/sin-clasificar-con-main"])
+		self.assertIn("1 más", adopcion.detail,
+					  "los no evaluados se dicen aparte, no se esconden")
+
 	def test_sin_clasificar_es_un_hallazgo(self):
 		self._repo("desconocido", clasificacion=False)
 
@@ -271,6 +296,32 @@ class TestFindings(TransactionCase):
 		filas = self.run._report_unreadable("plan_limit")
 		self.assertEqual(len(filas), 1, "tres ramas de un repo son UN repositorio")
 		self.assertEqual(filas[0]["count"], 3)
+
+	def test_la_cobertura_cuenta_tambien_los_repos_que_no_se_evaluan(self):
+		"""«¿De cuántos repos no sabemos si están protegidos?» no depende de si los
+		comparamos contra una plantilla. Contado desde los hallazgos daba 4 de 30, y ese
+		número es el insumo de la decisión de plan."""
+		evaluado = self._repo("evaluado")
+		self.env["repo.branch"].create({
+			"repository_id": evaluado.id, "name": "19.0", "role": "base",
+			"protection_readable": False, "protection_cause": "plan_limit"})
+		sin_clasificar = self._repo("sin-clasificar", clasificacion=False)
+		self.env["repo.branch"].create({
+			"repository_id": sin_clasificar.id, "name": "19.0", "role": "base",
+			"protection_readable": False, "protection_cause": "plan_limit"})
+
+		self.env["repo.audit.engine"].evaluate(self.run)
+
+		# El hallazgo por rama sigue siendo sólo del evaluado: no hay plantilla contra la
+		# cual medir al otro, y eso está bien.
+		self.assertEqual(
+			self._hallazgo("branch_protection_unreadable").mapped("repository_id"),
+			evaluado)
+		# La cobertura, en cambio, tiene que hablar de los dos.
+		filas = self.run._report_unreadable("plan_limit")
+		self.assertEqual(
+			sorted(f["repository"].full_name for f in filas),
+			["cuenta/evaluado", "cuenta/sin-clasificar"])
 
 	def test_el_motivo_del_repo_no_auditado_esta_en_lenguaje_del_informe(self):
 		self._repo("sin-acceso", sync_state="error",
