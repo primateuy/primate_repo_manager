@@ -57,9 +57,14 @@ class Transporte:
 		self.gets = list(gets)
 		self.escrituras = escrituras or {}
 		self.llamadas = []
+		# Los cuerpos, aparte: verificar que «hubo un PUT» no dice CON QUÉ, y ahí se
+		# esconde toda una clase de bug —restaurar algo distinto de lo que había—.
+		self.cuerpos = []
 
 	def post(self, url, json=None, headers=None, timeout=None):
 		self.llamadas.append(("POST", url))
+		if "access_tokens" not in url:
+			self.cuerpos.append(("POST", url, json))
 		if "access_tokens" in url:
 			return Respuesta(201, {"token": "ghs_test"})
 		return self.escrituras.get("POST", Respuesta(201, {}))
@@ -70,6 +75,7 @@ class Transporte:
 
 	def put(self, url, json=None, headers=None, timeout=None):
 		self.llamadas.append(("PUT", url))
+		self.cuerpos.append(("PUT", url, json))
 		return self.escrituras.get("PUT", Respuesta(200, PROTECCION))
 
 	def patch(self, url, json=None, headers=None, timeout=None):
@@ -472,6 +478,10 @@ class TestApply(TransactionCase):
 			("DELETE", "https://api.github.com/repos/org/sbx/collaborators/primateuy"),
 			transporte.llamadas,
 			"había un grant directo antes: se restaura, no se borra")
+		puts = [c for c in transporte.cuerpos
+				if c[0] == "PUT" and c[1].endswith("/collaborators/primateuy")]
+		self.assertEqual(puts[-1][2], {"permission": "maintain"},
+						 "y se restaura con el permiso que había, no con otro")
 
 	def test_el_grant_se_verifica_por_el_permiso_DIRECTO(self):
 		"""Si se verificara por el efectivo, un team que ya diera admin haría pasar un
@@ -716,6 +726,78 @@ class TestApply(TransactionCase):
 		self.assertEqual(previo["rulesets"],
 						 [{"id": 111, "name": "ajeno-no-tocar",
 						   "enforcement": "active"}])
+
+	# --- membresía de team: el rol también es estado previo -------------------
+
+	def _plan_membresia(self, kind="team_member_remove", rol=None):
+		plan = self.env["repo.write.plan"].create({
+			"name": "Membresía", "backend_id": self.backend.id})
+		payload = {"login": "primateuy"}
+		if rol:
+			payload["role"] = rol
+		self.env["repo.write.operation"].create({
+			"plan_id": plan.id, "kind": kind, "repository_id": self.repo.id,
+			"target": "desarrollo", "payload_json": json.dumps(payload),
+		})
+		plan.action_approve()
+		return plan
+
+	def test_sacar_del_team_y_revertir_devuelve_EL_MISMO_ROL(self):
+		"""Quien era `maintainer` no puede volver como `member`.
+
+		Sería devolverle menos de lo que tenía y dar el rollback por bueno igual, que es
+		la forma silenciosa de degradar a alguien en un offboarding mal revertido.
+		"""
+		MAINTAINER = {"role": "maintainer", "state": "active"}
+		transporte = Transporte(gets=[
+			Respuesta(200, MAINTAINER),        # previo
+			Respuesta(404, {}),                # verificación: ya no está
+			Respuesta(404, {}),                # antes de revertir
+			Respuesta(200, MAINTAINER),        # post-rollback
+		])
+		plan = self._plan_membresia()
+		self._correr(plan, transporte)
+		op = plan.operation_ids
+		self.assertEqual(op.state, "applied")
+
+		previo = json.loads(op.audit_log_id.previous_state_json)
+		self.assertEqual(previo, {"miembro": True, "rol": "maintainer",
+								  "estado": "active"})
+
+		self._revertir(plan, transporte)
+		self.assertEqual(op.state, "rolled_back")
+		puts = [c for c in transporte.cuerpos
+				if c[0] == "PUT" and "memberships/primateuy" in c[1]]
+		self.assertTrue(puts, "se restaura poniéndolo de vuelta")
+		self.assertEqual(
+			puts[-1][2], {"role": "maintainer"},
+			"con SU rol, no con el default: volver como `member` sería degradarlo")
+
+	def test_revertir_a_quien_no_estaba_en_el_team_lo_saca(self):
+		transporte = Transporte(gets=[
+			Respuesta(404, {}),                                  # previo: no estaba
+			Respuesta(200, {"role": "member", "state": "active"}),  # verificación
+			Respuesta(200, {"role": "member", "state": "active"}),  # antes de revertir
+			Respuesta(404, {}),                                  # post-rollback
+		])
+		plan = self._plan_membresia(kind="team_member_add", rol="member")
+		self._correr(plan, transporte)
+		self.assertEqual(plan.operation_ids.state, "applied")
+
+		self._revertir(plan, transporte)
+		self.assertTrue(
+			[c for c in transporte.llamadas
+			 if c[0] == "DELETE" and "memberships/primateuy" in c[1]])
+
+	def test_si_sigue_en_el_team_la_baja_no_se_da_por_buena(self):
+		transporte = Transporte(gets=[
+			Respuesta(200, {"role": "member", "state": "active"}),
+			Respuesta(200, {"role": "member", "state": "active"}),   # sigue ahí
+		])
+		plan = self._plan_membresia()
+		self._correr(plan, transporte)
+		self.assertEqual(plan.operation_ids.state, "failed")
+		self.assertIn("sigue en el team", plan.operation_ids.error)
 
 	# --- las guardas de arriba siguen mandando ---------------------------------
 

@@ -47,6 +47,8 @@ OPERATION_KINDS = [
 	("collaborator_revoke", "Quitar permiso directo"),
 	("team_repo_grant", "Dar permiso por team"),
 	("team_repo_revoke", "Quitar permiso por team"),
+	("team_member_remove", "Sacar a una persona de un team"),
+	("team_member_add", "Poner a una persona en un team"),
 ]
 
 

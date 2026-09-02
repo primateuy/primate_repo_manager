@@ -491,6 +491,18 @@ class RepoWriteOperationApply(models.Model):
 				"verificar": "_verificar_team_revocacion",
 				"revertir": "_revertir_team_grant",
 			},
+			"team_member_remove": {
+				"leer": "_leer_membresia",
+				"ejecutar": "_sacar_del_team",
+				"verificar": "_verificar_sin_membresia",
+				"revertir": "_revertir_membresia",
+			},
+			"team_member_add": {
+				"leer": "_leer_membresia",
+				"ejecutar": "_poner_en_el_team",
+				"verificar": "_verificar_membresia",
+				"revertir": "_revertir_membresia",
+			},
 			# La única que CREA IDENTIDAD hasta ahora: lleva el paso 2b.
 			"ruleset_create": {
 				"leer": "_leer_rulesets",
@@ -667,6 +679,56 @@ class RepoWriteOperationApply(models.Model):
 			cliente.delete(self._ruta_team(), tolerar_404=True)
 		else:
 			cliente.put(self._ruta_team(), {"permission": anterior})
+		return True
+
+	# --- membresía de team ------------------------------------------------
+	#
+	# Hace falta para un offboarding honesto: quitar los grants directos de alguien no lo
+	# saca de sus teams, y por el team puede seguir entrando a todo. Es idempotente por
+	# destino —la persona y el team ya existen— así que va con el ciclo de cuatro pasos.
+	#
+	# El estado previo guarda el ROL además de la pertenencia: quien era `maintainer` del
+	# team no puede volver como `member`, que sería devolverle menos de lo que tenía y
+	# dar el rollback por bueno.
+
+	def _ruta_membresia(self):
+		return "/orgs/%s/teams/%s/memberships/%s" % (
+			self.plan_id.backend_id.owner_login, self.target,
+			(_cargar(self.payload_json) or {}).get("login"))
+
+	def _leer_membresia(self, cliente):
+		datos = cliente.get(self._ruta_membresia(), tolerar_404=True)
+		if not datos:
+			return {"miembro": False, "rol": None, "estado": None}
+		return {"miembro": True, "rol": datos.get("role"),
+				"estado": datos.get("state")}
+
+	def _sacar_del_team(self, cliente):
+		return cliente.delete(self._ruta_membresia(), tolerar_404=True)
+
+	def _poner_en_el_team(self, cliente):
+		rol = (_cargar(self.payload_json) or {}).get("role", "member")
+		return cliente.put(self._ruta_membresia(), {"role": rol})
+
+	def _verificar_sin_membresia(self, cliente):
+		estado = self._leer_membresia(cliente)
+		if estado["miembro"]:
+			return False, _("sigue en el team con rol %s") % estado["rol"]
+		return True, estado
+
+	def _verificar_membresia(self, cliente):
+		estado = self._leer_membresia(cliente)
+		rol = (_cargar(self.payload_json) or {}).get("role", "member")
+		if not estado["miembro"] or estado["rol"] != rol:
+			return False, _("quedó como %s y se pidió %s") % (
+				estado["rol"] or "no miembro", rol)
+		return True, estado
+
+	def _revertir_membresia(self, cliente, previo):
+		if previo.get("miembro"):
+			cliente.put(self._ruta_membresia(), {"role": previo.get("rol") or "member"})
+		else:
+			cliente.delete(self._ruta_membresia(), tolerar_404=True)
 		return True
 
 	def _permiso_pedido(self):
