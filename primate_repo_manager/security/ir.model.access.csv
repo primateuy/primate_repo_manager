@@ -33,3 +33,6 @@ access_repo_audit_run_reader,repo.audit.run.reader,model_repo_audit_run,group_re
 access_repo_audit_run_lead,repo.audit.run.lead,model_repo_audit_run,group_repo_lead,1,1,1,1
 access_repo_audit_finding_reader,repo.audit.finding.reader,model_repo_audit_finding,group_repo_reader,1,0,0,0
 access_repo_audit_finding_lead,repo.audit.finding.lead,model_repo_audit_finding,group_repo_lead,1,1,1,1
+access_repo_audit_log_reader,repo.audit.log.reader,model_repo_audit_log,group_repo_reader,1,0,0,0
+access_repo_audit_log_lead,repo.audit.log.lead,model_repo_audit_log,group_repo_lead,1,0,1,0
+access_repo_audit_log_admin,repo.audit.log.admin,model_repo_audit_log,group_repo_admin,1,0,1,0

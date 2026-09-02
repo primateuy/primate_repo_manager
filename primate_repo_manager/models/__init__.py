@@ -12,6 +12,7 @@ from . import repo_commit_sample
 from . import repo_workflow
 from . import repo_audit_run
 from . import repo_audit_finding
+from . import repo_audit_log
 from . import repo_audit_engine
 from . import repo_sync
 from . import res_config_settings
