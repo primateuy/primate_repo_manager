@@ -36,3 +36,7 @@ access_repo_audit_finding_lead,repo.audit.finding.lead,model_repo_audit_finding,
 access_repo_audit_log_reader,repo.audit.log.reader,model_repo_audit_log,group_repo_reader,1,0,0,0
 access_repo_audit_log_lead,repo.audit.log.lead,model_repo_audit_log,group_repo_lead,1,0,1,0
 access_repo_audit_log_admin,repo.audit.log.admin,model_repo_audit_log,group_repo_admin,1,0,1,0
+access_repo_write_plan_reader,repo.write.plan.reader,model_repo_write_plan,group_repo_reader,1,0,0,0
+access_repo_write_plan_lead,repo.write.plan.lead,model_repo_write_plan,group_repo_lead,1,1,1,1
+access_repo_write_operation_reader,repo.write.operation.reader,model_repo_write_operation,group_repo_reader,1,0,0,0
+access_repo_write_operation_lead,repo.write.operation.lead,model_repo_write_operation,group_repo_lead,1,1,1,1
