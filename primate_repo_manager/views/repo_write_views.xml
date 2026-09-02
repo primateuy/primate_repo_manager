@@ -87,6 +87,11 @@
 									<field name="error" readonly="1" optional="show"/>
 									<field name="audit_log_id" readonly="1"
 										   optional="hide"/>
+									<button name="action_rollback_operation"
+											type="object" icon="fa-undo"
+											title="Revertir sólo esta operación"
+											invisible="state != 'applied'"
+											confirm="Se restaura el estado previo de esta operación. ¿Revertir?"/>
 								</list>
 							</field>
 						</page>

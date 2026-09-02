@@ -76,8 +76,16 @@ class RepoWritePlanApply(models.Model):
 		return True
 
 	def action_rollback(self):
-		"""Revierte en ORDEN INVERSO. Una operación puede depender de la anterior."""
+		"""Revierte en ORDEN INVERSO. Una operación puede depender de la anterior.
+
+		MISMO EMBUDO QUE EL APPLY. Revertir es escribir sobre GitHub, y no tiene por qué
+		pedir menos por llamarse «deshacer»: pasa por la misma guarda de huella —el plan
+		tiene que seguir siendo el que se aprobó—, por la misma compuerta de entorno, y
+		deja el mismo tipo de rastro. Un camino más corto para el rollback sería una
+		puerta de servicio a las mismas escrituras.
+		"""
 		self.ensure_one()
+		self._verificar_congelado(estados=("applied", "failed"))
 		cliente = self.backend_id.write_client()
 		aplicadas = self.operation_ids.filtered(
 			lambda o: o.state == "applied").sorted(lambda o: (o.sequence, o.id),
@@ -169,20 +177,25 @@ class RepoWriteOperationApply(models.Model):
 			raise UserError(_(
 				"La operación «%s» no tiene estado previo registrado: no hay punto de "
 				"retorno y no se revierte a ciegas.") % self.display_name)
-		previo = json.loads(self.audit_log_id.previous_state_json)
+		punto_de_retorno = json.loads(self.audit_log_id.previous_state_json)
 		manejador = self._manejador()
 
-		getattr(self, manejador["revertir"])(cliente, previo)
+		# El estado previo DE ESTA ESCRITURA es lo que hay ahora, no el punto de retorno.
+		# Confundirlos dejaba en la bitácora una reversión cuyo "antes" era en realidad
+		# su "después", y con eso no se puede reconstruir la secuencia después.
+		antes_de_revertir = getattr(self, manejador["leer"])(cliente)
 
-		# Verificación byte a byte contra lo que se había guardado.
+		getattr(self, manejador["revertir"])(cliente, punto_de_retorno)
+
+		# Verificación byte a byte contra el punto de retorno guardado.
 		actual = getattr(self, manejador["leer"])(cliente)
-		if actual != previo:
+		if actual != punto_de_retorno:
 			raise UserError(_(
 				"La reversión de «%(op)s» no devolvió el estado exacto.\n\n"
 				"Antes:  %(previo)s\n"
 				"Ahora:  %(actual)s"
 			) % {"op": self.display_name,
-				 "previo": json.dumps(previo, sort_keys=True)[:400],
+				 "previo": json.dumps(punto_de_retorno, sort_keys=True)[:400],
 				 "actual": json.dumps(actual, sort_keys=True)[:400]})
 
 		self.env["repo.audit.log"].registrar(
@@ -191,9 +204,31 @@ class RepoWriteOperationApply(models.Model):
 				"op": self.kind, "repo": self.repository_id.full_name,
 				"destino": self.target or ""},
 			backend=self.plan_id.backend_id, repository=self.repository_id,
-			payload={"plan_fingerprint": self.plan_id.approval_fingerprint},
-			previous_state=previo)
+			payload={
+				"kind": self.kind, "target": self.target,
+				"plan": self.plan_id.name,
+				"plan_fingerprint": self.plan_id.approval_fingerprint,
+				"restaurado_a": punto_de_retorno,
+				"revierte_a_la_entrada": self.audit_log_id.id,
+			},
+			previous_state=antes_de_revertir)
 		self.state = "rolled_back"
+		return True
+
+	def action_rollback_operation(self):
+		"""Revertir UNA operación, desde su propia línea.
+
+		Pasa por el mismo embudo que el rollback del plan entero: no es un atajo, es el
+		mismo camino con menos operaciones.
+		"""
+		self.ensure_one()
+		self.plan_id._verificar_congelado(estados=("applied", "failed"))
+		if self.state != "applied":
+			raise UserError(_(
+				"Sólo se revierte una operación aplicada; ésta está en «%s».") % self.state)
+		self._revertir(self.plan_id.backend_id.write_client())
+		if not self.plan_id.operation_ids.filtered(lambda o: o.state == "applied"):
+			self.plan_id.state = "rolled_back"
 		return True
 
 	# ------------------------------------------------------------------

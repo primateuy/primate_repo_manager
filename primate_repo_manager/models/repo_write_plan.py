@@ -165,6 +165,11 @@ class RepoWritePlan(models.Model):
 		corrido.
 		"""
 		for plan in self:
+			# UN PLAN YA APLICADO NO VUELVE A BORRADOR. El registro de qué se aprobó y se
+			# ejecutó tiene que quedar en pie: degradarlo borraría la evidencia de la
+			# aprobación bajo la cual se escribió en GitHub. Que su contenido después
+			# cambie no lo devuelve a borrador — lo detecta la huella, y el rollback se
+			# niega por eso.
 			if plan.state not in ("draft", "approved"):
 				continue
 			if not plan.approval_fingerprint and plan.state == "draft":
@@ -177,12 +182,16 @@ class RepoWritePlan(models.Model):
 			})
 			plan.message_post(body=_("Aprobación invalidada: %s") % motivo)
 
-	def _verificar_congelado(self):
-		"""LA guarda. La llama el apply antes de tocar nada.
+	def _verificar_congelado(self, estados=("approved",)):
+		"""LA guarda. La llaman el apply Y el rollback, antes de tocar nada.
 
 		Compara huellas y no mira el estado para decidir: un plan que figure como
 		aprobado pero cuya huella no coincida NO se ejecuta. Al revés también: sin
 		aprobación previa no hay con qué comparar, y tampoco se ejecuta.
+
+		`estados` es lo único que cambia entre una y otra: el apply corre sobre un plan
+		`approved`, el rollback sobre uno ya aplicado. La huella se exige igual en los
+		dos casos — revertir es escribir, y no tiene por qué pedir menos.
 		"""
 		self.ensure_one()
 		if not self.approval_fingerprint:
@@ -199,10 +208,12 @@ class RepoWritePlan(models.Model):
 				"después se escriben otras. Revisá los cambios y volvé a aprobarlo."
 			) % {"nombre": self.name, "vieja": self.approval_fingerprint[:16],
 				 "nueva": actual[:16]})
-		if self.state != "approved":
+		if self.state not in estados:
 			raise UserError(_(
-				"El plan «%(nombre)s» está en estado «%(estado)s» y sólo se ejecuta uno "
-				"aprobado.") % {"nombre": self.name, "estado": self.state})
+				"El plan «%(nombre)s» está en estado «%(estado)s» y esta acción sólo "
+				"corre sobre: %(admitidos)s."
+			) % {"nombre": self.name, "estado": self.state,
+				 "admitidos": ", ".join(estados)})
 		return True
 
 	# ------------------------------------------------------------------

@@ -212,8 +212,9 @@ class TestApply(TransactionCase):
 	def test_el_rollback_restaura_el_estado_previo_exacto(self):
 		plan = self._plan()
 		transporte = Transporte(gets=[
-			Respuesta(404, NO_PROTEGIDA),      # previo: sin protección
+			Respuesta(404, NO_PROTEGIDA),      # previo del apply: sin protección
 			Respuesta(200, PROTECCION),        # verificación del apply
+			Respuesta(200, PROTECCION),        # antes de revertir: quedó protegida
 			Respuesta(404, NO_PROTEGIDA),      # relectura post-rollback
 		])
 		self._correr(plan, transporte)
@@ -238,7 +239,8 @@ class TestApply(TransactionCase):
 		transporte = Transporte(gets=[
 			Respuesta(404, NO_PROTEGIDA),
 			Respuesta(200, PROTECCION),
-			Respuesta(200, PROTECCION),        # post-rollback: quedó protegida igual
+			Respuesta(200, PROTECCION),        # antes de revertir
+			Respuesta(200, PROTECCION),        # post-rollback: NO se fue la protección
 		])
 		self._correr(plan, transporte)
 
@@ -255,9 +257,117 @@ class TestApply(TransactionCase):
 	def test_no_se_revierte_sin_estado_previo_registrado(self):
 		plan = self._plan()
 		plan.operation_ids.write({"state": "applied"})
+		plan.write({"state": "applied"})   # pasa la guarda de estado, no la del retorno
 		with self.assertRaises(UserError) as ctx:
 			plan.action_rollback()
 		self.assertIn("no hay punto de retorno", str(ctx.exception).lower())
+
+	# --- el rollback pasa por el mismo embudo, no por una puerta de servicio ---
+
+	def _aplicado(self, transporte):
+		plan = self._plan()
+		self._correr(plan, transporte)
+		self.assertEqual(plan.operation_ids.state, "applied")
+		return plan
+
+	def _revertir(self, plan, transporte):
+		Backend = type(self.backend)
+		original = Backend.write_client
+		Backend.write_client = lambda s, transport=None: original(s, transport=transporte)
+		try:
+			return plan.action_rollback()
+		finally:
+			Backend.write_client = original
+
+	def test_el_rollback_exige_la_huella_igual_que_el_apply(self):
+		"""Revertir es escribir. Si el plan cambió desde que se aprobó, tampoco revierte.
+
+		Sin esto, «deshacer» sería una puerta de servicio a las mismas escrituras: se
+		aprueba un plan, se aplica, se le cambia el payload y el rollback lo usaría como
+		instrucción sin que nadie lo haya aprobado así.
+		"""
+		transporte = Transporte(gets=[
+			Respuesta(404, NO_PROTEGIDA), Respuesta(200, PROTECCION),
+			Respuesta(200, PROTECCION), Respuesta(404, NO_PROTEGIDA)])
+		plan = self._aplicado(transporte)
+
+		plan.operation_ids.payload_json = json.dumps({"enforce_admins": True})
+
+		# Un plan YA APLICADO no vuelve a borrador —el registro de qué se aprobó y se
+		# aplicó tiene que quedar en pie— así que la aprobación sigue ahí. La que lo caza
+		# es la HUELLA, que se recalcula y ya no coincide. Es justamente el caso donde un
+		# flag no alcanzaría.
+		self.assertEqual(plan.state, "applied")
+		self.assertTrue(plan.approval_fingerprint)
+		self.assertFalse(plan.is_frozen)
+
+		with self.assertRaises(UserError) as ctx:
+			self._revertir(plan, transporte)
+		self.assertIn("cambió después de que lo aprobaran", str(ctx.exception))
+
+	def test_el_rollback_no_corre_sobre_un_plan_en_borrador(self):
+		plan = self._plan()
+		plan.action_back_to_draft()
+		with self.assertRaises(UserError):
+			plan.action_rollback()
+
+	def test_el_rollback_registra_su_propio_estado_previo(self):
+		"""El «antes» de la reversión es lo que había, no el punto de retorno.
+
+		Confundirlos dejaba en la bitácora una entrada cuyo «antes» era en realidad su
+		«después», y con eso no se puede reconstruir la secuencia.
+		"""
+		transporte = Transporte(gets=[
+			Respuesta(404, NO_PROTEGIDA),      # previo del apply
+			Respuesta(200, PROTECCION),        # verificación del apply
+			Respuesta(200, PROTECCION),        # antes de revertir: está protegida
+			Respuesta(404, NO_PROTEGIDA),      # post-rollback
+		])
+		plan = self._aplicado(transporte)
+		self._revertir(plan, transporte)
+
+		entrada = self.env["repo.audit.log"].search(
+			[("event_type", "=", "write_rolled_back")], order="id desc", limit=1)
+		antes = json.loads(entrada.previous_state_json)
+		self.assertTrue(antes["protected"],
+						"el estado previo de la reversión es la rama YA protegida")
+		payload = json.loads(entrada.payload_json)
+		self.assertEqual(payload["restaurado_a"], {"protected": False})
+		self.assertEqual(payload["plan_fingerprint"], plan.approval_fingerprint)
+
+	def test_revertir_una_sola_operacion_usa_el_mismo_embudo(self):
+		transporte = Transporte(gets=[
+			Respuesta(404, NO_PROTEGIDA), Respuesta(200, PROTECCION),
+			Respuesta(200, PROTECCION), Respuesta(404, NO_PROTEGIDA)])
+		plan = self._aplicado(transporte)
+
+		Backend = type(self.backend)
+		original = Backend.write_client
+		Backend.write_client = lambda s, transport=None: original(s, transport=transporte)
+		try:
+			plan.operation_ids.action_rollback_operation()
+		finally:
+			Backend.write_client = original
+
+		self.assertEqual(plan.operation_ids.state, "rolled_back")
+		self.assertEqual(plan.state, "rolled_back")
+
+	def test_revertir_una_operacion_tambien_exige_la_huella(self):
+		transporte = Transporte(gets=[
+			Respuesta(404, NO_PROTEGIDA), Respuesta(200, PROTECCION)])
+		plan = self._aplicado(transporte)
+		plan.operation_ids.payload_json = json.dumps({"enforce_admins": True})
+		with self.assertRaises(UserError):
+			plan.operation_ids.action_rollback_operation()
+
+	def test_produccion_tampoco_puede_revertir(self):
+		transporte = Transporte(gets=[
+			Respuesta(404, NO_PROTEGIDA), Respuesta(200, PROTECCION)])
+		plan = self._aplicado(transporte)
+		self.backend.environment = "production"
+		with self.assertRaises(UserError) as ctx:
+			plan.action_rollback()
+		self.assertIn("sólo lectura", str(ctx.exception))
 
 	# --- las guardas de arriba siguen mandando ---------------------------------
 
