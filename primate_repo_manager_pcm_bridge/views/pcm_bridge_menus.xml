@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 - PrimateUY / License AGPL-3.0 or later -->
+<!--
+	En Fase 1 el puente es SÓLO un menú. El vínculo entre repos de deploy y repositorios
+	git, y la pre-validación de promociones contra el estado de PCM, son de F6: meterlos
+	acá ataría el core a un modelo de PCM que todavía no hace falta.
+-->
+<odoo>
+
+	<menuitem id="menu_pcm_repo_manager"
+			  name="Repositorios"
+			  parent="primate_cloud_manager.menu_primate_cloud_root"
+			  action="primate_repo_manager.action_repo_repository"
+			  groups="primate_repo_manager.group_repo_reader"
+			  sequence="60"/>
+
+</odoo>

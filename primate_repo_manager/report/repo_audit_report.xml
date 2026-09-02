@@ -46,7 +46,7 @@
 						<h1 class="mt0">Auditoría de repositorios</h1>
 						<p class="text-muted">
 							<span t-field="run.backend_id.owner_login"/> ·
-							<span t-field="run.started_at"/>
+							<span t-esc="run._report_date()"/>
 						</p>
 
 						<div class="alert alert-secondary">
@@ -84,6 +84,12 @@
 								</tr>
 							</tbody>
 						</table>
+						<p class="small text-muted" t-if="run._report_aside_total()">
+							<span t-esc="run._report_aside_total()"/> de estos hallazgos se
+							desarrollan en secciones propias más abajo: los repositorios que no
+							se pudieron revisar, los que no se pudieron auditar y la adopción de
+							convenciones.
+						</p>
 
 						<!-- ============ Leyenda de moduladores ============ -->
 						<div class="alert alert-light border" t-if="run._report_has_modulated()">
@@ -114,17 +120,20 @@
 									plan pago. La cuenta de Primate está en el plan gratuito, así
 									que en esos repositorios las reglas no se pueden activar
 									<em>ni consultar</em>. Son
-									<strong><span t-esc="len(plan)"/></strong> de
-									<span t-esc="run.repos_total"/>.
+									<strong t-esc="run._report_plural(len(plan), 'repositorio')"/>
+									de <span t-esc="run.repos_total"/>.
 								</p>
 								<p class="text-muted small">
 									Esto no se arregla cambiando el sistema ni los permisos:
 									requiere una decisión sobre el plan contratado.
 								</p>
 								<ul>
-									<li t-foreach="plan" t-as="h">
-										<span t-field="h.repository_id.full_name"/>
-										<span class="text-muted"> — <span t-field="h.subject"/></span>
+									<li t-foreach="plan" t-as="fila">
+										<span t-field="fila['repository'].full_name"/>
+										<span class="text-muted small">
+											— <span t-esc="run._report_plural(fila['count'], 'rama')"/>:
+											<span t-esc="', '.join(fila['branches'])"/>
+										</span>
 									</li>
 								</ul>
 							</div>
@@ -135,16 +144,21 @@
 									En estos repositorios la aplicación que hace la auditoría no
 									tiene nivel de administrador, y GitHub no le permite leer la
 									configuración de protección. <strong>No quiere decir que
-									estén desprotegidos</strong>: quiere decir que no lo sabemos.
-									Son <strong><span t-esc="len(permiso)"/></strong>.
+									estén desprotegidos</strong>: quiere decir que no lo sabemos,
+									y mientras no lo sepamos no podemos garantizar reglas sobre
+									esos repositorios.
+									Son <strong t-esc="run._report_plural(len(permiso), 'repositorio')"/>.
 								</p>
 								<p class="text-muted small">
 									Se resuelve reinstalando la aplicación desde la cuenta dueña
 									de los repositorios. No requiere ningún gasto.
 								</p>
 								<ul>
-									<li t-foreach="permiso" t-as="h">
-										<span t-field="h.repository_id.full_name"/>
+									<li t-foreach="permiso" t-as="fila">
+										<span t-field="fila['repository'].full_name"/>
+										<span class="text-muted small">
+											— <span t-esc="run._report_plural(fila['count'], 'rama')"/>
+										</span>
 									</li>
 								</ul>
 							</div>
@@ -192,17 +206,26 @@
 						</t>
 
 						<!-- ============ Repos no auditados ============ -->
-						<t t-set="fallidos" t-value="run._report_finding('repo_sync_error', todos=True)"/>
+						<t t-set="fallidos" t-value="run._report_unaudited()"/>
 						<div t-if="fallidos">
 							<h3>Repositorios no auditados</h3>
+							<p class="small">
+								De estos repositorios <strong>no sabemos nada</strong>: lo que
+								dice el resto del informe no los incluye.
+							</p>
 							<table class="table table-sm">
 								<thead>
-									<tr><th>Repositorio</th><th>Motivo</th></tr>
+									<tr><th>Repositorio</th><th>Qué pasó</th></tr>
 								</thead>
 								<tbody>
-									<tr t-foreach="fallidos" t-as="h">
-										<td><span t-field="h.repository_id.full_name"/></td>
-										<td class="small text-muted"><span t-field="h.detail"/></td>
+									<tr t-foreach="fallidos" t-as="fila">
+										<td><span t-field="fila['repository'].full_name"/></td>
+										<td class="small">
+											<span t-esc="fila['reason']"/>
+											<span class="text-muted" t-if="fila['technical']">
+												(<span t-esc="fila['technical']"/>)
+											</span>
+										</td>
 									</tr>
 								</tbody>
 							</table>

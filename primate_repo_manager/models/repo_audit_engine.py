@@ -265,12 +265,13 @@ class RepoAuditEngine(models.AbstractModel):
 			_("Adopción de convenciones en %s repositorios") % len(repos),
 			detail=_(
 				"De %(ramas)s ramas relevadas: %(prod)s de producción, %(support)s de "
-				"support, %(staging)s de staging. %(main)s repositorio(s) usan main o "
-				"master como rama por defecto."
+				"support, %(staging)s de staging. Con main o master como rama por "
+				"defecto: %(main)s."
 			) % {
 				"ramas": len(ramas), "prod": por_rol.get("prod", 0),
 				"support": por_rol.get("support", 0), "staging": por_rol.get("staging", 0),
-				"main": len(fuera_de_convencion),
+				"main": run._report_plural(
+					len(fuera_de_convencion), "repositorio"),
 			},
 			observed={
 				"branches_total": len(ramas),

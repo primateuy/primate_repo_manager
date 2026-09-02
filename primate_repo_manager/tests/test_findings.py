@@ -222,3 +222,76 @@ class TestFindings(TransactionCase):
 		self.env["repo.audit.engine"].evaluate(self.run)
 
 		self.assertEqual(len(self.run.finding_ids), primera)
+
+	# --- coherencia del informe ---
+
+	def test_el_resumen_suma_todos_los_hallazgos_sin_excepciones(self):
+		"""El conteo del resumen tiene que dar el total. Sin asteriscos.
+
+		Un lector que suma las severidades y no llega al total de hallazgos deja de
+		confiar en el resto del documento, y con razón: si esa cuenta no cierra, no hay
+		motivo para creerle a las demás.
+		"""
+		repo = self._repo("cliente-suma")
+		self.env["repo.branch"].create({
+			"repository_id": repo.id, "name": "19.0", "role": "base",
+			"protected": False, "protection_readable": True})
+		self._repo("roto-suma", sync_state="error", sync_error="403 sin acceso")
+		ilegible = self._repo("ilegible-suma")
+		self.env["repo.branch"].create({
+			"repository_id": ilegible.id, "name": "19.0", "role": "base",
+			"protection_readable": False, "protection_cause": "plan_limit"})
+
+		self.env["repo.audit.engine"].evaluate(self.run)
+
+		suma = sum(fila["count"] for fila in self.run._report_severity_summary())
+		self.assertEqual(
+			suma, len(self.run.finding_ids),
+			"el resumen tiene que contar TODOS los hallazgos, incluidos los que se "
+			"detallan en secciones propias")
+
+	def test_los_que_van_aparte_se_declaran(self):
+		self._repo("roto-aparte", sync_state="error", sync_error="403")
+
+		self.env["repo.audit.engine"].evaluate(self.run)
+
+		self.assertTrue(self.run._report_aside_total(),
+						"el resumen tiene que poder decir cuántos se desarrollan aparte")
+
+	def test_los_ilegibles_se_agrupan_por_repositorio(self):
+		"""El número que importa es cuántos repos quedan fuera de control, no cuántas ramas."""
+		repo = self._repo("multi-rama")
+		for nombre in ("17.0", "18.0", "19.0"):
+			self.env["repo.branch"].create({
+				"repository_id": repo.id, "name": nombre, "role": "base",
+				"protection_readable": False, "protection_cause": "plan_limit"})
+
+		self.env["repo.audit.engine"].evaluate(self.run)
+
+		filas = self.run._report_unreadable("plan_limit")
+		self.assertEqual(len(filas), 1, "tres ramas de un repo son UN repositorio")
+		self.assertEqual(filas[0]["count"], 3)
+
+	def test_el_motivo_del_repo_no_auditado_esta_en_lenguaje_del_informe(self):
+		self._repo("sin-acceso", sync_state="error",
+				   sync_error="GitHub 403: Resource not accessible by integration")
+
+		self.env["repo.audit.engine"].evaluate(self.run)
+
+		fila = self.run._report_unaudited()[0]
+		self.assertIn("no tiene acceso", fila["reason"])
+		self.assertIn("permisos", fila["reason"])
+		self.assertIn("403", fila["technical"], "el error técnico se conserva entre paréntesis")
+
+	def test_ninguna_remediacion_esta_reciclada_de_otro_tipo(self):
+		"""Cada tipo tiene la acción que le corresponde, no la del vecino."""
+		from ..models.repo_audit_finding import REMEDIATION_BY_TYPE
+
+		self.assertEqual(
+			REMEDIATION_BY_TYPE["commit_format_violations"], "enforce_commit_convention",
+			"el formato de commits no se arregla con reglas de protección de rama")
+		self.assertEqual(REMEDIATION_BY_TYPE["signed_commits_missing"], "configure_signing")
+		self.assertEqual(REMEDIATION_BY_TYPE["repo_sync_error"], "check_app_access")
+		# apply_ruleset queda sólo donde de verdad se aplica un ruleset de protección.
+		con_ruleset = [t for t, a in REMEDIATION_BY_TYPE.items() if a == "apply_ruleset"]
+		self.assertEqual(con_ruleset, ["branch_unprotected"])

@@ -81,6 +81,9 @@ REMEDIATION_ACTIONS = [
 	("reinstall_app", "Reinstalar la App con una cuenta con admin"),
 	("upgrade_plan", "Requiere decisión de plan de GitHub"),
 	("define_required_checks", "Definir los checks requeridos"),
+	("enforce_commit_convention", "Corregir la convención de mensajes de commit"),
+	("configure_signing", "Configurar la firma de commits del equipo"),
+	("check_app_access", "Revisar el acceso de la App al repositorio"),
 	("review_manually", "Revisar a mano"),
 ]
 
@@ -89,9 +92,9 @@ REMEDIATION_BY_TYPE = {
 	"permission_admin_exceeded": "revoke_permission",
 	"permission_exceeded": "revoke_permission",
 	"branch_unprotected": "apply_ruleset",
-	"repo_sync_error": "review_manually",
-	"signed_commits_missing": "review_manually",
-	"commit_format_violations": "apply_ruleset",
+	"repo_sync_error": "check_app_access",
+	"signed_commits_missing": "configure_signing",
+	"commit_format_violations": "enforce_commit_convention",
 	"classification_missing": "set_classification",
 	"fork_behind_upstream": "sync_fork",
 	"pr_stale": "review_manually",
@@ -203,6 +206,12 @@ class RepoAuditFinding(models.Model):
 			"reinstall_app": _("Reinstalar la aplicación con permisos de administrador."),
 			"upgrade_plan": _("Requiere una decisión sobre el plan de GitHub."),
 			"define_required_checks": _("Definir qué controles de CI son obligatorios."),
+			"enforce_commit_convention": _(
+				"Corregir la convención de mensajes de commit del equipo."),
+			"configure_signing": _(
+				"Configurar la firma de commits en las cuentas del equipo."),
+			"check_app_access": _(
+				"Revisar los permisos de la aplicación sobre este repositorio."),
 			"review_manually": _("Revisar a mano."),
 		}
 		return frases.get(self.remediation_action, "")

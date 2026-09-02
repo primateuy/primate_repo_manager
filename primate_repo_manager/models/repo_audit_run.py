@@ -165,19 +165,25 @@ class RepoAuditRun(models.Model):
 		resumen = []
 		colores = self._report_severity_colors()
 		for clave in ("critical", "high", "medium", "info"):
-			de_tabla = self.finding_ids.filtered(
-				lambda f, c=clave: f.severity == c
-				and f.finding_type not in self.TIPOS_CON_SECCION_PROPIA)
-			aparte = self.finding_ids.filtered(
-				lambda f, c=clave: f.severity == c
-				and f.finding_type in self.TIPOS_CON_SECCION_PROPIA)
-			if de_tabla or aparte:
+			todos = self.finding_ids.filtered(lambda f, c=clave: f.severity == c)
+			aparte = todos.filtered(
+				lambda f: f.finding_type in self.TIPOS_CON_SECCION_PROPIA)
+			if todos:
 				resumen.append({
 					"key": clave, "label": etiquetas.get(clave, clave),
-					"count": len(de_tabla), "aside": len(aparte),
+					# El conteo es de TODOS los hallazgos de esa severidad, sin
+					# excepciones: si el resumen no suma el total, el lector deja de
+					# confiar en el resto del documento.
+					"count": len(todos), "aside": len(aparte),
 					"meaning": significados[clave], "color": colores[clave],
 				})
 		return resumen
+
+	def _report_aside_total(self):
+		"""Cuántos hallazgos se desarrollan en secciones propias en vez de en las tablas."""
+		self.ensure_one()
+		return len(self.finding_ids.filtered(
+			lambda f: f.finding_type in self.TIPOS_CON_SECCION_PROPIA))
 
 	def _report_findings_by_severity(self):
 		"""Hallazgos agrupados, de lo más grave a lo informativo."""
@@ -208,11 +214,57 @@ class RepoAuditRun(models.Model):
 		}
 
 	def _report_unreadable(self, causa):
-		"""Los que no se pudieron leer, separados por causa: plan vs permisos."""
+		"""Agrupado POR REPOSITORIO, no por rama.
+
+		El número que importa en la conversación del plan es cuántos repositorios quedan
+		fuera de control, no cuántas ramas: un repo con seis ramas ilegibles es un
+		repositorio, y contar ramas contra un total de repositorios compara peras con
+		manzanas.
+		"""
 		self.ensure_one()
-		return self.finding_ids.filtered(
+		hallazgos = self.finding_ids.filtered(
 			lambda f: f.finding_type == "branch_protection_unreadable"
 			and f.unreadable_cause == causa)
+		por_repo = {}
+		for hallazgo in hallazgos:
+			repo = hallazgo.repository_id
+			por_repo.setdefault(repo, []).append(hallazgo.subject or "")
+		return [
+			{"repository": repo, "branches": sorted(ramas), "count": len(ramas)}
+			for repo, ramas in sorted(por_repo.items(), key=lambda kv: kv[0].full_name or "")
+		]
+
+	def _report_unaudited(self):
+		"""Repos no auditados, con el motivo en lenguaje del informe.
+
+		El error crudo de la API no le dice nada a quien lee: se traduce a qué pasó y qué
+		hacer, y el texto técnico queda entre paréntesis para quien lo necesite.
+		"""
+		self.ensure_one()
+		filas = []
+		for hallazgo in self.finding_ids.filtered(
+				lambda f: f.finding_type == "repo_sync_error"):
+			tecnico = (hallazgo.detail or "").strip()
+			if "403" in tecnico or "not accessible" in tecnico.lower():
+				motivo = _(
+					"La aplicación no tiene acceso a este repositorio. Se resuelve con la "
+					"misma revisión de permisos descrita más arriba.")
+			elif "404" in tecnico:
+				motivo = _(
+					"El repositorio no estaba disponible al momento de la auditoría; puede "
+					"haber sido renombrado o eliminado.")
+			elif "rate" in tecnico.lower() or "cuota" in tecnico.lower():
+				motivo = _(
+					"Se agotó la cuota de consultas a GitHub. Se resuelve volviendo a "
+					"correr la auditoría más tarde.")
+			else:
+				motivo = _("No se pudo completar la lectura de este repositorio.")
+			filas.append({
+				"repository": hallazgo.repository_id,
+				"reason": motivo,
+				"technical": tecnico,
+			})
+		return filas
 
 	def _report_finding(self, tipo, todos=False):
 		self.ensure_one()
@@ -223,3 +275,22 @@ class RepoAuditRun(models.Model):
 		"""¿Hay alguna severidad ajustada? Si no, la leyenda sobra."""
 		self.ensure_one()
 		return bool(self.finding_ids.filtered("severity_modulated"))
+
+	def _report_date(self):
+		"""Fecha en dd/mm/yyyy y hora en 24 h, como el resto del documento en español."""
+		self.ensure_one()
+		if not self.started_at:
+			return ""
+		local = fields.Datetime.context_timestamp(self, self.started_at)
+		return local.strftime("%d/%m/%Y %H:%M")
+
+	@api.model
+	def _report_plural(self, cantidad, singular, plural=None):
+		"""«1 repositorio» y no «1 repositorios».
+
+		Es un detalle, pero el informe se lee en una reunión y los detalles de redacción
+		son los que hacen que un documento parezca cuidado o generado.
+		"""
+		if cantidad == 1:
+			return "%s %s" % (cantidad, singular)
+		return "%s %s" % (cantidad, plural or "%ss" % singular)
