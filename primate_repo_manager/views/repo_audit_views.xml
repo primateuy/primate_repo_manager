@@ -43,6 +43,9 @@
 					<field name="repos_total" invisible="1"/>
 					<field name="repos_done" invisible="1"/>
 					<field name="repos_error" invisible="1"/>
+					<field name="finding_count" invisible="1"/>
+					<field name="critical_count" invisible="1"/>
+					<field name="high_count" invisible="1"/>
 					<field name="progress" widget="repo_live_progress" nolabel="1"/>
 					<group>
 						<group>
@@ -66,6 +69,114 @@
 		<field name="name">Auditorías</field>
 		<field name="res_model">repo.audit.run</field>
 		<field name="view_mode">list,form</field>
+	</record>
+
+	<!-- ==================================================================
+		 Hallazgos. Es lo que la auditoría produce: sin una lista con
+		 columnas útiles, el resultado sólo existe dentro del PDF.
+		 La pantalla completa —agrupada, con acciones de remediación— es A2;
+		 esto es lo mínimo para poder leer el resultado desde la aplicación.
+		 ================================================================== -->
+
+	<record id="view_repo_audit_finding_list" model="ir.ui.view">
+		<field name="name">repo.audit.finding.list</field>
+		<field name="model">repo.audit.finding</field>
+		<field name="arch" type="xml">
+			<list string="Hallazgos" create="false"
+				  decoration-danger="severity == 'critical'"
+				  decoration-warning="severity == 'high'"
+				  decoration-muted="severity == 'info'">
+				<field name="severity" widget="badge" optional="show"
+					   decoration-danger="severity == 'critical'"
+					   decoration-warning="severity == 'high'"/>
+				<field name="repository_id" optional="show"/>
+				<field name="finding_type" optional="show"/>
+				<field name="subject" optional="show"/>
+				<field name="summary"/>
+				<field name="unreadable_cause" optional="hide"/>
+				<field name="remediation_action" optional="hide"/>
+				<field name="is_destructive" optional="hide"/>
+				<field name="severity_modulated" optional="hide"/>
+				<field name="run_id" optional="hide"/>
+				<field name="severity_order" column_invisible="1"/>
+			</list>
+		</field>
+	</record>
+
+	<record id="view_repo_audit_finding_form" model="ir.ui.view">
+		<field name="name">repo.audit.finding.form</field>
+		<field name="model">repo.audit.finding</field>
+		<field name="arch" type="xml">
+			<form string="Hallazgo" create="false" edit="false">
+				<sheet>
+					<div class="oe_title"><h1><field name="summary"/></h1></div>
+					<group>
+						<group>
+							<field name="severity"/>
+							<field name="severity_modulated"/>
+							<field name="finding_type"/>
+							<field name="subject"/>
+						</group>
+						<group>
+							<field name="run_id"/>
+							<field name="repository_id"/>
+							<field name="unreadable_cause" invisible="not unreadable_cause"/>
+						</group>
+					</group>
+					<group string="Detalle" invisible="not detail">
+						<field name="detail" nolabel="1"/>
+					</group>
+					<group string="Remediación propuesta"
+						   invisible="not remediation_action">
+						<field name="remediation_action"/>
+						<field name="is_destructive"/>
+						<field name="remediation_payload"/>
+					</group>
+					<group string="Esperado contra observado"
+						   invisible="not expected_json and not observed_json">
+						<field name="expected_json"/>
+						<field name="observed_json"/>
+					</group>
+				</sheet>
+			</form>
+		</field>
+	</record>
+
+	<record id="view_repo_audit_finding_search" model="ir.ui.view">
+		<field name="name">repo.audit.finding.search</field>
+		<field name="model">repo.audit.finding</field>
+		<field name="arch" type="xml">
+			<search string="Hallazgos">
+				<field name="summary"/>
+				<field name="repository_id"/>
+				<field name="subject"/>
+				<filter name="criticos" string="Críticos"
+						domain="[('severity', '=', 'critical')]"/>
+				<filter name="altos" string="Altos" domain="[('severity', '=', 'high')]"/>
+				<separator/>
+				<filter name="destructivas" string="Remediación destructiva"
+						domain="[('is_destructive', '=', True)]"/>
+				<filter name="no_legibles" string="No se pudieron leer"
+						domain="[('unreadable_cause', '!=', False)]"/>
+				<group>
+					<filter name="g_sev" string="Severidad" domain="[]"
+							context="{'group_by': 'severity'}"/>
+					<filter name="g_tipo" string="Tipo" domain="[]"
+							context="{'group_by': 'finding_type'}"/>
+					<filter name="g_repo" string="Repositorio" domain="[]"
+							context="{'group_by': 'repository_id'}"/>
+					<filter name="g_corrida" string="Corrida" domain="[]"
+							context="{'group_by': 'run_id'}"/>
+				</group>
+			</search>
+		</field>
+	</record>
+
+	<record id="action_repo_audit_finding" model="ir.actions.act_window">
+		<field name="name">Hallazgos</field>
+		<field name="res_model">repo.audit.finding</field>
+		<field name="view_mode">list,form</field>
+		<field name="context">{'search_default_g_sev': 1}</field>
 	</record>
 
 	<record id="view_repo_repository_list" model="ir.ui.view">

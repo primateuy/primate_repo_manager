@@ -11,6 +11,9 @@
 	<menuitem id="menu_repo_audit" name="Auditorías" sequence="20"
 			  parent="menu_repo_root" action="action_repo_audit_run"/>
 
+	<menuitem id="menu_repo_findings" name="Hallazgos" sequence="25"
+			  parent="menu_repo_root" action="action_repo_audit_finding"/>
+
 	<menuitem id="menu_repo_write_plan" name="Planes de escritura" sequence="30"
 			  parent="menu_repo_root" action="action_repo_write_plan"
 			  groups="group_repo_lead"/>

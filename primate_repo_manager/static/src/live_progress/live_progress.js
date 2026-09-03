@@ -8,25 +8,43 @@
  * registro cuando se cargó la página. Para ver avanzar una auditoría había que refrescar
  * a mano, y eso no es usable: el usuario no puede saber si el trabajo avanza o murió.
  *
- * NO RECARGA EL REGISTRO MIENTRAS CORRE. Se pinta con lo que llega por el bus. Recargar en
- * cada repositorio haría parpadear el formulario entero para mover un número, y con
- * cientos de repositorios sería una recarga cada pocos segundos. La única recarga es al
- * terminar, una sola vez, para que el resto de la pantalla quede al día.
+ * EL REGISTRO ES LA BASE, EL BUS ES LA CAPA DE ENCIMA. Lo que se pinta sale SIEMPRE de
+ * `props.record.data`, y los avisos del bus se superponen cuando los hay. La primera
+ * versión hacía lo contrario —copiaba el registro a un estado interno en `setup()`— y eso
+ * estaba mal por una razón que no se ve leyendo el código: `setup()` corre UNA vez, al
+ * montar el componente, y no vuelve a correr cuando el registro cambia. Al apretar
+ * «Auditar» el formulario recarga el registro pero el componente seguía mostrando la
+ * copia vieja: la pantalla decía «todavía no se ejecutó» con la corrida corriendo.
+ *
+ * Y LA SUSCRIPCIÓN SE REHACE CUANDO CAMBIA EL REGISTRO. Mismo error, peor consecuencia:
+ * un formulario abierto en «Nuevo» todavía no tiene id, así que en `setup()` no había a
+ * qué canal suscribirse. Al guardar aparecía el id, pero nadie volvía a mirar. El
+ * componente quedaba mudo para siempre — que es exactamente lo que pasó en el primer
+ * recorrido real. Ahora la suscripción se revisa en cada cambio de props.
+ *
+ * NO RECARGA EL REGISTRO MIENTRAS CORRE. Recargar en cada repositorio haría parpadear el
+ * formulario entero para mover un número. La única recarga es al terminar, una sola vez.
  *
  * DEGRADA DICIENDO LA VERDAD. Si no llegan avisos, no finge una barra que avanza ni se
- * queda muda: dice que hace rato que no recibe novedades y por qué puede pasar. Una
- * corrida lenta y una colgada se ven distinto.
+ * queda muda: dice que hace rato que no recibe novedades y por qué puede pasar.
  */
 
-import { Component, onWillUnmount, useState } from "@odoo/owl";
+import { Component, onWillUnmount, onWillUpdateProps, useState } from "@odoo/owl";
 import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
 import { standardFieldProps } from "@web/views/fields/standard_field_props";
 import { _t } from "@web/core/l10n/translation";
 
-// Cuántos segundos sin novedades antes de avisar que algo puede estar mal. Tiene que ser
-// holgado: un repositorio grande tarda más de diez segundos y no por eso está colgado.
-const SILENCIO_SOSPECHOSO = 20;
+// Cuántos segundos sin novedades antes de avisar que algo puede estar mal.
+//
+// Estaba en 20 y era demasiado poco: en la primera corrida mirada en un navegador,
+// `webOCA` —que es un fork con muchas ramas— tardó 37 segundos, y el aviso de «sin
+// novedades» saltó en medio de un recorrido perfectamente sano. Un aviso que salta cuando
+// no pasa nada malo enseña a ignorarlo, que es la peor cosa que le puede pasar a un aviso.
+// 60 segundos deja pasar al repositorio más lento que se midió con holgura y sigue
+// atrapando una corrida realmente detenida en el minuto.
+const SILENCIO_SOSPECHOSO = 60;
+const AVISO = "repo_manager.audit_progress";
 
 export class LiveProgress extends Component {
     static template = "primate_repo_manager.LiveProgress";
@@ -35,48 +53,65 @@ export class LiveProgress extends Component {
     setup() {
         this.bus = useService("bus_service");
         this.action = useService("action");
-        this.orm = useService("orm");
 
-        const registro = this.props.record;
+        // `vivo` es lo último que dijo el bus, o null si todavía no dijo nada. Nunca se
+        // inicializa con el registro: para eso está el registro.
         this.state = useState({
-            estado: registro.data.state,
-            total: registro.data.repos_total || 0,
-            hechos: registro.data.repos_done || 0,
-            errores: registro.data.repos_error || 0,
-            actual: null,
-            hallazgos: 0,
-            criticos: 0,
-            altos: 0,
-            segundos: 0,
-            silencio: 0,
+            vivo: null,
             recibioAlgo: false,
+            silencio: 0,
+            ahora: Date.now(),
         });
 
-        this.corridaId = registro.resId;
-        this.canal = `repo.audit.run_${this.corridaId}`;
+        this.corridaId = null;
+        this.canal = null;
         this.yaRecargo = false;
-
         this._alRecibir = (payload) => this._recibir(payload);
-        if (this.corridaId) {
-            this.bus.addChannel(this.canal);
-            this.bus.subscribe("repo_manager.audit_progress", this._alRecibir);
-        }
+        this.bus.subscribe(AVISO, this._alRecibir);
+        this._sincronizarCanal(this.props.record);
+
+        onWillUpdateProps((siguientes) => this._sincronizarCanal(siguientes.record));
 
         // Un solo reloj para el cronómetro y para detectar el silencio.
         this.reloj = setInterval(() => {
-            if (this.state.estado === "running") {
-                this.state.segundos += 1;
+            this.state.ahora = Date.now();
+            if (this.corriendo) {
                 this.state.silencio += 1;
             }
         }, 1000);
 
         onWillUnmount(() => {
             clearInterval(this.reloj);
-            if (this.corridaId) {
-                this.bus.unsubscribe("repo_manager.audit_progress", this._alRecibir);
-                this.bus.deleteChannel(this.canal);
-            }
+            this.bus.unsubscribe(AVISO, this._alRecibir);
+            this._dejarCanal();
         });
+    }
+
+    // --- suscripción -------------------------------------------------------
+
+    _dejarCanal() {
+        if (this.canal) {
+            this.bus.deleteChannel(this.canal);
+            this.canal = null;
+        }
+    }
+
+    _sincronizarCanal(registro) {
+        const id = registro.resId;
+        if (id === this.corridaId) {
+            return;
+        }
+        this._dejarCanal();
+        this.corridaId = id;
+        // Cambiar de corrida invalida todo lo que el bus había dicho de la anterior.
+        this.state.vivo = null;
+        this.state.recibioAlgo = false;
+        this.state.silencio = 0;
+        this.yaRecargo = false;
+        if (id) {
+            this.canal = `repo.audit.run_${id}`;
+            this.bus.addChannel(this.canal);
+        }
     }
 
     _recibir(payload) {
@@ -86,29 +121,37 @@ export class LiveProgress extends Component {
         }
         this.state.recibioAlgo = true;
         this.state.silencio = 0;
-        this.state.estado = payload.state;
-        this.state.total = payload.total;
-        this.state.hechos = payload.done;
-        this.state.errores = payload.error;
-        this.state.actual = payload.actual || this.state.actual;
-        this.state.hallazgos = payload.findings;
-        this.state.criticos = payload.criticos;
-        this.state.altos = payload.altos;
+        this.state.vivo = payload;
 
         if (["done", "partial", "error"].includes(payload.state) && !this.yaRecargo) {
             // Una sola recarga, al final: el resto del formulario —fechas, chatter— tiene
             // que quedar al día, y esto ya no interrumpe nada porque terminó.
             this.yaRecargo = true;
-            this.state.actual = null;
             this.props.record.load();
         }
     }
 
+    // --- lo que se pinta ---------------------------------------------------
+
+    get datos() {
+        const d = this.props.record.data;
+        const base = {
+            state: d.state,
+            total: d.repos_total || 0,
+            done: d.repos_done || 0,
+            error: d.repos_error || 0,
+            actual: null,
+            findings: d.finding_count || 0,
+            criticos: d.critical_count || 0,
+            altos: d.high_count || 0,
+        };
+        return this.state.vivo ? Object.assign(base, this.state.vivo) : base;
+    }
+
     get nombreCuenta() {
-        // En Odoo 19 un many2one llega como {id, display_name}; en versiones previas
-        // llegaba como [id, nombre]. Se contemplan las dos porque una regresión acá no
-        // rompe nada visible: simplemente deja de aparecer el nombre, y eso pasa
-        // desapercibido hasta que alguien lo busca.
+        // En Odoo 19 un many2one llega como {id, display_name}; antes llegaba como
+        // [id, nombre]. Se contemplan las dos: una regresión acá no rompe nada visible
+        // —sólo deja de aparecer el nombre— y eso pasa desapercibido.
         const valor = this.props.record.data.backend_id;
         if (!valor) {
             return "";
@@ -117,23 +160,20 @@ export class LiveProgress extends Component {
     }
 
     get corriendo() {
-        return this.state.estado === "running";
+        return this.datos.state === "running";
     }
 
     get termino() {
-        return ["done", "partial"].includes(this.state.estado);
+        return ["done", "partial"].includes(this.datos.state);
     }
 
     get porcentaje() {
-        const total = this.state.total || 0;
-        if (!total) {
-            return 0;
-        }
-        return Math.round(((this.state.hechos + this.state.errores) / total) * 100);
+        const { total, done, error } = this.datos;
+        return total ? Math.round(((done + error) / total) * 100) : 0;
     }
 
     get hayErrores() {
-        return this.state.errores > 0;
+        return this.datos.error > 0;
     }
 
     get sinNovedades() {
@@ -141,13 +181,21 @@ export class LiveProgress extends Component {
     }
 
     get tiempo() {
-        const s = this.state.segundos;
+        // Se mide desde que arrancó la corrida, NO desde que se abrió la pantalla: quien
+        // entra a mirar una auditoría a mitad de camino tiene que ver cuánto lleva, no
+        // cuánto hace que está mirando.
+        const d = this.props.record.data;
+        if (!d.started_at) {
+            return "";
+        }
+        const hasta = d.finished_at ? d.finished_at.toMillis() : this.state.ahora;
+        const s = Math.max(0, Math.round((hasta - d.started_at.toMillis()) / 1000));
         return s < 60 ? _t("%s s", s) : _t("%s min %s s", Math.floor(s / 60), s % 60);
     }
 
     verHallazgos() {
         // Acción armada acá y no declarada en XML: la pantalla propia de hallazgos es A2.
-        // Con vistas por defecto ya se pueden ver y filtrar; cuando A2 exista, esta misma
+        // Con la lista que ya existe se pueden ver y filtrar; cuando A2 exista, esta misma
         // acción va a abrir las vistas buenas sin tocar el componente.
         this.action.doAction({
             type: "ir.actions.act_window",

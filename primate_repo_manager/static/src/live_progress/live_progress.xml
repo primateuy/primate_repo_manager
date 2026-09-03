@@ -23,17 +23,17 @@
 
             <div class="o_prm_live_datos">
                 <span class="o_prm_live_fraccion">
-                    <t t-esc="state.hechos + state.errores"/> de <t t-esc="state.total"/>
+                    <t t-esc="datos.done + datos.error"/> de <t t-esc="datos.total"/>
                 </span>
-                <span class="o_prm_ok">✓ <t t-esc="state.hechos"/> recorridos</span>
+                <span class="o_prm_ok">✓ <t t-esc="datos.done"/> recorridos</span>
                 <span t-att-class="hayErrores ? 'o_prm_alerta' : 'o_prm_apagado'">
-                    ⚠ <t t-esc="state.errores"/> con error
+                    ⚠ <t t-esc="datos.error"/> con error
                 </span>
                 <span class="o_prm_apagado">⏱ <t t-esc="tiempo"/></span>
             </div>
 
-            <div t-if="state.actual" class="o_prm_live_actual">
-                Ahora: <span class="o_prm_mono"><t t-esc="state.actual"/></span>
+            <div t-if="datos.actual" class="o_prm_live_actual">
+                Ahora: <span class="o_prm_mono"><t t-esc="datos.actual"/></span>
             </div>
 
             <div t-if="sinNovedades" class="o_prm_live_silencio">
@@ -56,25 +56,25 @@
                 <span t-if="!hayErrores">✓ Terminada</span>
                 <span t-else="">⚠ Terminada con errores</span>
                 <span class="o_prm_apagado">
-                    · <t t-esc="state.total"/> repositorios
-                    <t t-if="state.segundos"> en <t t-esc="tiempo"/></t>
+                    · <t t-esc="datos.total"/> repositorios
+                    <t t-if="tiempo"> en <t t-esc="tiempo"/></t>
                 </span>
             </div>
 
             <div t-if="hayErrores" class="o_prm_live_datos">
                 <span class="o_prm_alerta">
-                    <t t-esc="state.errores"/> no se pudieron recorrer del todo — están
+                    <t t-esc="datos.error"/> no se pudieron recorrer del todo — están
                     listados como hallazgo para que nadie suponga que se revisaron
                 </span>
             </div>
 
             <div class="o_prm_live_datos">
-                <span class="o_prm_live_fraccion"><t t-esc="state.hallazgos"/> hallazgos</span>
-                <span t-if="state.criticos" class="o_prm_critico">
-                    <t t-esc="state.criticos"/> críticos
+                <span class="o_prm_live_fraccion"><t t-esc="datos.findings"/> hallazgos</span>
+                <span t-if="datos.criticos" class="o_prm_critico">
+                    <t t-esc="datos.criticos"/> críticos
                 </span>
-                <span t-if="state.altos" class="o_prm_alerta">
-                    <t t-esc="state.altos"/> altos
+                <span t-if="datos.altos" class="o_prm_alerta">
+                    <t t-esc="datos.altos"/> altos
                 </span>
                 <button class="btn btn-primary btn-sm o_prm_boton"
                         t-on-click="verHallazgos">
@@ -85,7 +85,7 @@
 
         <!-- ============ Todavía no arrancó, o falló ============ -->
         <div t-else="" class="o_prm_live_quieto">
-            <t t-if="state.estado === 'error'">
+            <t t-if="datos.state === 'error'">
                 <span class="o_prm_critico">✕ La auditoría falló</span>
                 <span class="o_prm_apagado">— el motivo está en «Detalle del error»</span>
             </t>

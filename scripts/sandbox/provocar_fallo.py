@@ -19,10 +19,10 @@ NO ES PRODUCTO NI FIXTURE PERMANENTE. `sbx-desaparece` no forma parte del manifi
 `poblar_sandbox.py`: nace para una corrida y muere en ella.
 
 USO
-    python3 provocar_fallo.py crear      # deja el repositorio descartable listo
-    python3 provocar_fallo.py vigilar    # espera la corrida y lo borra en el momento
-    python3 provocar_fallo.py borrar     # limpieza manual, si algo quedó a medias
-    python3 provocar_fallo.py estado     # dice si existe
+    python3 provocar_fallo.py crear      # deja los dos repositorios descartables listos
+    python3 provocar_fallo.py vigilar    # espera la corrida y borra el que tiene que fallar
+    python3 provocar_fallo.py limpiar    # borra los dos, al terminar
+    python3 provocar_fallo.py estado     # dice cuáles existen
 
 El orden para mirarlo: `crear`, después `vigilar` en una terminal, y con el vigía
 esperando, apretar «Auditar» en Odoo.
@@ -42,12 +42,20 @@ import urllib.request
 ORG = "prm-sandbox"
 API = "https://api.github.com"
 NOMBRE = "sbx-desaparece"
+
+# EL COMPAÑERO EXISTE POR UNA RAZÓN DE ORDEN, no de cobertura. GitHub enumera la
+# instalación por id ascendente, así que un repositorio recién creado sale SIEMPRE último.
+# Con el descartable solo, el error cae en el último turno y la barra se tiñe recién al
+# cerrar: nunca se ve el ámbar mientras la corrida avanza, que es justo lo que hay que
+# mirar. `sbx-sobrevive` se crea DESPUÉS, queda detrás en la fila y no se borra, así que
+# después del fallo todavía queda un repositorio por recorrer y el ámbar se ve en marcha.
+COMPANERO = "sbx-sobrevive"
 RTF = ("/Users/darylyturraldelopez/Desktop/Odoo/Desarrollos Documentos/"
 	   "PRM(Primate Repo Manager)/token-poblado.rtf")
 
 # La corrida que se vigila tiene que incluir el repositorio descartable. Con 6 sembrados
 # más éste son 7: por debajo de eso, el vigía sabe que está mirando otra cosa.
-REPOS_ESPERADOS = 7
+REPOS_ESPERADOS = 8
 ESPERA_MAX = 600
 
 BD = os.environ.get("PRM_BD", "o19_primate_stg_12082026")
@@ -84,20 +92,34 @@ def pedir(metodo, ruta, cuerpo=None, tolerar=()):
 						 % (metodo, ruta, e.code, e.read().decode()[:300]))
 
 
-def crear():
-	code, _ = pedir("GET", "/repos/%s/%s" % (ORG, NOMBRE), tolerar=(404,))
+def _crear_uno(nombre, para_que):
+	code, _ = pedir("GET", "/repos/%s/%s" % (ORG, nombre), tolerar=(404,))
 	if code == 200:
-		print("ya existe %s/%s" % (ORG, NOMBRE))
+		print("ya existe %s/%s" % (ORG, nombre))
 		return
 	pedir("POST", "/orgs/%s/repos" % ORG, {
-		"name": NOMBRE, "private": False, "auto_init": True,
-		"description": "descartable: existe para provocar un fallo a mitad de corrida"})
-	print("creado %s/%s" % (ORG, NOMBRE))
+		"name": nombre, "private": False, "auto_init": True,
+		"description": para_que})
+	print("creado %s/%s" % (ORG, nombre))
+
+
+def crear():
+	# El orden importa: el que se borra tiene que quedar ANTES del que sobrevive.
+	_crear_uno(NOMBRE, "descartable: se borra a mitad de corrida para provocar el fallo")
+	_crear_uno(COMPANERO, "descartable: queda detrás del que falla, para que el ámbar "
+						  "se vea con la corrida todavía en marcha")
 
 
 def borrar():
+	"""Borra sólo el que tiene que fallar. El compañero se limpia con `limpiar`."""
 	code, _ = pedir("DELETE", "/repos/%s/%s" % (ORG, NOMBRE), tolerar=(404,))
 	print("borrado" if code == 204 else "no estaba (%s)" % code)
+
+
+def limpiar():
+	for nombre in (NOMBRE, COMPANERO):
+		code, _ = pedir("DELETE", "/repos/%s/%s" % (ORG, nombre), tolerar=(404,))
+		print("%s: %s" % (nombre, "borrado" if code == 204 else "no estaba"))
 
 
 def vigilar():
@@ -110,9 +132,10 @@ def vigilar():
 	"""
 	import psycopg2
 
-	code, _ = pedir("GET", "/repos/%s/%s" % (ORG, NOMBRE), tolerar=(404,))
-	if code != 200:
-		raise SystemExit("no existe %s/%s: corré primero `crear`" % (ORG, NOMBRE))
+	for nombre in (NOMBRE, COMPANERO):
+		code, _ = pedir("GET", "/repos/%s/%s" % (ORG, nombre), tolerar=(404,))
+		if code != 200:
+			raise SystemExit("falta %s/%s: corré primero `crear`" % (ORG, nombre))
 
 	cnx = psycopg2.connect(host="localhost", user="odoo", password="odoo", dbname=BD)
 	cnx.autocommit = True
@@ -155,10 +178,12 @@ def vigilar():
 
 
 TOKEN = token()
-ACCIONES = {"crear": crear, "borrar": borrar, "vigilar": vigilar}
+ACCIONES = {"crear": crear, "borrar": borrar, "limpiar": limpiar,
+			"vigilar": vigilar}
 accion = sys.argv[1] if len(sys.argv) > 1 else "estado"
 if accion in ACCIONES:
 	ACCIONES[accion]()
 else:
-	code, _ = pedir("GET", "/repos/%s/%s" % (ORG, NOMBRE), tolerar=(404,))
-	print("existe" if code == 200 else "no existe")
+	for nombre in (NOMBRE, COMPANERO):
+		code, _ = pedir("GET", "/repos/%s/%s" % (ORG, nombre), tolerar=(404,))
+		print("%s: %s" % (nombre, "existe" if code == 200 else "no existe"))
