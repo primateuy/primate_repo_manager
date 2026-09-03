@@ -26,6 +26,22 @@ SEVERITIES = [
 
 SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "info": 3}
 
+# LA MISMA SEVERIDAD, CON VALORES QUE ORDENAN SOLOS. Existe por una razón de pantalla y
+# no de modelo: al agrupar por un campo de selección, Odoo ordena los grupos por el VALOR
+# guardado, alfabéticamente, y no por el orden en que la selección está declarada. Con los
+# valores naturales eso deja «Informativo» arriba de «Medio» —critical, high, info,
+# medium— en una lista cuyo único propósito es triaje. El prefijo numérico es interno;
+# en pantalla se lee la misma palabra de siempre.
+SEVERITY_RANKS = [
+	("1_critical", "Crítico"),
+	("2_high", "Alto"),
+	("3_medium", "Medio"),
+	("4_info", "Informativo"),
+]
+RANK_BY_SEVERITY = {
+	"critical": "1_critical", "high": "2_high", "medium": "3_medium", "info": "4_info",
+}
+
 # Severidad BASE por tipo. Los moduladores la ajustan según plantilla y magnitud; sus
 # umbrales son configurables (ver res.config.settings), la lógica vive acá y está testeada.
 FINDING_TYPES = [
@@ -141,6 +157,11 @@ class RepoAuditFinding(models.Model):
 		SEVERITIES, string="Severidad", required=True, index=True)
 	severity_order = fields.Integer(
 		string="Orden", compute="_compute_severity_order", store=True)
+	severity_rank = fields.Selection(
+		SEVERITY_RANKS, string="Severidad (agrupada)",
+		compute="_compute_severity_order", store=True, index=True,
+		help="La misma severidad, con valores que ordenan bien al agrupar. Ver el "
+			 "comentario de SEVERITY_RANKS.")
 	severity_modulated = fields.Boolean(
 		string="Severidad ajustada",
 		help="Verdadero cuando un modulador la movió de su valor base. El informe lo "
@@ -175,6 +196,7 @@ class RepoAuditFinding(models.Model):
 	def _compute_severity_order(self):
 		for hallazgo in self:
 			hallazgo.severity_order = SEVERITY_ORDER.get(hallazgo.severity, 9)
+			hallazgo.severity_rank = RANK_BY_SEVERITY.get(hallazgo.severity, False)
 
 	@api.model
 	def build(self, run, finding_type, summary, repository=None, **kwargs):

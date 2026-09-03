@@ -35,6 +35,14 @@
 					<field name="state" widget="statusbar"/>
 				</header>
 				<sheet>
+					<div class="oe_button_box" name="button_box">
+						<button name="action_open_findings" type="object"
+								class="oe_stat_button" icon="fa-exclamation-triangle"
+								invisible="state in ('draft', 'running')">
+							<field name="finding_count" widget="statinfo"
+								   string="Hallazgos"/>
+						</button>
+					</div>
 					<div class="oe_title"><h1><field name="name"/></h1></div>
 					<!-- Los contadores se declaran invisibles a propósito: el componente los
 					     necesita cargados para pintar el estado inicial, pero mostrarlos ADEMÁS
@@ -86,12 +94,16 @@
 				  decoration-danger="severity == 'critical'"
 				  decoration-warning="severity == 'high'"
 				  decoration-muted="severity == 'info'">
-				<field name="severity" widget="badge" optional="show"
+				<!-- El orden es el de lectura: qué tan grave, dónde, de qué se trata.
+					 `optional` en las columnas anchas para que la fila entre sin scroll
+					 horizontal con nombres reales —`primateuy/stock-logistics-…OCA` mide
+					 lo que mide— y quien necesite más las prende. -->
+				<field name="severity" widget="badge"
 					   decoration-danger="severity == 'critical'"
 					   decoration-warning="severity == 'high'"/>
 				<field name="repository_id" optional="show"/>
 				<field name="finding_type" optional="show"/>
-				<field name="subject" optional="show"/>
+				<field name="subject" optional="hide"/>
 				<field name="summary"/>
 				<field name="unreadable_cause" optional="hide"/>
 				<field name="remediation_action" optional="hide"/>
@@ -99,6 +111,7 @@
 				<field name="severity_modulated" optional="hide"/>
 				<field name="run_id" optional="hide"/>
 				<field name="severity_order" column_invisible="1"/>
+				<field name="severity_rank" column_invisible="1"/>
 			</list>
 		</field>
 	</record>
@@ -150,6 +163,7 @@
 				<field name="summary"/>
 				<field name="repository_id"/>
 				<field name="subject"/>
+				<field name="run_id"/>
 				<filter name="criticos" string="Críticos"
 						domain="[('severity', '=', 'critical')]"/>
 				<filter name="altos" string="Altos" domain="[('severity', '=', 'high')]"/>
@@ -160,13 +174,18 @@
 						domain="[('unreadable_cause', '!=', False)]"/>
 				<group>
 					<filter name="g_sev" string="Severidad" domain="[]"
-							context="{'group_by': 'severity'}"/>
+							context="{'group_by': 'severity_rank'}"/>
 					<filter name="g_tipo" string="Tipo" domain="[]"
 							context="{'group_by': 'finding_type'}"/>
 					<filter name="g_repo" string="Repositorio" domain="[]"
 							context="{'group_by': 'repository_id'}"/>
 					<filter name="g_corrida" string="Corrida" domain="[]"
 							context="{'group_by': 'run_id'}"/>
+					<!-- Separa dos trabajos que hoy se ven iguales y no lo son: un techo
+						 de plan se resuelve con una decisión de plata, una App sin
+						 permisos se resuelve reinstalándola. -->
+					<filter name="g_causa" string="Causa de ilegibilidad" domain="[]"
+							context="{'group_by': 'unreadable_cause'}"/>
 				</group>
 			</search>
 		</field>
@@ -183,21 +202,223 @@
 		<field name="name">repo.repository.list</field>
 		<field name="model">repo.repository</field>
 		<field name="arch" type="xml">
-			<list string="Repositorios">
-				<field name="full_name"/>
+			<!-- `multi_edit`: seleccionar varios y editar la clasificación de una sola
+				 vez. Es el paso obligatorio de 43 repositorios reales; de a un formulario
+				 por vez no es un flujo, es un castigo. El `write` del modelo marca cada
+				 uno como «Definida a mano», así que el lote no abre ningún atajo: pasa
+				 por la misma puerta que la edición de a uno. -->
+			<list string="Repositorios" multi_edit="1" create="false">
+				<field name="full_name" readonly="1"/>
 				<field name="classification"/>
-				<field name="classification_source"/>
-				<field name="visibility"/>
-				<field name="default_branch"/>
-				<field name="is_fork"/>
+				<field name="classification_source" readonly="1"
+					   decoration-bf="classification_source == 'manual'"/>
+				<field name="finding_count" readonly="1" optional="show"/>
+				<field name="visibility" readonly="1"/>
+				<field name="default_branch" readonly="1" optional="hide"/>
+				<field name="is_fork" readonly="1"/>
 				<field name="governance_status" invisible="not is_fork"/>
-				<field name="branch_count"/>
-				<field name="collaborator_count"/>
-				<field name="open_pr_count"/>
-				<field name="sync_state" widget="badge"
+				<field name="branch_count" readonly="1" optional="hide"/>
+				<field name="collaborator_count" readonly="1" optional="hide"/>
+				<field name="open_pr_count" readonly="1" optional="hide"/>
+				<field name="sync_state" widget="badge" readonly="1"
 					   decoration-success="sync_state == 'done'"
 					   decoration-danger="sync_state == 'error'"/>
 			</list>
+		</field>
+	</record>
+
+	<record id="view_repo_repository_form" model="ir.ui.view">
+		<field name="name">repo.repository.form</field>
+		<field name="model">repo.repository</field>
+		<field name="arch" type="xml">
+			<form string="Repositorio" create="false">
+				<sheet>
+					<div class="oe_button_box" name="button_box">
+						<button name="action_open_findings" type="object"
+								class="oe_stat_button" icon="fa-exclamation-triangle">
+							<field name="finding_count" widget="statinfo"
+								   string="Hallazgos"/>
+						</button>
+					</div>
+					<div class="oe_title">
+						<h1><field name="full_name" readonly="1"/></h1>
+						<div><field name="description" readonly="1"/></div>
+					</div>
+					<group>
+						<group string="Qué es">
+							<!-- Lo único editable a mano de toda la pantalla, y va
+								 primero: es el paso obligatorio del flujo real. -->
+							<field name="classification"/>
+							<field name="classification_source" readonly="1"/>
+							<field name="visibility" readonly="1"/>
+							<field name="is_fork" readonly="1"/>
+							<field name="upstream_full_name" readonly="1"
+								   invisible="not is_fork"/>
+						</group>
+						<group string="Cómo está">
+							<field name="default_branch" readonly="1"/>
+							<field name="archived" readonly="1"/>
+							<field name="pushed_at" readonly="1"/>
+							<field name="backend_id" readonly="1"/>
+							<field name="last_run_id" readonly="1"/>
+						</group>
+					</group>
+
+					<!-- A3.4: la consecuencia dicha en pantalla y no escondida en un
+						 tooltip que nadie abre. Marcar un fork como gobernado cambia un
+						 hallazgo agregado por la evaluación completa: van a APARECER
+						 hallazgos que hoy no se ven, y eso no es una regresión. -->
+					<group string="Gobernanza del fork" invisible="not is_fork">
+						<field name="governance_status"/>
+						<div colspan="2" class="text-muted"
+							 invisible="governance_status != 'pending_migration'">
+							Mientras esté pendiente de migración, este fork produce
+							<b>un solo hallazgo agregado</b>. Al marcarlo gobernado se lo
+							evalúa contra el detalle completo de su plantilla y van a
+							aparecer los hallazgos que hoy están resumidos en ese uno.
+						</div>
+					</group>
+
+					<group string="Error de sincronización" invisible="not sync_error">
+						<field name="sync_error" nolabel="1" readonly="1"/>
+					</group>
+					<group string="Lo que no se pudo leer" invisible="not unreadable_json">
+						<div colspan="2" class="text-muted">
+							No es «no cumple»: es «no se pudo mirar». Distinguirlo es lo
+							que evita que el informe afirme de más.
+						</div>
+						<field name="unreadable_json" nolabel="1" readonly="1"/>
+					</group>
+
+					<notebook>
+						<page string="Ramas" name="ramas">
+							<field name="branch_ids" readonly="1">
+								<list string="Ramas" create="false"
+									  decoration-warning="not protection_readable">
+									<field name="name"/>
+									<field name="role"/>
+									<field name="is_default"/>
+									<field name="protected" widget="boolean_toggle"
+										   readonly="1"/>
+									<field name="protection_readable"
+										   string="¿Se pudo leer?"/>
+									<field name="protection_cause"
+										   invisible="protection_readable"/>
+									<field name="ruleset_count" optional="hide"/>
+									<field name="last_commit_date" optional="hide"/>
+								</list>
+							</field>
+						</page>
+						<page string="Colaboradores" name="colaboradores">
+							<field name="collaborator_ids" readonly="1">
+								<list string="Colaboradores" create="false">
+									<field name="member_id"/>
+									<field name="permission"/>
+									<!-- De dónde VIENE el permiso, y no sólo cuál es:
+										 revertir un grant directo sobre alguien que además
+										 está en un equipo no lo deja sin acceso, lo deja
+										 con el del equipo. Sin esta columna, el plan de
+										 escritura se arma a ciegas. -->
+									<field name="source"/>
+								</list>
+							</field>
+						</page>
+						<page string="Hallazgos" name="hallazgos">
+							<field name="finding_ids" readonly="1">
+								<list string="Hallazgos" create="false"
+									  decoration-danger="severity == 'critical'"
+									  decoration-warning="severity == 'high'"
+									  decoration-muted="severity == 'info'">
+									<field name="severity" widget="badge"/>
+									<field name="finding_type"/>
+									<field name="subject"/>
+									<field name="summary"/>
+									<field name="run_id"/>
+									<field name="severity_order" column_invisible="1"/>
+								</list>
+							</field>
+						</page>
+						<page string="Pull requests" name="prs">
+							<field name="pull_request_ids" readonly="1">
+								<list string="Pull requests" create="false">
+									<field name="number"/>
+									<field name="title"/>
+									<field name="author_member_id"/>
+									<field name="source_branch"/>
+									<field name="target_branch"/>
+									<field name="state" widget="badge"/>
+									<field name="age_days"/>
+									<field name="review_count"/>
+								</list>
+							</field>
+						</page>
+						<page string="Muestra de commits" name="commits">
+							<field name="commit_sample_ids" readonly="1">
+								<list string="Commits" create="false"
+									  decoration-warning="not message_ok">
+									<field name="branch_name"/>
+									<field name="committed_at"/>
+									<field name="author_login"/>
+									<field name="message_first_line"/>
+									<field name="message_ok" string="Convención"/>
+									<field name="signed" string="Firmado"/>
+								</list>
+							</field>
+						</page>
+						<page string="Workflows" name="workflows">
+							<field name="workflow_ids" readonly="1">
+								<list string="Workflows de CI" create="false">
+									<field name="name"/>
+									<field name="path"/>
+									<field name="state"/>
+								</list>
+							</field>
+						</page>
+					</notebook>
+				</sheet>
+				<chatter/>
+			</form>
+		</field>
+	</record>
+
+	<record id="view_repo_repository_search" model="ir.ui.view">
+		<field name="name">repo.repository.search</field>
+		<field name="model">repo.repository</field>
+		<field name="arch" type="xml">
+			<search string="Repositorios">
+				<field name="full_name"/>
+				<field name="classification"/>
+				<field name="backend_id"/>
+				<!-- El filtro con el que se enfrenta el trabajo real: los que ninguna
+					 regla clasificó y alguien tiene que decidir a mano. -->
+				<filter name="sin_clasificar" string="Sin clasificar"
+						domain="[('classification', '=', False)]"/>
+				<filter name="a_mano" string="Definidos a mano"
+						domain="[('classification_source', '=', 'manual')]"/>
+				<separator/>
+				<filter name="forks" string="Forks" domain="[('is_fork', '=', True)]"/>
+				<filter name="sin_gobernar" string="Forks sin migrar"
+						domain="[('is_fork', '=', True),
+								 ('governance_status', '=', 'pending_migration')]"/>
+				<separator/>
+				<filter name="con_error" string="Con error de sincronización"
+						domain="[('sync_state', '=', 'error')]"/>
+				<filter name="no_legible" string="Con algo que no se pudo leer"
+						domain="[('unreadable_json', '!=', False)]"/>
+				<separator/>
+				<filter name="archivados" string="Archivados"
+						domain="[('archived', '=', True)]"/>
+				<group>
+					<filter name="g_clas" string="Clasificación" domain="[]"
+							context="{'group_by': 'classification'}"/>
+					<filter name="g_origen" string="Origen de la clasificación" domain="[]"
+							context="{'group_by': 'classification_source'}"/>
+					<filter name="g_vis" string="Visibilidad" domain="[]"
+							context="{'group_by': 'visibility'}"/>
+					<filter name="g_conexion" string="Conexión" domain="[]"
+							context="{'group_by': 'backend_id'}"/>
+				</group>
+			</search>
 		</field>
 	</record>
 
@@ -205,6 +426,7 @@
 		<field name="name">Repositorios</field>
 		<field name="res_model">repo.repository</field>
 		<field name="view_mode">list,form</field>
+		<field name="search_view_id" ref="view_repo_repository_search"/>
 	</record>
 
 </odoo>

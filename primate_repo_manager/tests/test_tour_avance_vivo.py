@@ -86,3 +86,53 @@ class TestTourAvanceVivo(HttpCase):
 		self.start_tour(
 			"/odoo/action-primate_repo_manager.action_repo_audit_run",
 			"prm_live_progress_nuevo", login="admin")
+
+
+@tagged("post_install", "-at_install")
+class TestTourRepositorio(HttpCase):
+	"""El tramo de lectura: repositorio, sus datos, su clasificación y sus hallazgos."""
+
+	def setUp(self):
+		super().setUp()
+		self.backend = self.env["repo.backend"].create({
+			"name": "GitHub — tour repo",
+			"owner_login": "cuenta-%s" % uuid.uuid4().hex[:8],
+			"owner_type": "organization", "app_id": "1", "installation_id": "2",
+			"state": "connected", "environment": "sandbox",
+		})
+		self.backend.private_key = _clave_rsa_de_prueba()
+		self.repo = self.env["repo.repository"].create({
+			"backend_id": self.backend.id, "name": "sbx-uno",
+			"full_name": "%s/sbx-uno" % self.backend.owner_login,
+			"github_id": uuid.uuid4().hex[:8], "visibility": "private",
+			"default_branch": "19.0",
+		})
+		self.env["repo.branch"].create({
+			"repository_id": self.repo.id, "name": "19.0", "role": "base",
+			"is_default": True, "protected": False, "protection_readable": True,
+		})
+		miembro = self.env["repo.member"].create({"github_login": "alguien"})
+		self.env["repo.collaborator"].create({
+			"repository_id": self.repo.id, "member_id": miembro.id,
+			"permission": "admin", "source": "direct",
+		})
+		corrida = self.env["repo.audit.run"].create({
+			"name": "Corrida del tour", "backend_id": self.backend.id, "state": "done"})
+		self.env["repo.audit.finding"].create({
+			"run_id": corrida.id, "repository_id": self.repo.id,
+			"finding_type": "branch_unprotected", "severity": "high",
+			"summary": "rama sin protección efectiva",
+		})
+
+		self.env.ref("base.user_admin").write({
+			"active": True, "password": "admin",
+			"group_ids": [(4, self.env.ref(
+				"primate_repo_manager.group_repo_admin").id),
+				(4, self.env.ref("primate_repo_manager.group_repo_lead").id),
+				(4, self.env.ref("primate_repo_manager.group_repo_reader").id)],
+		})
+
+	def test_el_camino_de_lectura_no_tiene_callejones(self):
+		self.start_tour(
+			"/odoo/action-primate_repo_manager.action_repo_repository",
+			"prm_repositorio", login="admin")

@@ -55,14 +55,40 @@ runner o dar un camino sincrónico para organizaciones chicas — con 6 reposito
 sincrónico alcanza y no agrega infraestructura que el usuario tenga que entender.
 *Sin esto, el primer paso del criterio de salida no se puede dar.*
 
-**A2 · Vista de hallazgos.** Hoy no existe ninguna: el resultado central de la auditoría
-sólo se ve en el PDF. Hace falta lista y formulario, agrupables por severidad, tipo y
-repositorio, y accesibles desde la corrida que los produjo.
+**A2 · Vista de hallazgos.** *(hecho)* Lista, formulario, buscador y menú. Agrupable por
+severidad, tipo, repositorio y **causa de ilegibilidad** —que separa un techo de plan, que
+se resuelve con una decisión de plan, de una App sin permisos, que se resuelve
+reinstalándola—. Botón inteligente desde la corrida, siempre visible y no sólo al terminar.
 
-**A3 · Formulario de repositorio.** Hoy sólo hay lista. Sin formulario no se puede abrir
-un repositorio para ver sus ramas, sus colaboradores y sus hallazgos, ni **clasificarlo a
-mano** — que es un paso obligatorio del flujo real: 43 de los 113 repositorios no
-clasifican por regla, a propósito.
+*Hallazgo de la implementación:* agrupada por severidad, la lista mostraba «Crítico, Alto,
+**Informativo, Medio**». Odoo ordena los grupos de un campo de selección por el valor
+guardado, alfabéticamente, y no por el orden en que la selección está declarada. En una
+lista cuyo único propósito es triaje, eso no es estético. Resuelto con `severity_rank`, un
+campo espejo cuyos valores ordenan como la gravedad. Lo destapó una captura para la guía.
+
+*Doctrina fijada:* **ninguna acción de escritura fuera del embudo.** La remediación de cada
+hallazgo se muestra como dato —incluido el marcado de destructiva— y se ejecuta en A4, por
+plan → aprobación → apply. Un botón «remediar» en una lista saltearía las tres guardas.
+
+**A3 · Formulario de repositorio.** *(hecho)* Formulario con ramas, colaboradores
+—con el ORIGEN del permiso, que es lo que decide si revertir un grant deja a alguien sin
+acceso o con el del equipo—, hallazgos, PRs, commits y workflows; buscador con los filtros
+del trabajo real; clasificación editable de a uno y **por lote** desde la lista.
+
+*El hallazgo del paso, y era caro:* `action_set_classification_manual` existía y hacía lo
+correcto, pero **nadie lo llamaba desde un formulario**. Editar la clasificación y guardar
+dejaba el origen en «heurística», y la corrida siguiente la pisaba en silencio — justo lo
+que el `help` del campo promete que no pasa. Con 43 repositorios para clasificar a mano, se
+habría descubierto con los 43 ya perdidos. Resuelto en `write`: editar el campo ES el acto
+manual, y el default es «lo hizo una persona» — la heurística tiene que decir
+explícitamente que no fue ella. El olvido de un desarrollador futuro se paga con una
+clasificación respetada de más: molesto, visible y reversible, en vez de callado y caro.
+
+Verificado por mutación en las dos direcciones: sin el marcado, la auditoría pisa la
+decisión y el test se pone rojo; sin la bandera de la heurística, la clasificación
+automática se congela en la primera corrida y también se pone rojo.
+
+También se agregó `finding_ids` al repositorio: el vínculo existía en un solo sentido.
 
 **A4 · Armar un plan sin escribir JSON.** Hoy el payload de cada operación se escribe a
 mano. Eso es interfaz de desarrollador. Hacen falta dos caminos:

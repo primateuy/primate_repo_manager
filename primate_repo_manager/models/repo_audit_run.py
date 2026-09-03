@@ -121,6 +121,22 @@ class RepoAuditRun(models.Model):
 		with self._cursor_de_avisos() as cr:
 			self.env(cr=cr)["repo.audit.run"].browse(self.id)._bus_send(self.AVISO, aviso)
 
+	def action_open_findings(self):
+		"""Los hallazgos de esta corrida.
+
+		Existe además del botón del componente porque aquél sólo aparece cuando la corrida
+		terminó, y una corrida vieja se abre para mirar lo que encontró, no para verla
+		correr. Un camino que depende del estado en que se abrió la pantalla es un camino
+		que a veces no está.
+		"""
+		self.ensure_one()
+		accion = self.env["ir.actions.actions"]._for_xml_id(
+			"primate_repo_manager.action_repo_audit_finding")
+		accion["domain"] = [("run_id", "=", self.id)]
+		accion["context"] = {"search_default_g_sev": 1}
+		accion["display_name"] = _("Hallazgos de %s") % self.display_name
+		return accion
+
 	def action_refresh_progress(self):
 		"""Vuelve a emitir el estado actual a las pantallas abiertas.
 
