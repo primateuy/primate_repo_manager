@@ -356,6 +356,36 @@ vez por la ruta real. El procedimiento definitivo tiene que hacer lo mismo.
   unos segundos después. Se confirma releyendo, no por la respuesta del POST.
 
 
+## 10.1.3 Sin organización no hay teams: qué significa «permisos» hasta la migración
+
+**Registrado el 2-sep-2026, al instalar la App de escritura sobre la cuenta real.**
+
+`primateuy` es una CUENTA DE USUARIO, no una organización (ver §10.1 y la auditoría de
+F1). De ahí se sigue algo que conviene tener escrito antes de que alguien lo busque como
+un bug:
+
+- **No existen teams.** Los teams sólo viven dentro de una organización.
+- **Los permisos de organización de una GitHub App no aplican.** Al instalar la App de
+  escritura sobre `primateuy` se pidió `Members: Read-only` y GitHub simplemente **no lo
+  concedió**: la instalación quedó con `administration` y `metadata` y nada más. No es un
+  error de configuración ni un permiso pendiente de aprobar — es que ese permiso no
+  significa nada sobre una cuenta de usuario.
+
+**Consecuencia operativa.** De las operaciones de permisos que el módulo implementa, sobre
+la cuenta real hoy sólo pueden ejecutarse las de **grant directo de colaborador**:
+
+    collaborator_grant · collaborator_revoke        -> funcionan
+    team_repo_grant · team_repo_revoke              -> no hay teams
+    team_member_add · team_member_remove            -> no hay teams
+
+Están implementadas y probadas contra la organización sandbox, que sí es una org. No
+fallan por un bug: fallan porque no hay sustrato. Un offboarding contra `primateuy`
+significa quitar grants directos, y nada más.
+
+**Y es un argumento más para la migración**, además de los ya registrados: la gobernanza
+por equipos —que es la forma escalable de manejar accesos, y la que la plantilla de
+CODEOWNERS presupone— no existe hasta que los repositorios vivan en la organización.
+
 ## 10.2 Decisiones abiertas
 
 **Doble aprobación de planes de escritura — sin resolver, para el rollout de F3.**

@@ -81,13 +81,21 @@ MAX_PAGES = 50
 
 
 class GithubError(Exception):
-	"""Error de la API de GitHub. Nunca se traga: siempre llega con status y cuerpo."""
+	"""Error de la API de GitHub. Nunca se traga: siempre llega con status y cuerpo.
 
-	def __init__(self, status, message, path=None):
+	`exigido` guarda la cabecera `X-Accepted-GitHub-Permissions`, que es GitHub diciendo
+	qué permiso pedía el endpoint. Sin eso, un 403 obliga a adivinar cuál de los permisos
+	falta o a probar de a uno; con eso, el mensaje de error ya trae la respuesta.
+	"""
+
+	def __init__(self, status, message, path=None, exigido=None):
 		self.status = status
 		self.message = message
 		self.path = path
-		super().__init__("GitHub %s en %s: %s" % (status, path or "?", message))
+		self.exigido = exigido
+		super().__init__("GitHub %s en %s: %s%s" % (
+			status, path or "?", message,
+			" [GitHub exige: %s]" % exigido if exigido else ""))
 
 
 class GithubRateLimit(GithubError):
@@ -229,18 +237,19 @@ class GithubReadClient:
 		response = self._transport.get(url, headers=self._headers(), timeout=TIMEOUT)
 		self._registrar_cuota(response)
 
+		exigido = _exigido(response)
 		if response.status_code == 404:
 			if tolerar_404:
 				return None
-			raise GithubNotFound(404, _cuerpo(response), path)
+			raise GithubNotFound(404, _cuerpo(response), path, exigido)
 		if response.status_code == 403 and self._sin_cuota(response):
-			raise GithubRateLimit(403, "cuota de API agotada", path)
+			raise GithubRateLimit(403, "cuota de API agotada", path, exigido)
 		if response.status_code == 403:
 			mensaje = _cuerpo(response)
 			if "upgrade" in mensaje.lower() or "plan" in mensaje.lower():
-				raise GithubPlanLimit(403, mensaje, path)
+				raise GithubPlanLimit(403, mensaje, path, exigido)
 		if response.status_code >= 400:
-			raise GithubError(response.status_code, _cuerpo(response), path)
+			raise GithubError(response.status_code, _cuerpo(response), path, exigido)
 		return response.json()
 
 	def paginate(self, path, params=None, max_items=None, envoltorio=None):
@@ -267,7 +276,8 @@ class GithubReadClient:
 			if response.status_code == 403 and self._sin_cuota(response):
 				raise GithubRateLimit(403, "cuota de API agotada", path)
 			if response.status_code >= 400:
-				raise GithubError(response.status_code, _cuerpo(response), path)
+				raise GithubError(response.status_code, _cuerpo(response), path,
+								  _exigido(response))
 
 			lote = response.json()
 			if not isinstance(lote, list):
@@ -328,6 +338,11 @@ def _siguiente_pagina(response):
 		if 'rel="next"' in trozos[1].replace(" ", "").replace("'", '"'):
 			return trozos[0].strip().strip("<>")
 	return None
+
+
+def _exigido(response):
+	"""Qué permiso dijo GitHub que hacía falta, si lo dijo."""
+	return (response.headers or {}).get("X-Accepted-GitHub-Permissions")
 
 
 def _cuerpo(response):

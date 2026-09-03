@@ -25,6 +25,7 @@ from .github_client import (
 	GithubRateLimit,
 	GithubReadClient,
 	_cuerpo,
+	_exigido,
 )
 
 _logger = logging.getLogger(__name__)
@@ -56,18 +57,19 @@ class GithubWriteClient(GithubReadClient):
 			url, json=cuerpo, headers=self._headers(), timeout=30)
 		self._registrar_cuota(response)
 
+		exigido = _exigido(response)
 		if response.status_code == 404:
 			if tolerar_404:
 				return None
-			raise GithubNotFound(404, _cuerpo(response), path)
+			raise GithubNotFound(404, _cuerpo(response), path, exigido)
 		if response.status_code == 403 and self._sin_cuota(response):
-			raise GithubRateLimit(403, "cuota de API agotada", path)
+			raise GithubRateLimit(403, "cuota de API agotada", path, exigido)
 		if response.status_code == 403:
 			mensaje = _cuerpo(response)
 			if "upgrade" in mensaje.lower() or "plan" in mensaje.lower():
-				raise GithubPlanLimit(403, mensaje, path)
+				raise GithubPlanLimit(403, mensaje, path, exigido)
 		if response.status_code >= 400:
-			raise GithubError(response.status_code, _cuerpo(response), path)
+			raise GithubError(response.status_code, _cuerpo(response), path, exigido)
 		if response.status_code == 204 or not response.content:
 			return {}
 		return response.json()
