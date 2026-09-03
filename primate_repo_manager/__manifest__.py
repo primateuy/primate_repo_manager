@@ -11,7 +11,7 @@
 	"license": "AGPL-3",
 		# `hr` es necesario para vincular cuentas de GitHub con empleados: el DoD de F1
 	# pide reportar las cuentas sin ese vínculo.
-	"depends": ["base", "mail", "hr", "queue_job"],
+	"depends": ["base", "mail", "bus", "hr", "queue_job"],
 	"data": [
 		"security/repo_security.xml",
 		"security/ir.model.access.csv",

@@ -21,7 +21,7 @@ _logger = logging.getLogger(__name__)
 class RepoAuditRun(models.Model):
 	_name = "repo.audit.run"
 	_description = "Corrida de auditoría"
-	_inherit = ["mail.thread"]
+	_inherit = ["mail.thread", "bus.listener.mixin"]
 	_order = "id desc"
 
 	name = fields.Char(string="Referencia", default="Auditoría", required=True)
@@ -66,6 +66,37 @@ class RepoAuditRun(models.Model):
 		for run in self:
 			total = run.repos_total or 0
 			run.progress = ((run.repos_done + run.repos_error) / total * 100) if total else 0.0
+
+	# ------------------------------------------------------------------
+	# Avance en vivo
+	# ------------------------------------------------------------------
+
+	# El tipo de mensaje que escucha el componente de la pantalla.
+	AVISO = "repo_manager.audit_progress"
+
+	def _emitir_avance(self, actual=None):
+		"""Avisa a las pantallas abiertas cómo va la corrida.
+
+		El mensaje lleva TODO el estado y no un incremento: si un aviso se pierde —una
+		pestaña que estaba dormida, una reconexión— el siguiente la deja al día igual.
+		Mandar «+1» obligaría al navegador a llevar la cuenta y a quedar desfasado para
+		siempre en cuanto se pierda uno.
+
+		`actual` es el repositorio que se está recorriendo en este momento. Es la señal de
+		que hay vida: sin ella, una corrida lenta y una colgada se ven igual.
+		"""
+		self.ensure_one()
+		self._bus_send(self.AVISO, {
+			"id": self.id,
+			"state": self.state,
+			"total": self.repos_total,
+			"done": self.repos_done,
+			"error": self.repos_error,
+			"actual": actual,
+			"findings": self.finding_count if self.state in ("done", "partial") else 0,
+			"criticos": self.critical_count if self.state in ("done", "partial") else 0,
+			"altos": self.high_count if self.state in ("done", "partial") else 0,
+		})
 
 	# ------------------------------------------------------------------
 	# Ciclo
@@ -180,6 +211,9 @@ class RepoAuditRun(models.Model):
 				"%(hallazgos)s hallazgo(s)."
 			) % {"ok": self.repos_done, "mal": self.repos_error,
 				 "hallazgos": self.finding_count})
+		# El aviso va DESPUÉS de cerrar: si saliera antes, el último mensaje
+		# —el que la pantalla usa para pintar el resumen— diría «en curso».
+		self._emitir_avance()
 
 	# ------------------------------------------------------------------
 	# Ayudantes del informe

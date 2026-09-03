@@ -18,3 +18,4 @@ from . import repo_write_apply
 from . import repo_audit_engine
 from . import repo_sync
 from . import res_config_settings
+from . import ir_websocket

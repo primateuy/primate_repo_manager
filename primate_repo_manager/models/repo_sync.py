@@ -137,6 +137,8 @@ class RepoRepositorySync(models.Model):
 		self.ensure_one()
 		run = self.env["repo.audit.run"].browse(run_id).exists()
 		self.write({"sync_state": "running", "sync_error": False})
+		if run:
+			run._emitir_avance(actual=self.full_name)
 		no_legible = []
 		try:
 			client = self.backend_id.client()
