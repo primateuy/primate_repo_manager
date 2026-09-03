@@ -76,6 +76,24 @@ tienen menú. Sin eso, la política que gobierna todo es invisible desde la apli
 **A6 · Personas y empleados.** `repo.member` no tiene vista. El hallazgo «cuenta sin
 persona asociada» no se puede resolver desde la interfaz.
 
+**A7 · Flag explícito «escritura habilitada en producción».**
+Durante toda la F2, `write_client()` rechazaba cualquier escritura desde una conexión de
+entorno *Producción*, sin excepción. Esa compuerta **se quitó** al pasar a la arquitectura
+de dos Apps (commit `1f64af2`): hoy la única condición es tener credenciales de escritura
+cargadas.
+
+El reemplazo —el alcance de la instalación de la App— acota el radio del daño, pero no es
+lo mismo: **no exige un acto deliberado para empezar a escribir en producción.** Cargar
+las credenciales alcanza, y el primer apply real salió sin ninguna confirmación adicional.
+
+Lo que falta: con entorno *Producción* **y** App de escritura cargada, el cliente exige
+además un flag explícito de habilitación. Activarlo deja entrada en la bitácora —quién y
+cuándo—, igual que cualquier otra decisión con consecuencias.
+
+Va en el bloque A porque es de la misma naturaleza que el resto: no agrega capacidad,
+protege la que ya existe. No es urgente mientras producción esté sin credenciales, pero
+tiene que estar antes de volver a cargarlas.
+
 ---
 
 ## Bloque B — F3, política
@@ -130,6 +148,7 @@ Lenguaje de usuario: qué hago, qué veo, qué significa. No de desarrollador.
 1. **A1** — sin la auditoría lanzable desde la interfaz no hay flujo que documentar.
 2. **A2 + A3** — hallazgos y repositorio: cierran el tramo de lectura, que es la mitad del criterio de salida.
 3. **A5 + A6** — política y personas visibles.
+3b. **A7** — el flag de producción, antes de que producción vuelva a tener credenciales.
 4. **A4** — armar planes sin JSON; cierra el tramo de escritura.
 5. **B** — F3.
 6. **C** — F5.

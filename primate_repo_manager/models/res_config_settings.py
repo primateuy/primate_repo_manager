@@ -12,12 +12,24 @@ DEFAULTS = {
 	"repo_manager.commit_violation_ratio": "50",
 	"repo_manager.fork_behind_threshold": "100",
 	"repo_manager.pr_stale_days": "7",
+	# A partir de cuántos repositorios la auditoría deja de correr en el momento y pasa a
+	# encolarse. Ver el docstring de `action_start`.
+	"repo_manager.sync_threshold": "25",
 }
 
 
 class ResConfigSettings(models.TransientModel):
 	_inherit = "res.config.settings"
 
+	repo_sync_threshold = fields.Integer(
+		string="Repositorios que se auditan en el momento",
+		config_parameter="repo_manager.sync_threshold", default=25,
+		help="Hasta esa cantidad, la auditoría se hace en el momento y la pantalla espera "
+			 "a que termine. Por encima, el trabajo se encola y hace falta el procesador "
+			 "de tareas en segundo plano.\n\n"
+			 "El valor por defecto sale de una medición: 11,5 segundos por repositorio en "
+			 "la cuenta real. Con 25 son unos 5 minutos, cómodos dentro del límite de "
+			 "tiempo de una petición.")
 	repo_commit_violation_ratio = fields.Integer(
 		string="% de commits fuera de convención que eleva la severidad",
 		config_parameter="repo_manager.commit_violation_ratio", default=50,

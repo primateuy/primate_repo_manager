@@ -13,6 +13,8 @@ import logging
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError
 
+from .res_config_settings import DEFAULTS, ResConfigSettings
+
 _logger = logging.getLogger(__name__)
 
 
@@ -70,7 +72,24 @@ class RepoAuditRun(models.Model):
 	# ------------------------------------------------------------------
 
 	def action_start(self):
-		"""Encola el recorrido. No hace ninguna llamada HTTP en el hilo del usuario."""
+		"""Lanza la auditoría. Corre en el momento o se encola, según cuántos repos haya.
+
+		POR QUÉ EL ENUMERADO VA SIEMPRE EN EL MOMENTO. Es una sola llamada paginada, y es
+		la única forma de saber cuántos repositorios hay ANTES de decidir. Un umbral
+		evaluado sobre el espejo que ya existe sería inútil justo en la primera corrida,
+		que es cuando el espejo está vacío.
+
+		POR QUÉ HAY DOS CAMINOS. Encolar exige un procesador de tareas en segundo plano
+		corriendo; para una organización chica eso es infraestructura que alguien tiene
+		que entender y mantener para nada. Por encima del umbral, en cambio, el recorrido
+		no entra en el tiempo de una petición y encolar es la única opción.
+
+		SIN COMMITS POR REPOSITORIO en el camino sincrónico. Confirmar a mitad de una
+		petición es exactamente lo que `queue_job` existe para evitar, y no hace falta:
+		los errores de cada repositorio ya se capturan sin abortar el recorrido, así que
+		lo único que pierde una caída dura es una corrida que se vuelve a lanzar. Lo que
+		no queremos es media corrida guardada que parezca completa.
+		"""
 		self.ensure_one()
 		if self.backend_id.state != "connected":
 			raise UserError(_(
@@ -81,8 +100,25 @@ class RepoAuditRun(models.Model):
 			"state": "running", "started_at": fields.Datetime.now(),
 			"repos_done": 0, "repos_error": 0, "error_detail": False,
 		})
-		self.with_delay(channel="root.repo_manager")._job_enumerate()
-		self.message_post(body=_("Auditoría encolada."))
+
+		repos = self._enumerar()
+		umbral = int(ResConfigSettings._repo_param(
+			self.env, "repo_manager.sync_threshold",
+			DEFAULTS["repo_manager.sync_threshold"]))
+
+		if len(repos) <= umbral:
+			self.message_post(body=_(
+				"Auditando %(n)s repositorio(s) en el momento (el umbral para encolar es "
+				"%(umbral)s).") % {"n": len(repos), "umbral": umbral})
+			for repo in repos:
+				repo._job_sync_repository(self.id)
+			return True
+
+		self.message_post(body=_(
+			"%(n)s repositorio(s) encolados: son más de %(umbral)s y el recorrido no "
+			"entra en el tiempo de una pantalla.") % {"n": len(repos), "umbral": umbral})
+		for repo in repos:
+			repo.with_delay(channel="root.repo_manager")._job_sync_repository(self.id)
 		return True
 
 	def action_resume(self):
@@ -99,8 +135,8 @@ class RepoAuditRun(models.Model):
 			"Reanudada: %s repositorio(s) pendientes encolados.") % len(pendientes))
 		return True
 
-	def _job_enumerate(self):
-		"""Lista los repos de la cuenta y encola un job por cada uno."""
+	def _enumerar(self):
+		"""Trae la lista de repositorios y los deja listos para recorrer."""
 		self.ensure_one()
 		try:
 			repos = self.env["repo.repository"]._sync_from_backend(self.backend_id)
@@ -112,9 +148,14 @@ class RepoAuditRun(models.Model):
 			})
 			self.message_post(body=_("La auditoría falló al enumerar repositorios: %s") % exc)
 			raise
-
 		self.repos_total = len(repos)
 		repos.write({"sync_state": "pending"})
+		return repos
+
+	def _job_enumerate(self):
+		"""Enumerado diferido, para reanudar una corrida encolada."""
+		self.ensure_one()
+		repos = self._enumerar()
 		for repo in repos:
 			repo.with_delay(channel="root.repo_manager")._job_sync_repository(self.id)
 		self.message_post(body=_("%s repositorio(s) encolados.") % len(repos))
