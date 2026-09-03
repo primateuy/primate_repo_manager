@@ -32,6 +32,13 @@
 		# forzar su versión rompe el arranque de la instancia (pyOpenSSL del sistema).
 		"python": ["PyJWT"],
 	},
+	"assets": {
+		"web.assets_backend": [
+			"primate_repo_manager/static/src/live_progress/live_progress.js",
+			"primate_repo_manager/static/src/live_progress/live_progress.xml",
+			"primate_repo_manager/static/src/live_progress/live_progress.scss",
+		],
+	},
 	"installable": True,
 	"application": True,
 }

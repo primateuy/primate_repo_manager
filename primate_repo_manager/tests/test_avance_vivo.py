@@ -6,9 +6,13 @@ Se prueba del lado del servidor, que es donde se puede probar bien. Que la panta
 lo que llega es otra cosa y se verifica aparte —tour o revisión visual—; conviene no
 confundir las dos garantías.
 """
+import contextlib
+import inspect
 import uuid
 
 from odoo.tests.common import TransactionCase
+
+from ..models import repo_sync
 
 from .test_backend import _clave_rsa_de_prueba
 from .test_sync import REPO_FORK, REPO_PRIVADO_SIN_ADMIN, TransporteAuditoria
@@ -47,6 +51,15 @@ class TestAvanceVivo(TransactionCase):
 
 		Run._bus_send = espia
 		self.addCleanup(lambda: setattr(Run, "_bus_send", envio))
+
+		# Costura: el aviso de apertura sale por una conexión propia para que llegue
+		# ANTES de que el job confirme. En un test no hay nada confirmado —una conexión
+		# nueva ni vería la corrida— así que se la reemplaza por el cursor actual. Lo que
+		# queda verificado acá es QUÉ se manda; que salga antes de confirmar se prueba
+		# contra el sandbox, mirando la pantalla.
+		original_cursor = Run._cursor_de_avisos
+		Run._cursor_de_avisos = lambda s: contextlib.nullcontext(s.env.cr)
+		self.addCleanup(lambda: setattr(Run, "_cursor_de_avisos", original_cursor))
 
 	def _correr(self):
 		self.env["ir.config_parameter"].sudo().set_param(
@@ -98,6 +111,37 @@ class TestAvanceVivo(TransactionCase):
 		self.assertTrue(all(m["findings"] == 0 for m in en_curso))
 
 
+	# --- por qué el aviso de apertura no puede ir en la transacción del job ---
+
+	def test_el_aviso_de_apertura_sale_por_una_conexion_propia(self):
+		"""Si fuera por el camino normal llegaría al confirmar el job, o sea junto con el
+		«terminé»: la pantalla diría «Ahora: X» con X ya terminado. Es una mentira
+		silenciosa —se ve bien, dice mal— y por eso hay un test que la vigila.
+		"""
+		fuente = inspect.getsource(repo_sync.RepoRepositorySync._job_sync_repository)
+		self.assertIn("inmediato=True", fuente,
+					  "el aviso de apertura tiene que salir fuera de la transacción")
+
+	def test_el_cierre_de_cada_repositorio_SÍ_va_en_la_transacción(self):
+		"""Lo contrario del anterior, y es igual de deliberado: el «terminé» tiene que
+		valer sólo si el repositorio quedó realmente guardado. Un aviso de cierre que
+		sobreviviera al rollback del job dejaría la pantalla contando repos que no se
+		recorrieron."""
+		fuente = inspect.getsource(
+			self.env["repo.audit.run"].__class__._register_repo_done)
+		self.assertIn("self._emitir_avance()", fuente)
+		self.assertNotIn("inmediato", fuente)
+
+	def test_la_conexion_de_avisos_solo_inserta(self):
+		"""Una conexión aparte que ACTUALICE filas que la transacción principal también
+		toca termina en «could not serialize access» — así se descubrió en el paso 3e.
+		Los avisos sólo crean filas en `bus.bus`, y este test lo deja escrito."""
+		fuente = inspect.getsource(
+			self.env["repo.audit.run"].__class__._emitir_avance)
+		cuerpo = fuente.split("if not inmediato:")[1]
+		for prohibido in (".write(", "self.state =", ".unlink("):
+			self.assertNotIn(prohibido, cuerpo)
+
 class TestCanalDelBus(TransactionCase):
 	"""Quién puede escuchar qué. El nombre del canal lo manda el navegador."""
 
@@ -135,10 +179,18 @@ class TestCanalDelBus(TransactionCase):
 						  == "repo.audit.run"])
 
 	def test_quien_no_puede_leer_la_corrida_no_se_suscribe(self):
-		ajeno = self.env["res.users"].create({
-			"name": "Ajeno", "login": "ajeno-%s" % uuid.uuid4().hex[:8],
-			"group_ids": [(6, 0, [self.env.ref("base.group_user").id])],
-		})
+		"""Éste es el test que destapó el AccessError: `search` no filtra, LEVANTA, y sin
+		atajarlo el bus se caía entero para cualquier usuario sin acceso al módulo.
+
+		Usa un usuario que YA EXISTE en vez de crear uno. Crear un usuario arrastra la
+		creación de un partner, y un partner en una base real arrastra medio ERP
+		—contabilidad, ventas, localización— que no tiene nada que ver con lo que se está
+		probando acá. `base.public_user` existe en toda base de Odoo y no tiene ni de
+		lejos acceso al módulo, que es la única condición que este test necesita.
+		"""
+		ajeno = self.env.ref("base.public_user")
+		self.assertFalse(ajeno.has_group("primate_repo_manager.group_repo_reader"),
+						 "el usuario del test tiene que NO tener acceso al módulo")
 		canales = self._canales(["repo.audit.run_%s" % self.run.id], usuario=ajeno)
 		self.assertNotIn(self.run, canales)
 

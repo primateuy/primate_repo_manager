@@ -1,0 +1,92 @@
+// Copyright 2026 - PrimateUY / License AGPL-3.0 or later
+//
+// Los colores salen de las variables de Odoo y no de valores fijos: así el componente
+// sigue el tema de la instancia en vez de imponer una paleta propia.
+
+.o_prm_live {
+    padding: 12px 0;
+
+    .o_prm_live_titulo {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 1.05rem;
+        font-weight: 500;
+        margin-bottom: 10px;
+    }
+
+    // Late mientras hay trabajo: es la señal de vida más barata que existe.
+    .o_prm_live_punto {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--o-color-1, #714B67);
+        animation: o_prm_latido 1.4s ease-in-out infinite;
+    }
+
+    .o_prm_live_cuenta { color: var(--o-gray-700, #6c757d); font-weight: 400; }
+
+    .o_prm_barra {
+        height: 10px;
+        border-radius: 5px;
+        background: var(--o-gray-200, #e9ecef);
+        overflow: hidden;
+    }
+
+    .o_prm_barra_relleno {
+        height: 100%;
+        background: var(--o-color-1, #714B67);
+        transition: width .4s ease;
+
+        &.o_prm_con_error { background: var(--o-color-warning, #b3831a); }
+    }
+
+    .o_prm_live_datos {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 16px;
+        margin-top: 10px;
+        font-size: .92rem;
+    }
+
+    .o_prm_live_fraccion { font-weight: 600; }
+    .o_prm_ok { color: var(--o-color-success, #28a745); }
+    .o_prm_alerta { color: var(--o-color-warning, #b3831a); }
+    .o_prm_critico { color: var(--o-color-danger, #dc3545); font-weight: 600; }
+    .o_prm_apagado { color: var(--o-gray-600, #868e96); }
+
+    .o_prm_live_actual {
+        margin-top: 8px;
+        font-size: .88rem;
+        color: var(--o-gray-700, #6c757d);
+    }
+    .o_prm_mono { font-family: monospace; }
+
+    .o_prm_live_silencio {
+        margin-top: 10px;
+        padding: 8px 10px;
+        border-left: 3px solid var(--o-color-warning, #b3831a);
+        background: var(--o-gray-100, #f8f9fa);
+        font-size: .88rem;
+    }
+
+    .o_prm_live_fin .o_prm_live_titulo { color: var(--o-color-success, #28a745); }
+    .o_prm_live_fin.o_prm_fin_con_error .o_prm_live_titulo {
+        color: var(--o-color-warning, #b3831a);
+    }
+
+    .o_prm_boton { margin-left: auto; }
+    .o_prm_live_quieto { font-size: .92rem; }
+}
+
+@keyframes o_prm_latido {
+    0%, 100% { opacity: 1; }
+    50% { opacity: .25; }
+}
+
+// Quien pidió que no le muevan la pantalla, no se la movemos.
+@media (prefers-reduced-motion: reduce) {
+    .o_prm_live .o_prm_live_punto { animation: none; }
+    .o_prm_live .o_prm_barra_relleno { transition: none; }
+}

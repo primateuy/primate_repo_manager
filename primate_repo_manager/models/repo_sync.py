@@ -138,7 +138,9 @@ class RepoRepositorySync(models.Model):
 		run = self.env["repo.audit.run"].browse(run_id).exists()
 		self.write({"sync_state": "running", "sync_error": False})
 		if run:
-			run._emitir_avance(actual=self.full_name)
+			# `inmediato`: si saliera por el camino normal llegaría recién al confirmar el
+			# job, o sea junto con el «terminé». Ver el docstring de `_emitir_avance`.
+			run._emitir_avance(actual=self.full_name, inmediato=True)
 		no_legible = []
 		try:
 			client = self.backend_id.client()

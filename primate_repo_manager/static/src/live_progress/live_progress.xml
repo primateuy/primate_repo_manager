@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 - PrimateUY / License AGPL-3.0 or later -->
+<templates xml:space="preserve">
+
+<t t-name="primate_repo_manager.LiveProgress">
+    <div class="o_prm_live">
+
+        <!-- ============ Mientras corre ============ -->
+        <div t-if="corriendo" class="o_prm_live_corriendo">
+            <div class="o_prm_live_titulo">
+                <span class="o_prm_live_punto"/>
+                <span>Auditando</span>
+                <span class="o_prm_live_cuenta">
+                    <t t-esc="nombreCuenta"/>
+                </span>
+            </div>
+
+            <div class="o_prm_barra">
+                <div class="o_prm_barra_relleno"
+                     t-att-class="{ 'o_prm_con_error': hayErrores }"
+                     t-attf-style="width: {{ porcentaje }}%"/>
+            </div>
+
+            <div class="o_prm_live_datos">
+                <span class="o_prm_live_fraccion">
+                    <t t-esc="state.hechos + state.errores"/> de <t t-esc="state.total"/>
+                </span>
+                <span class="o_prm_ok">✓ <t t-esc="state.hechos"/> recorridos</span>
+                <span t-att-class="hayErrores ? 'o_prm_alerta' : 'o_prm_apagado'">
+                    ⚠ <t t-esc="state.errores"/> con error
+                </span>
+                <span class="o_prm_apagado">⏱ <t t-esc="tiempo"/></span>
+            </div>
+
+            <div t-if="state.actual" class="o_prm_live_actual">
+                Ahora: <span class="o_prm_mono"><t t-esc="state.actual"/></span>
+            </div>
+
+            <div t-if="sinNovedades" class="o_prm_live_silencio">
+                Sin novedades hace <t t-esc="state.silencio"/> segundos.
+                <t t-if="!state.recibioAlgo">
+                    Si esta instancia no tiene el procesamiento en segundo plano
+                    configurado, el avance no se actualiza solo y hay que refrescar.
+                </t>
+                <t t-else="">
+                    Puede ser un repositorio grande, o que el procesamiento se haya
+                    detenido.
+                </t>
+            </div>
+        </div>
+
+        <!-- ============ Terminada ============ -->
+        <div t-elif="termino" class="o_prm_live_fin"
+             t-att-class="{ 'o_prm_fin_con_error': hayErrores }">
+            <div class="o_prm_live_titulo">
+                <span t-if="!hayErrores">✓ Terminada</span>
+                <span t-else="">⚠ Terminada con errores</span>
+                <span class="o_prm_apagado">
+                    · <t t-esc="state.total"/> repositorios
+                    <t t-if="state.segundos"> en <t t-esc="tiempo"/></t>
+                </span>
+            </div>
+
+            <div t-if="hayErrores" class="o_prm_live_datos">
+                <span class="o_prm_alerta">
+                    <t t-esc="state.errores"/> no se pudieron recorrer del todo — están
+                    listados como hallazgo para que nadie suponga que se revisaron
+                </span>
+            </div>
+
+            <div class="o_prm_live_datos">
+                <span class="o_prm_live_fraccion"><t t-esc="state.hallazgos"/> hallazgos</span>
+                <span t-if="state.criticos" class="o_prm_critico">
+                    <t t-esc="state.criticos"/> críticos
+                </span>
+                <span t-if="state.altos" class="o_prm_alerta">
+                    <t t-esc="state.altos"/> altos
+                </span>
+                <button class="btn btn-primary btn-sm o_prm_boton"
+                        t-on-click="verHallazgos">
+                    Ver hallazgos
+                </button>
+            </div>
+        </div>
+
+        <!-- ============ Todavía no arrancó, o falló ============ -->
+        <div t-else="" class="o_prm_live_quieto">
+            <t t-if="state.estado === 'error'">
+                <span class="o_prm_critico">✕ La auditoría falló</span>
+                <span class="o_prm_apagado">— el motivo está en «Detalle del error»</span>
+            </t>
+            <t t-else="">
+                <span class="o_prm_apagado">
+                    Todavía no se ejecutó. Apretá «Auditar» para empezar.
+                </span>
+            </t>
+        </div>
+
+    </div>
+</t>
+
+</templates>

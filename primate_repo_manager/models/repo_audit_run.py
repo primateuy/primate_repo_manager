@@ -74,7 +74,7 @@ class RepoAuditRun(models.Model):
 	# El tipo de mensaje que escucha el componente de la pantalla.
 	AVISO = "repo_manager.audit_progress"
 
-	def _emitir_avance(self, actual=None):
+	def _emitir_avance(self, actual=None, inmediato=False):
 		"""Avisa a las pantallas abiertas cómo va la corrida.
 
 		El mensaje lleva TODO el estado y no un incremento: si un aviso se pierde —una
@@ -84,9 +84,27 @@ class RepoAuditRun(models.Model):
 
 		`actual` es el repositorio que se está recorriendo en este momento. Es la señal de
 		que hay vida: sin ella, una corrida lenta y una colgada se ven igual.
+
+		POR QUÉ EXISTE `inmediato`. El bus de Odoo NO manda nada hasta que la transacción
+		confirma: `_sendone` deja la fila en un hook de precommit y el NOTIFY en uno de
+		postcommit. Cada repositorio se recorre dentro de un job, y un job confirma recién
+		cuando termina — así que un aviso «arranqué con X» emitido por el camino normal
+		llega junto con el «terminé con X», siempre tarde y siempre mintiendo: la pantalla
+		diría «Ahora: X» cuando X ya está hecho.
+
+		Con `inmediato` el aviso sale por una conexión propia que confirma en el acto, y
+		«Ahora:» dice la verdad. Es deliberado que estos avisos NO sean transaccionales:
+		son señales de vida, no datos. Si el job después se cae, lo que quedó dicho es que
+		se empezó a recorrer ese repositorio — que es exactamente lo que pasó.
+
+		Sólo escribe filas nuevas en `bus.bus`, nunca actualiza nada: una conexión aparte
+		que hiciera UPDATE sobre filas que la transacción principal también toca termina
+		en «could not serialize access», que es como se descubrió esto en el paso 3e.
 		"""
 		self.ensure_one()
-		self._bus_send(self.AVISO, {
+		# Se arma con los valores de ESTA transacción. Una conexión nueva no ve lo que
+		# todavía no se confirmó, así que leer allá daría números viejos.
+		aviso = {
 			"id": self.id,
 			"state": self.state,
 			"total": self.repos_total,
@@ -96,7 +114,22 @@ class RepoAuditRun(models.Model):
 			"findings": self.finding_count if self.state in ("done", "partial") else 0,
 			"criticos": self.critical_count if self.state in ("done", "partial") else 0,
 			"altos": self.high_count if self.state in ("done", "partial") else 0,
-		})
+		}
+		if not inmediato:
+			self._bus_send(self.AVISO, aviso)
+			return
+		with self._cursor_de_avisos() as cr:
+			self.env(cr=cr)["repo.audit.run"].browse(self.id)._bus_send(self.AVISO, aviso)
+
+	def _cursor_de_avisos(self):
+		"""Conexión propia para los avisos que tienen que salir antes de confirmar.
+
+		Costura de test, igual que `repo.write.operation._cursor_durable`: en un test no
+		hay nada confirmado y abrir otra conexión no vería ni la corrida, así que se la
+		reemplaza por el cursor actual. Con ese reemplazo se verifica QUÉ se manda; que
+		salga antes de confirmar se verifica contra el sandbox, mirando la pantalla.
+		"""
+		return self.pool.cursor()
 
 	# ------------------------------------------------------------------
 	# Ciclo
