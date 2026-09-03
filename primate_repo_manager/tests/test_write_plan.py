@@ -40,7 +40,9 @@ class TestPlanCongelado(TransactionCase):
 		})
 
 	def _aprobar(self):
-		self.plan.action_approve()
+		# `action_approve` abre el asistente desde A4.4; el modelo es el que aprueba.
+		self.plan._aprobar(
+			confirmadas=self.plan.operation_ids.filtered("is_destructive"))
 		self.assertEqual(self.plan.state, "approved")
 		self.assertTrue(self.plan.is_frozen)
 
@@ -56,8 +58,12 @@ class TestPlanCongelado(TransactionCase):
 	def test_un_plan_vacio_no_se_aprueba(self):
 		vacio = self.env["repo.write.plan"].create({
 			"name": "Vacío", "backend_id": self.backend.id})
+		# Vale por los dos caminos: el botón ni siquiera abre el asistente, y el modelo
+		# tampoco aprueba si alguien lo llama directo.
 		with self.assertRaises(UserError):
 			vacio.action_approve()
+		with self.assertRaises(UserError):
+			vacio._aprobar()
 
 	# --- qué invalida y qué no ----------------------------------------------
 

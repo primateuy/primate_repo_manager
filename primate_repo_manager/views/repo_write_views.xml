@@ -75,14 +75,21 @@
 							<field name="operation_ids">
 								<list editable="bottom"
 									  decoration-muted="state == 'rolled_back'"
-									  decoration-danger="state == 'failed'"
+									  decoration-danger="state == 'failed' or (is_destructive and state == 'pending')"
 									  decoration-warning="state == 'blocked'"
 									  decoration-success="state == 'applied'">
 									<field name="sequence" widget="handle"/>
-									<field name="kind"/>
+									<!-- La frase primero y el JSON después: es el orden
+										 en que se lee un plan. El payload sigue estando
+										 —es lo que se ejecuta— pero deja de ser lo único. -->
+									<field name="description" readonly="1"/>
+									<field name="is_destructive" string="Saca algo"
+										   readonly="1"/>
+									<field name="kind" optional="show"/>
 									<field name="repository_id"/>
 									<field name="target"/>
-									<field name="payload_json" widget="text"/>
+									<field name="payload_json" widget="text"
+										   optional="hide"/>
 									<field name="state" widget="badge" readonly="1"/>
 									<field name="error" readonly="1" optional="show"/>
 									<field name="audit_log_id" readonly="1"

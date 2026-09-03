@@ -103,7 +103,8 @@ class RepoWritePlan(models.Model):
 
 	@api.depends("backend_id", "operation_ids", "operation_ids.sequence",
 				 "operation_ids.kind", "operation_ids.repository_id",
-				 "operation_ids.target", "operation_ids.payload_json")
+				 "operation_ids.target", "operation_ids.payload_json",
+				 "operation_ids.description", "operation_ids.is_destructive")
 	def _compute_current_fingerprint(self):
 		for plan in self:
 			plan.current_fingerprint = plan._huella()
@@ -112,11 +113,25 @@ class RepoWritePlan(models.Model):
 				and plan.approval_fingerprint == plan.current_fingerprint)
 
 	def _huella(self):
-		"""Hash de lo que el plan VA A EJECUTAR. Nada cosmético entra acá.
+		"""Hash de lo que el plan va a ejecutar Y DE CÓMO SE LO CONTÓ AL APROBARLO.
 
 		El payload se normaliza antes de hashear: se parsea y se vuelve a serializar con
 		las claves ordenadas, para que reordenar un JSON equivalente no cuente como
 		cambio y para que un cambio real no se esconda detrás de un reordenamiento.
+
+		POR QUÉ LA DESCRIPCIÓN ENTRA EN LA HUELLA, SIENDO QUE SE DERIVA DEL PAYLOAD.
+		Parece redundante y no lo es. Hashear un valor derivado no detecta cambios en el
+		origen —para eso ya está el payload— sino cambios **en quien lo deriva**. Si
+		mañana alguien mejora la redacción de una descripción, o corrige un error en cómo
+		se traduce una regla de protección, los planes aprobados y todavía sin aplicar
+		pasarían a mostrar una frase distinta de la que se aprobó, y nada avisaría.
+
+		Con la descripción adentro, ese caso deja el plan fuera de la huella y lo devuelve
+		a borrador: hay que volver a leerlo y volver a aprobarlo. Es más molesto y es lo
+		correcto — lo que se aprobó fue la frase, no el JSON.
+
+		La consecuencia hay que aceptarla de frente: **actualizar el módulo puede invalidar
+		aprobaciones pendientes.** Es el precio de que la aprobación signifique algo.
 		"""
 		self.ensure_one()
 		cuerpo = {
@@ -128,6 +143,8 @@ class RepoWritePlan(models.Model):
 					"repository": op.repository_id.full_name or op.repository_id.id,
 					"target": op.target or "",
 					"payload": _normalizar(op.payload_json),
+					"descripcion": op.description or "",
+					"destructiva": op.is_destructive,
 				}
 				for op in self.operation_ids.sorted(lambda o: (o.sequence, o.id))
 			],
@@ -140,6 +157,26 @@ class RepoWritePlan(models.Model):
 	# ------------------------------------------------------------------
 
 	def action_approve(self):
+		"""Abre la aprobación. Si hay destructivas, cada una pide su tilde.
+
+		«Nunca en lote» de la spec de F2 se refiere a la DECISIÓN, no al armado: armar un
+		plan con veinte revocaciones está bien; aprobarlas con un solo click no. Una lista
+		que enumera las destructivas y un botón «Aprobar» al final es enumeración visual,
+		y una enumeración visual se saltea leyendo en diagonal.
+		"""
+		self.ensure_one()
+		self._verificar_aprobable()
+		return {
+			"type": "ir.actions.act_window",
+			"name": _("Aprobar «%s»") % self.name,
+			"res_model": "repo.plan.approve.wizard",
+			"view_mode": "form",
+			"target": "new",
+			"context": {"default_plan_id": self.id},
+		}
+
+	def _verificar_aprobable(self):
+		"""Las condiciones de siempre, sin las cuales ni se abre la aprobación."""
 		self.ensure_one()
 		if self.state != "draft":
 			raise UserError(_("Sólo se aprueba un plan en borrador."))
@@ -148,14 +185,40 @@ class RepoWritePlan(models.Model):
 		if not self.env.user.has_group("primate_repo_manager.group_repo_lead"):
 			raise UserError(_(
 				"Aprobar un plan de escritura requiere el rol de líder técnico."))
+		return True
+
+	def _aprobar(self, confirmadas=None):
+		"""Aprueba de verdad. Lo llama el asistente, después de las confirmaciones.
+
+		LA GUARDA VIVE ACÁ Y NO EN EL ASISTENTE, a propósito: un asistente es una pantalla
+		y una pantalla se puede saltear llamando al método. Si las destructivas del plan no
+		están todas confirmadas, esto se niega venga de donde venga.
+		"""
+		self.ensure_one()
+		self._verificar_aprobable()
+		destructivas = self.operation_ids.filtered("is_destructive")
+		faltan = destructivas - (confirmadas or self.env["repo.write.operation"])
+		if faltan:
+			raise UserError(_(
+				"Quedan %(cuantas)s operación(es) destructiva(s) sin confirmar:\n\n%(lista)s"
+				"\n\nCada una se confirma por separado. Aprobar en lote lo que puede "
+				"sacarle el acceso a alguien es exactamente lo que esta pantalla evita."
+			) % {
+				"cuantas": len(faltan),
+				"lista": "\n".join("• %s" % op.description for op in faltan),
+			})
 		self.write({
 			"state": "approved",
 			"approved_by_id": self.env.user.id,
 			"approved_at": fields.Datetime.now(),
 			"approval_fingerprint": self._huella(),
 		})
+		destructivas = self.operation_ids.filtered("is_destructive")
 		self.message_post(body=_(
-			"Plan aprobado. Huella: %s") % self.approval_fingerprint[:16])
+			"Plan aprobado. Huella: %(huella)s. Operaciones: %(total)s, de las cuales "
+			"%(malas)s destructivas confirmadas una por una."
+		) % {"huella": self.approval_fingerprint[:16],
+			 "total": len(self.operation_ids), "malas": len(destructivas)})
 		return True
 
 	def action_back_to_draft(self):
@@ -260,6 +323,24 @@ class RepoWriteOperation(models.Model):
 		help="Rama, login o slug sobre el que opera, según el tipo.")
 	payload_json = fields.Text(string="Payload (JSON)")
 
+	# --- A4.4: qué va a pasar, en castellano -----------------------------
+	description = fields.Char(
+		string="Qué va a pasar", compute="_compute_description", store=True,
+		help="La operación dicha en palabras. Es lo que una persona lee y aprueba, y por "
+			 "eso entra en la huella del plan.")
+	is_destructive = fields.Boolean(
+		string="Destructiva", compute="_compute_description", store=True,
+		help="Quita acceso o borra algo que otro puede estar usando. Cada una exige su "
+			 "confirmación propia al aprobar el plan.")
+
+	# Las que sacan algo que ya está funcionando. Quitar una protección no borra código,
+	# pero deja pasar lo que antes se frenaba: es destructiva en el sentido que importa,
+	# que es «alguien puede perder algo con esto».
+	KINDS_DESTRUCTIVOS = (
+		"branch_protection_remove", "ruleset_delete", "collaborator_revoke",
+		"team_repo_revoke", "team_member_remove",
+	)
+
 	state = fields.Selection(
 		[("pending", "Pendiente"), ("applied", "Aplicada"), ("failed", "Fallida"),
 		 ("rolled_back", "Revertida")],
@@ -270,8 +351,109 @@ class RepoWriteOperation(models.Model):
 		"repo.audit.log", string="Entrada de bitácora", readonly=True, copy=False,
 		ondelete="set null")
 
-	# Campos que entran en la huella del plan.
-	CAMPOS_EJECUTABLES = ("sequence", "kind", "repository_id", "target", "payload_json")
+	# Campos que entran en la huella del plan. `description` está incluida a propósito:
+	# ver el docstring de `repo.write.plan._huella`.
+	CAMPOS_EJECUTABLES = (
+		"sequence", "kind", "repository_id", "target", "payload_json", "description")
+
+	@api.depends("kind", "repository_id", "target", "payload_json")
+	def _compute_description(self):
+		"""Traduce la operación a una frase. Es lo que se aprueba.
+
+		POR QUÉ NO ALCANZA CON MOSTRAR EL PAYLOAD. Aprobar mirando
+		`{"required_approving_review_count": 2, "allow_force_pushes": false}` no es
+		aprobar: es confiar en que alguien más lo leyó. La frase «en primateuy/x, la rama
+		17.0 pasa a exigir 2 aprobaciones y a bloquear force-push» se puede refutar de un
+		vistazo, que es lo único que hace útil a una aprobación.
+		"""
+		for op in self:
+			datos = {}
+			if op.payload_json:
+				try:
+					datos = json.loads(op.payload_json)
+				except (TypeError, ValueError):
+					datos = {}
+			op.is_destructive = op.kind in self.KINDS_DESTRUCTIVOS
+			op.description = op._describir(datos)
+
+	def _describir(self, datos):
+		"""La frase de esta operación. Un método por si un tipo nuevo necesita más."""
+		self.ensure_one()
+		repo = self.repository_id.full_name or _("(sin repositorio)")
+		destino = self.target or "—"
+		if self.kind == "branch_protection_apply":
+			return _("En %(repo)s, la rama %(rama)s pasa a %(reglas)s.") % {
+				"repo": repo, "rama": destino,
+				"reglas": self._frase_de_proteccion(datos)}
+		if self.kind == "branch_protection_remove":
+			return _(
+				"En %(repo)s, la rama %(rama)s QUEDA SIN PROTECCIÓN: lo que hoy se frena "
+				"—force-push, borrado, merges sin revisión— va a pasar."
+			) % {"repo": repo, "rama": destino}
+		if self.kind == "ruleset_create":
+			return _("En %(repo)s se crea el ruleset «%(nombre)s».") % {
+				"repo": repo, "nombre": datos.get("name") or destino}
+		if self.kind == "ruleset_delete":
+			return _(
+				"En %(repo)s SE BORRA el ruleset «%(nombre)s» y dejan de aplicarse sus "
+				"reglas.") % {"repo": repo, "nombre": datos.get("name") or destino}
+		if self.kind == "collaborator_grant":
+			return _("En %(repo)s, %(quien)s pasa a tener permiso de %(permiso)s.") % {
+				"repo": repo, "quien": destino,
+				"permiso": self._nombre_de_permiso(datos.get("permission"))}
+		if self.kind == "collaborator_revoke":
+			return _(
+				"En %(repo)s, a %(quien)s SE LE QUITA el permiso directo. Si además está "
+				"en un team con acceso, va a conservar el del team."
+			) % {"repo": repo, "quien": destino}
+		if self.kind == "team_repo_grant":
+			return _("En %(repo)s, el team «%(team)s» pasa a tener %(permiso)s.") % {
+				"repo": repo, "team": destino,
+				"permiso": self._nombre_de_permiso(datos.get("permission"))}
+		if self.kind == "team_repo_revoke":
+			return _(
+				"En %(repo)s, al team «%(team)s» SE LE QUITA el acceso, y con él lo "
+				"pierden todos sus integrantes.") % {"repo": repo, "team": destino}
+		if self.kind == "team_member_add":
+			return _("%(quien)s entra al team «%(team)s».") % {
+				"quien": datos.get("username") or "—", "team": destino}
+		if self.kind == "team_member_remove":
+			return _(
+				"%(quien)s SALE del team «%(team)s» y pierde todo lo que ese team le daba."
+			) % {"quien": datos.get("username") or "—", "team": destino}
+		# Un tipo nuevo sin frase propia no puede quedarse mudo: se dice lo que se sabe y
+		# se avisa que no está descrito, en vez de mostrar un vacío que parece un «nada».
+		return _("%(tipo)s sobre %(repo)s / %(destino)s — sin descripción todavía.") % {
+			"tipo": dict(OPERATION_KINDS).get(self.kind, self.kind),
+			"repo": repo, "destino": destino}
+
+	@api.model
+	def _nombre_de_permiso(self, valor):
+		from .repo_collaborator import PERMISSIONS
+
+		return dict(PERMISSIONS).get(valor, valor or "—")
+
+	@api.model
+	def _frase_de_proteccion(self, datos):
+		"""Las reglas de protección, enumeradas en el orden en que se piensan."""
+		partes = []
+		revisiones = (datos.get("required_pull_request_reviews") or {})
+		if revisiones:
+			cuantas = revisiones.get("required_approving_review_count")
+			partes.append(_("exigir pull request con %s aprobación(es)") % cuantas
+						  if cuantas is not None else _("exigir pull request"))
+			if revisiones.get("require_code_owner_reviews"):
+				partes.append(_("exigir revisión de owner"))
+		if datos.get("allow_force_pushes") is False:
+			partes.append(_("bloquear force-push"))
+		if datos.get("allow_deletions") is False:
+			partes.append(_("bloquear el borrado de la rama"))
+		if datos.get("required_signatures"):
+			partes.append(_("exigir commits firmados"))
+		if not partes:
+			return _("aplicar la protección del payload (sin reglas reconocidas)")
+		return ", ".join(partes[:-1]) + (_(" y ") + partes[-1] if len(partes) > 1
+										 else partes[0])
 
 	@api.model_create_multi
 	def create(self, vals_list):

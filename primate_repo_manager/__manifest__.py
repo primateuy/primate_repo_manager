@@ -22,6 +22,7 @@
 		"views/repo_backend_views.xml",
 		"views/repo_audit_views.xml",
 		"views/repo_write_views.xml",
+		"views/repo_plan_approve_views.xml",
 		"views/repo_policy_views.xml",
 		"views/repo_member_views.xml",
 		"views/repo_config_settings_views.xml",

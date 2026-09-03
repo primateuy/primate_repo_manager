@@ -91,10 +91,26 @@ automática se congela en la primera corrida y también se pone rojo.
 También se agregó `finding_ids` al repositorio: el vínculo existía en un solo sentido.
 
 **A4 · Armar un plan sin escribir JSON.** Hoy el payload de cada operación se escribe a
-mano. Eso es interfaz de desarrollador. Hacen falta dos caminos:
-- desde un hallazgo, «remediar esto», que arme la operación con el payload derivado de la
-  plantilla;
-- un asistente por tipo de operación, para lo que no nace de un hallazgo.
+mano. Eso es interfaz de desarrollador.
+
+- **A4.4 · Que el plan se lea antes de aprobarlo.** *(hecho, y va primero a propósito: sin
+  poder leer un plan, los demás pasos producen planes que nadie puede revisar.)* Cada
+  operación se dice en castellano —«en primateuy/x, la rama 17.0 pasa a exigir 2
+  aprobaciones y a bloquear force-push»— y esa frase **entra en la huella**. La aprobación
+  exige **una confirmación por cada operación destructiva**, con su descripción delante:
+  «nunca en lote» de la spec de F2 es sobre la decisión, no sobre el armado, y una lista
+  que enumera y termina en un botón se saltea leyendo en diagonal. La guarda vive en el
+  modelo, no en el asistente, porque una pantalla se saltea llamando al método.
+- **A4.1 · «Remediar esto» desde un hallazgo**, con el payload derivado de la plantilla.
+  Acumula en el plan en borrador de esa conexión, con opción de crear uno nuevo.
+- **A4.2 · Remediar varios de una vez** desde la lista de hallazgos.
+- **A4.3 · Asistente por tipo de operación**, para lo que no nace de un hallazgo.
+- **A4.5 · El apply y el rollback con estado vivo**, reusando el componente de A9 y su
+  patrón: derivar del espejo, no de parámetros.
+
+*Consecuencia aceptada de que la frase entre en la huella:* actualizar el módulo puede
+invalidar aprobaciones pendientes, porque la frase que se aprobó ya no es la que se
+mostraría. Es el precio de que la aprobación signifique algo.
 
 **A5 · Vistas de política.** *(hecho)* Plantillas con sus reglas por rol de rama, checks y
 excepciones; reglas de clasificación y de rol de rama, ordenables. Cada plantilla dice a

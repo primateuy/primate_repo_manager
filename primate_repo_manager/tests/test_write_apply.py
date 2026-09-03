@@ -34,6 +34,18 @@ PROTECCION = {
 }
 
 
+
+def _aprobar_plan(plan):
+	"""Aprueba como lo haría una persona en la pantalla: confirmando las destructivas.
+
+	`action_approve` abre el asistente de aprobación desde A4.4, así que un test que
+	quiere un plan aprobado llama al método del modelo. Que aprobar SIN confirmar se
+	niegue se prueba en `test_plan_legible`, que es donde vive esa guarda.
+	"""
+	plan._aprobar(confirmadas=plan.operation_ids.filtered("is_destructive"))
+	return plan
+
+
 class Respuesta:
 	def __init__(self, status_code, payload=None):
 		self.status_code = status_code
@@ -134,7 +146,7 @@ class TestApply(TransactionCase):
 				"required_pull_request_reviews": {
 					"required_approving_review_count": 1}}),
 		})
-		plan.action_approve()
+		_aprobar_plan(plan)
 		return plan
 
 	def _sin_cursor_aparte(self):
@@ -413,7 +425,7 @@ class TestApply(TransactionCase):
 			"repository_id": self.repo.id, "target": "primateuy",
 			"payload_json": json.dumps({"permission": permiso}),
 		})
-		plan.action_approve()
+		_aprobar_plan(plan)
 		return plan
 
 	def test_revertir_un_grant_donde_hay_team_vuelve_AL_TEAM_no_a_nada(self):
@@ -508,7 +520,7 @@ class TestApply(TransactionCase):
 			"repository_id": self.repo.id, "target": "primateuy",
 			"payload_json": json.dumps({}),
 		})
-		plan.action_approve()
+		_aprobar_plan(plan)
 		with self.assertRaises(UserError) as ctx:
 			self._correr(plan, Transporte(gets=[
 				Respuesta(200, PERM_MAINTAIN), Respuesta(200, SIN_DIRECTOS),
@@ -525,7 +537,7 @@ class TestApply(TransactionCase):
 			"repository_id": self.repo.id, "target": "desarrollo",
 			"payload_json": json.dumps({"permission": permiso}),
 		})
-		plan.action_approve()
+		_aprobar_plan(plan)
 		return plan
 
 	def _gets_team(self, secuencia):
@@ -618,7 +630,7 @@ class TestApply(TransactionCase):
 			"payload_json": json.dumps({"name": "sonda", "target": "branch",
 										"enforcement": "active"}),
 		})
-		plan.action_approve()
+		_aprobar_plan(plan)
 		return plan
 
 	def test_la_identidad_se_guarda_antes_de_verificar(self):
@@ -741,7 +753,7 @@ class TestApply(TransactionCase):
 			"plan_id": plan.id, "kind": kind, "repository_id": self.repo.id,
 			"target": "desarrollo", "payload_json": json.dumps(payload),
 		})
-		plan.action_approve()
+		_aprobar_plan(plan)
 		return plan
 
 	def test_sacar_del_team_y_revertir_devuelve_EL_MISMO_ROL(self):

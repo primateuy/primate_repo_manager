@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 - PrimateUY / License AGPL-3.0 or later -->
+<odoo>
+
+	<record id="view_repo_plan_approve_wizard" model="ir.ui.view">
+		<field name="name">repo.plan.approve.wizard.form</field>
+		<field name="model">repo.plan.approve.wizard</field>
+		<field name="arch" type="xml">
+			<form string="Aprobar plan">
+				<div class="alert alert-info" role="alert">
+					Esto es lo que el plan va a hacer, en palabras. <b>La aprobación
+					congela exactamente estas frases</b>: si el plan cambia después, deja
+					de estar aprobado y hay que volver a leerlo.
+				</div>
+				<div class="alert alert-warning" role="alert"
+					 invisible="not destructive_count">
+					Hay <field name="destructive_count" readonly="1" nolabel="1"
+							   class="oe_inline"/> operación(es) que <b>sacan acceso o
+					borran algo que otro puede estar usando</b>. Cada una lleva su propia
+					confirmación: no hay un tilde que las apruebe a todas.
+				</div>
+				<field name="plan_id" invisible="1"/>
+				<field name="pending_count" invisible="1"/>
+				<field name="line_ids" nolabel="1">
+					<list create="false" delete="false" editable="bottom"
+						  decoration-danger="is_destructive">
+						<field name="sequence" column_invisible="1"/>
+						<field name="is_destructive" string="Saca algo" readonly="1"/>
+						<field name="description" string="Qué va a pasar" readonly="1"/>
+						<!-- El tilde sólo se puede tocar en las destructivas: en las
+							 demás no significa nada y prenderlo daría la falsa idea de
+							 que hacía falta. -->
+						<field name="confirmed" string="Confirmo"
+							   readonly="not is_destructive"/>
+						<field name="operation_id" column_invisible="1"/>
+					</list>
+				</field>
+				<footer>
+					<button name="action_confirm" type="object" string="Aprobar"
+							class="btn-primary" invisible="pending_count"/>
+					<button name="action_confirm" type="object"
+							string="Aprobar (faltan confirmaciones)"
+							class="btn-secondary" invisible="not pending_count"/>
+					<button string="Cancelar" class="btn-secondary" special="cancel"/>
+				</footer>
+			</form>
+		</field>
+	</record>
+
+</odoo>
