@@ -52,6 +52,10 @@ EVENT_TYPES = [
 	# editable y se va con el registro—; el mismo argumento que hizo inmutable esta
 	# bitácora para las escrituras a GitHub vale más acá, no menos.
 	("policy_changed", "Cambio de política"),
+	# A7: habilitar la escritura sobre producción es la decisión previa a cualquier
+	# escritura, y la única que hoy no dejaba rastro de ningún tipo.
+	("write_enabled", "Escritura habilitada"),
+	("write_disabled", "Escritura deshabilitada"),
 ]
 
 

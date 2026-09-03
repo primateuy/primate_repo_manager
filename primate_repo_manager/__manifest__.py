@@ -28,6 +28,7 @@
 		"views/repo_menus.xml",
 		"report/repo_audit_report.xml",
 		"wizards/repo_key_rotation_views.xml",
+		"views/repo_write_enable_views.xml",
 	],
 	"external_dependencies": {
 		# PyJWT: firma del JWT que pide el token de instalación de la GitHub App.

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 - PrimateUY / License AGPL-3.0 or later -->
+<odoo>
+
+	<record id="view_repo_write_enable_wizard" model="ir.ui.view">
+		<field name="name">repo.write.enable.wizard.form</field>
+		<field name="model">repo.write.enable.wizard</field>
+		<field name="arch" type="xml">
+			<form string="Habilitar escritura">
+				<div class="alert alert-warning" role="alert"
+					 invisible="environment != 'production'">
+					Esta es una conexión de <b>PRODUCCIÓN</b>. Al habilitar, el módulo va a
+					poder escribir sobre los repositorios que la instalación abarque —los
+					de abajo— cuando se apruebe y aplique un plan. La habilitación queda
+					registrada en la bitácora con tu nombre.
+				</div>
+				<group>
+					<field name="backend_id" invisible="1"/>
+					<field name="environment" readonly="1"/>
+					<field name="owner_login" readonly="1"/>
+				</group>
+				<group string="Alcance de la instalación, según GitHub"
+						invisible="scope_error">
+					<div colspan="2" class="text-muted mb-2">
+						Se pregunta, no se supone. Es el límite que GitHub hace cumplir del
+						otro lado, y lo único que acota el daño de un plan mal armado.
+						<b>Si acá aparecen repositorios que no esperabas, no habilites</b>:
+						reducí primero el alcance de la instalación en GitHub.
+					</div>
+					<field name="scope_count" string="Repositorios" readonly="1"/>
+					<field name="scope_text" nolabel="1" colspan="2" readonly="1"/>
+				</group>
+				<div class="alert alert-danger" role="alert" invisible="not scope_error">
+					No se pudo averiguar qué repositorios abarca la instalación, así que no
+					hay forma de saber sobre qué se estaría habilitando la escritura:
+					<field name="scope_error" nolabel="1" readonly="1"/>
+				</div>
+				<group>
+					<field name="confirmation" placeholder="Nombre exacto de la cuenta"/>
+				</group>
+				<footer>
+					<button name="action_confirm" type="object"
+							string="Habilitar escritura" class="btn-danger"/>
+					<button string="Cancelar" class="btn-secondary" special="cancel"/>
+				</footer>
+			</form>
+		</field>
+	</record>
+
+</odoo>

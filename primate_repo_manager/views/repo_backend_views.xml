@@ -26,6 +26,16 @@
 				<header>
 					<button name="action_test_connection" type="object" string="Probar conexión"
 							class="btn-primary"/>
+					<!-- Sólo aparece cuando hay algo que habilitar: con credenciales de
+						 escritura cargadas y todavía sin habilitar. -->
+					<button name="action_enable_writes" type="object"
+							string="Habilitar escritura" class="btn-danger"
+							groups="primate_repo_manager.group_repo_admin"
+							invisible="write_enabled or not write_key_set"/>
+					<button name="action_disable_writes" type="object"
+							string="Deshabilitar escritura" class="btn-secondary"
+							groups="primate_repo_manager.group_repo_admin"
+							invisible="not write_enabled"/>
 					<field name="state" widget="statusbar"/>
 				</header>
 				<sheet>
@@ -45,6 +55,23 @@
 							<field name="private_key_set"/>
 						</group>
 						<group string="App de escritura (separada, sólo para aplicar cambios)">
+							<!-- La habilitación es el acto deliberado que falta entre
+								 «tener credenciales» y «poder escribir en producción».
+								 Se muestra, no se edita: el modelo rechaza el write
+								 directo justamente para que la entrada de bitácora no se
+								 pueda saltear. -->
+							<field name="write_enabled" readonly="1"/>
+							<field name="write_enabled_by_id" readonly="1"
+								   invisible="not write_enabled"/>
+							<field name="write_enabled_at" readonly="1"
+								   invisible="not write_enabled"/>
+							<div colspan="2" class="text-muted"
+								 invisible="write_enabled or environment != 'production'">
+								Sobre una conexión de producción, tener las credenciales
+								cargadas <b>no alcanza</b>: hasta que la escritura no se
+								habilite desde el botón de arriba, cualquier intento de
+								aplicar un plan se va a negar.
+							</div>
 							<field name="write_app_id"/>
 							<field name="write_installation_id"/>
 							<field name="write_private_key" password="True"

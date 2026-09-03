@@ -114,23 +114,27 @@ resuelve con un asistente que **propone candidatos y nunca vincula solo**: las
 coincidencias por mail y por nombre son pistas, no pruebas, y un vínculo equivocado pone
 los permisos de una persona a nombre de otra.
 
-**A7 · Flag explícito «escritura habilitada en producción».**
+**A7 · Flag explícito «escritura habilitada en producción».** *(hecho)*
 Durante toda la F2, `write_client()` rechazaba cualquier escritura desde una conexión de
 entorno *Producción*, sin excepción. Esa compuerta **se quitó** al pasar a la arquitectura
-de dos Apps (commit `1f64af2`): hoy la única condición es tener credenciales de escritura
-cargadas.
+de dos Apps (commit `1f64af2`): la única condición pasó a ser tener credenciales cargadas,
+y el primer apply real salió sin ninguna confirmación adicional.
 
-El reemplazo —el alcance de la instalación de la App— acota el radio del daño, pero no es
-lo mismo: **no exige un acto deliberado para empezar a escribir en producción.** Cargar
-las credenciales alcanza, y el primer apply real salió sin ninguna confirmación adicional.
+Ahora sobre producción hace falta además `write_enabled`, que **no se edita como un
+campo**: el `write` del modelo rechaza tocarlo fuera de los métodos sancionados, porque un
+flag que se pueda poner en true sin dejar rastro no protege de nada. Se activa desde un
+asistente que muestra, antes de decidir, **qué repositorios abarca la instalación según
+GitHub** —preguntado, no supuesto— y pide escribir el nombre de la cuenta. Habilitar y
+deshabilitar dejan entrada en la bitácora; la de habilitación guarda el alcance vigente en
+ese momento, que es la pregunta que se hace después de un incidente.
 
-Lo que falta: con entorno *Producción* **y** App de escritura cargada, el cliente exige
-además un flag explícito de habilitación. Activarlo deja entrada en la bitácora —quién y
-cuándo—, igual que cualquier otra decisión con consecuencias.
+*Hallazgo de la implementación:* un test viejo en rojo destapó que las guardas estaban en
+el orden equivocado. Decirle «habilitá la escritura» a alguien que no tiene App de
+escritura lo manda a resolver el problema equivocado; la guarda estructural va primero.
 
-Va en el bloque A porque es de la misma naturaleza que el resto: no agrega capacidad,
-protege la que ya existe. No es urgente mientras producción esté sin credenciales, pero
-tiene que estar antes de volver a cargarlas.
+El refactor dejó **una sola** construcción de `GithubWriteClient` en todo el módulo
+—`_construir_cliente_de_escritura`— con la puerta y sus guardas aparte, así que el test que
+vigila «una sola puerta» sigue valiendo sin aflojarse.
 
 **A8 · Pantalla de configuración.** *(hecho)* Los cuatro parámetros con su explicación, y
 un bloque de diagnóstico de sólo lectura que responde con evidencia —hay tareas esperando
@@ -279,6 +283,17 @@ Lenguaje de usuario: qué hago, qué veo, qué significa. No de desarrollador.
 
 Con A completo, el criterio de salida ya es alcanzable para el flujo de auditoría y
 escritura que existe hoy. B y C agregan funcionalidad; A la hace usable.
+
+## Validación visual pendiente
+
+**A5 + A6 + A8 quedaron aprobados en forma provisoria**, sin recorrido visual: Daryl estaba
+fuera. No está salteado, está en deuda. Se suma al guion del recorrido de **A4**, que
+valida los dos bloques de una:
+
+1. *Ajustes* abre —no tira Access Error— y el diagnóstico dice «Funcionando».
+2. Cambiar una plantilla aparece en la *Bitácora* con su nombre y el antes/después.
+3. El asistente de personas propone candidatos y no decide solo.
+4. Las reglas de clasificación se entienden mirándolas.
 
 ## FRENOs
 

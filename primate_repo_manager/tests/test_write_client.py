@@ -74,15 +74,21 @@ class TestGuardasDeEscritura(TransactionCase):
 			with self.assertRaises(UserError) as ctx:
 				backend.write_client()
 			mensaje = str(ctx.exception)
+			# Vale también en producción, donde desde A7 hay una guarda MÁS: la
+			# estructural va primero a propósito, porque decir «habilitá la escritura» a
+			# quien no tiene credenciales lo manda a resolver el problema equivocado.
 			self.assertIn("App de escritura", mensaje)
 			self.assertIn("sólo lectura", mensaje,
 						  "el mensaje explica que la de auditoría no se usa para esto")
 
 	def test_con_app_de_escritura_si_hay_cliente(self):
+		"""Sobre producción hacen falta las DOS cosas desde A7: las credenciales y la
+		habilitación explícita. Ver `test_habilitacion_escritura`."""
 		backend = self._backend("production")
 		backend.write_app_id = "10"
 		backend.write_installation_id = "20"
 		backend.write_private_key = self.clave
+		backend._habilitar_escritura()
 
 		class Transporte:
 			def post(self, url, headers=None, timeout=None):
@@ -102,9 +108,17 @@ class TestGuardasDeEscritura(TransactionCase):
 		self.assertIn("self.app_id", fuente)
 		self.assertNotIn("write_app_id", fuente,
 						 "el cliente de lectura no puede tocar la credencial de escritura")
+		# La construcción vive en `_construir_cliente_de_escritura`, que es el único lugar
+		# del módulo donde se instancia el cliente; `write_client` es la puerta con sus
+		# guardas. Se miran los dos: lo que importa es que ninguno toque la credencial
+		# del otro camino.
 		fuente_w = inspect.getsource(repo_backend.RepoBackend.write_client)
-		self.assertIn("write_app_id", fuente_w)
-		self.assertIn("_descifrar_escritura", fuente_w)
+		fuente_c = inspect.getsource(
+			repo_backend.RepoBackend._construir_cliente_de_escritura)
+		self.assertIn("write_app_id", fuente_w + fuente_c)
+		self.assertIn("_descifrar_escritura", fuente_c)
+		self.assertNotIn("self.app_id", fuente_w + fuente_c,
+						 "el camino de escritura no puede tocar la credencial de lectura")
 
 	def test_la_unica_puerta_es_write_client(self):
 		"""Nadie más instancia GithubWriteClient.
@@ -149,3 +163,6 @@ class TestGuardasDeEscritura(TransactionCase):
 		fuente = inspect.getsource(repo_backend.RepoBackend.write_client)
 		self.assertIn("write_private_key_encrypted", fuente)
 		self.assertIn("write_installation_id", fuente)
+		# Y desde A7, la habilitación explícita sobre producción.
+		self.assertIn("write_enabled", fuente)
+		self.assertIn("production", fuente)

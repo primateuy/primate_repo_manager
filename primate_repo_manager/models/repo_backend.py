@@ -121,6 +121,26 @@ class RepoBackend(models.Model):
 			 "escrituras de F2/F3. La conexión de producción se mantiene read-only a "
 			 "nivel GitHub como red de seguridad dura, además del código.")
 
+	# --- A7: la habilitación explícita de escritura en producción ---------
+	#
+	# Durante toda la F2, `write_client()` rechazaba cualquier escritura desde una conexión
+	# de producción, sin excepción. Esa compuerta se quitó al pasar a la arquitectura de
+	# dos Apps, y el reemplazo —el alcance de la instalación— acota el radio del daño pero
+	# NO exige un acto deliberado: cargar las credenciales alcanzaba, y el primer apply
+	# real salió sin ninguna confirmación adicional.
+	#
+	# Esto es ese acto. No agrega capacidad: protege la que ya existe.
+	write_enabled = fields.Boolean(
+		string="Escritura habilitada", default=False, copy=False, readonly=True,
+		help="Sobre una conexión de producción, además de las credenciales hace falta "
+			 "esta habilitación explícita. Se activa desde el botón, no editando el "
+			 "campo, y queda registrada en la bitácora.")
+	write_enabled_by_id = fields.Many2one(
+		"res.users", string="Habilitada por", readonly=True, copy=False,
+		ondelete="set null")
+	write_enabled_at = fields.Datetime(
+		string="Habilitada el", readonly=True, copy=False)
+
 	repository_ids = fields.One2many("repo.repository", "backend_id", string="Repositorios")
 	repository_count = fields.Integer(string="Repos", compute="_compute_repository_count")
 
@@ -230,13 +250,20 @@ class RepoBackend(models.Model):
 		frena del otro lado. Es la compuerta más fuerte que tenemos: no depende de un
 		campo de Odoo que alguien pueda editar.
 
-		LA SEGUNDA ES DE ENTORNO, y ya no es un «nunca» sino un «no todavía». Sobre una
-		conexión de producción se exige, además, que la App de escritura esté instalada
-		SÓLO sobre los repositorios de la tanda en curso: el alcance de la instalación es
-		el límite que GitHub hace cumplir, y es lo que reemplaza a la prohibición total
-		que rigió durante toda la fase 2.
+		LA SEGUNDA ES DE ENTORNO, y ya no es un «nunca» sino un «no sin decirlo». Sobre una
+		conexión de producción se exige además la habilitación explícita —ver
+		`write_enabled`—, que es un acto deliberado y registrado, no una consecuencia de
+		haber cargado unas credenciales.
+
+		Y sigue en pie lo que hace cumplir GitHub del otro lado: la App de escritura se
+		instala SÓLO sobre los repositorios de la tanda en curso. El alcance de la
+		instalación es el límite duro; la habilitación es el que obliga a mirarlo.
 		"""
 		self.ensure_one()
+		# EL ORDEN IMPORTA, y lo destapó un test viejo que se puso rojo. Primero lo
+		# estructural: si no hay App de escritura, decir «habilitá la escritura» manda a
+		# alguien a habilitar algo que después va a fallar igual, por otro motivo. El
+		# mensaje que se ve tiene que ser el del problema que hay que resolver primero.
 		if not (self.write_app_id and self.write_installation_id
 				and self.write_private_key_encrypted):
 			raise UserError(_(
@@ -246,13 +273,138 @@ class RepoBackend(models.Model):
 				"para esto. La escritura entra por una App aparte, con su propia "
 				"instalación y su propio alcance."
 			) % {"nombre": self.name})
+		if self.environment == "production" and not self.write_enabled:
+			raise UserError(_(
+				"«%(nombre)s» es una conexión de PRODUCCIÓN y no tiene la escritura "
+				"habilitada.\n\n"
+				"Tener credenciales cargadas no alcanza: hace falta un acto deliberado, "
+				"que además queda registrado en la bitácora con quién y cuándo. Se "
+				"habilita desde el botón «Habilitar escritura» del formulario de la "
+				"conexión, después de mirar qué repositorios abarca la instalación."
+			) % {"nombre": self.name})
 
+		return self._construir_cliente_de_escritura(transport=transport)
+
+	def _construir_cliente_de_escritura(self, transport=None):
+		"""EL ÚNICO lugar del módulo donde se instancia `GithubWriteClient`.
+
+		Está separado de `write_client` para que las guardas de aquél vivan en un lado y
+		la construcción en otro, y para que siga habiendo una sola construcción cuando
+		otro método necesite el cliente con otras condiciones —hoy,
+		`_alcance_para_confirmar`, que lo usa sólo para leer—. Hay un test que recorre el
+		árbol y falla si aparece una segunda.
+		"""
+		self.ensure_one()
 		from .github_write_client import GithubWriteClient
 
 		auth = GithubAppAuth(
 			self.write_app_id, self.write_installation_id,
 			self._descifrar_escritura(), transport=transport)
 		return GithubWriteClient(auth.token, transport=transport)
+
+	# ------------------------------------------------------------------
+	# Habilitación de escritura
+	# ------------------------------------------------------------------
+
+	# La bandera con la que los métodos sancionados se identifican al tocar `write_enabled`.
+	POR_LA_PUERTA = "repo_habilitacion_deliberada"
+
+	def write(self, vals):
+		"""`write_enabled` no se edita: se habilita por la puerta que deja rastro.
+
+		Sin esto, todo el mecanismo se saltea con un `write({'write_enabled': True})` desde
+		cualquier lado —una vista modificada, otro addon, la shell— y la entrada de
+		bitácora nunca ocurre. El campo es `readonly` en la vista, pero readonly es
+		presentación: no impide nada del lado del servidor.
+
+		El default es NEGAR, al revés que en la clasificación de repositorios, y por la
+		misma razón que allá era al revés: acá el olvido de un desarrollador futuro se
+		paga con una habilitación sin rastro sobre producción. Que falle ruidosamente es
+		exactamente lo que se quiere.
+		"""
+		if "write_enabled" in vals and not self.env.context.get(self.POR_LA_PUERTA):
+			raise UserError(_(
+				"La habilitación de escritura no se edita como un campo cualquiera.\n\n"
+				"Se activa con «Habilitar escritura» y se apaga con «Deshabilitar», que "
+				"es lo que deja la entrada en la bitácora. Un flag que se pueda poner en "
+				"true sin dejar rastro no protege de nada."))
+		return super().write(vals)
+
+	def action_enable_writes(self):
+		"""Abre la confirmación. Habilitar es una decisión, no una casilla."""
+		self.ensure_one()
+		return {
+			"type": "ir.actions.act_window",
+			"name": _("Habilitar escritura sobre «%s»") % self.name,
+			"res_model": "repo.write.enable.wizard",
+			"view_mode": "form",
+			"target": "new",
+			"context": {"default_backend_id": self.id},
+		}
+
+	def _habilitar_escritura(self, alcance=None):
+		"""Lo hace el asistente, después de que una persona confirmó."""
+		self.ensure_one()
+		self.with_context(**{self.POR_LA_PUERTA: True}).write({
+			"write_enabled": True,
+			"write_enabled_by_id": self.env.user.id,
+			"write_enabled_at": fields.Datetime.now(),
+		})
+		self.env["repo.audit.log"].registrar(
+			"write_enabled",
+			_("Escritura HABILITADA sobre «%(nombre)s» (%(entorno)s)") % {
+				"nombre": self.name,
+				"entorno": dict(self._fields["environment"].selection)[self.environment],
+			},
+			backend=self,
+			payload={
+				"entorno": self.environment,
+				"write_app_id": self.write_app_id,
+				"write_installation_id": self.write_installation_id,
+				# Qué abarcaba la instalación EN ESE MOMENTO. Si mañana alguien la amplía,
+				# la entrada sigue diciendo sobre qué se habilitó, que es la pregunta que
+				# se hace después de un incidente.
+				"alcance": sorted(alcance) if alcance else None,
+			})
+		return True
+
+	def action_disable_writes(self):
+		"""Apagar nunca es peligroso, así que no pide confirmación. Pero se registra."""
+		self.ensure_one()
+		if not self.write_enabled:
+			return True
+		self.with_context(**{self.POR_LA_PUERTA: True}).write({
+			"write_enabled": False,
+			"write_enabled_by_id": False,
+			"write_enabled_at": False,
+		})
+		self.env["repo.audit.log"].registrar(
+			"write_disabled",
+			_("Escritura deshabilitada sobre «%s»") % self.name, backend=self)
+		return True
+
+	def _alcance_para_confirmar(self, transport=None):
+		"""El alcance de la instalación, PARA MOSTRARLO antes de habilitar.
+
+		Existe aparte de `alcance_de_escritura` por una razón de orden y no de permisos:
+		aquél pasa por `write_client`, que sobre producción se niega mientras la escritura
+		no esté habilitada — o sea, justo en el momento en que hace falta mirar el alcance
+		para decidir si habilitarla. Esto es un huevo y su gallina, y se resuelve leyendo
+		acá sin pedirle permiso a la puerta.
+
+		Sólo LEE. El cliente que arma es el mismo, pero la única llamada que sale es el
+		listado de la instalación.
+		"""
+		self.ensure_one()
+		if not (self.write_app_id and self.write_installation_id
+				and self.write_private_key_encrypted):
+			raise UserError(_(
+				"«%s» no tiene configurada una App de escritura: no hay instalación cuyo "
+				"alcance mirar, ni escritura que habilitar.") % self.name)
+		cliente = self._construir_cliente_de_escritura(transport=transport)
+		datos = cliente.paginate(
+			"/installation/repositories", envoltorio="repositories")
+		return {r.get("full_name") for r in datos}
 
 	def alcance_de_escritura(self, transport=None):
 		"""Los repositorios que la App de escritura puede tocar, según GitHub.
