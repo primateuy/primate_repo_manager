@@ -123,8 +123,32 @@ junto con el «terminé con X» y la pantalla diría «Ahora: X» con X ya hecho
 aviso de apertura sale por una conexión propia que confirma en el acto (`inmediato=True`).
 Es deliberado que esos avisos no sean transaccionales: son señales de vida, no datos.
 
-*Estado:* **A9.1 y A9.2 hechos.** Falta A9.3 (el tour, o la verificación visual si el tour
-no corre en el entorno) y reutilizar el componente en el plan aplicándose y en el sync.
+*Estado:* **A9 completo (A9.1, A9.2 y A9.3).** Queda reutilizar el componente en el plan
+aplicándose y en el sync, que es trabajo de esos bloques y no de éste.
+
+*El tour SÍ corre en el entorno* —Chromium y `websocket-client` están instalados— así que
+A9.3 quedó como dos `HttpCase` de verdad y no como verificación visual delegada. El tour
+maneja el reloj: escribe los contadores y pide `action_refresh_progress` en vez de esperar
+a que el servidor emita solo. Los estados intermedios son transitorios —la barra en ámbar
+CON la corrida en marcha dura lo que dure el repositorio siguiente— y un test que depende
+de ganar esa carrera falla por motivos que no son el código.
+
+El segundo tour, el de la corrida creada con «Nuevo», **encontró un defecto que seguía
+vivo después del arreglo de A9.2**: la suscripción se rehacía con `onWillUpdateProps`, y
+ese hook puede no dispararse nunca porque Odoo le pone el id encima al MISMO objeto en vez
+de entregar otro. Corregido con `useEffect` sobre el valor de `resId`. Es el error original
+—reaccionar al montaje en vez de al dato— corrido un paso más adelante, y sólo se ve
+abriendo la pantalla.
+
+*Aviso operativo:* después de correr tours, `--stop-after-init` puede tardar en cerrar el
+proceso (queda un hilo del websocket). El resultado de los tests ya está impreso; no es un
+cuelgue de la suite.
+
+**A11 · `action_refresh_progress`, y lo que abre.** Nació para el tour pero es producto: el
+bloque de «sin novedades» ahora ofrece «Volver a preguntar», que reemite el estado por el
+mismo canal sin recargar nada. El repositorio que se está recorriendo se deriva del espejo
+—el que está en «en curso»— y no de un parámetro, así que el método puede decir la verdad
+sin que nadie se la cuente. Sirve como base para el mismo botón en el plan aplicándose.
 
 **A10 · Los contadores de la corrida no pueden ser una fila compartida.**
 Lo destapó la primera corrida encolada mirada de cerca. Con dos hilos en
@@ -199,7 +223,7 @@ Lenguaje de usuario: qué hago, qué veo, qué significa. No de desarrollador.
 ## Orden propuesto
 
 1. **A1** — sin la auditoría lanzable desde la interfaz no hay flujo que documentar. *(hecho)*
-2. **A9** — el componente de estado vivo, primero: define el lenguaje visual con el que nacen las dos pantallas siguientes. *(A9.1 y A9.2 hechos; falta A9.3)*
+2. **A9** — el componente de estado vivo, primero: define el lenguaje visual con el que nacen las dos pantallas siguientes. *(hecho)*
 3. **A2 + A3** — hallazgos y repositorio: cierran el tramo de lectura, que es la mitad del criterio de salida.
 4. **A5 + A6 + A8** — política, personas y configuración visibles.
 5. **A7** — el flag de producción, antes de que producción vuelva a tener credenciales.

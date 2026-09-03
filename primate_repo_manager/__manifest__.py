@@ -38,6 +38,11 @@
 			"primate_repo_manager/static/src/live_progress/live_progress.xml",
 			"primate_repo_manager/static/src/live_progress/live_progress.scss",
 		],
+		# El tour vive en su propio bundle: no viaja a la pantalla de nadie, sólo se carga
+		# cuando corren los tests.
+		"web.assets_tests": [
+			"primate_repo_manager/static/tests/tours/**/*",
+		],
 	},
 	"installable": True,
 	"application": True,

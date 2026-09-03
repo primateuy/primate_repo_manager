@@ -71,6 +71,12 @@
         font-size: .88rem;
     }
 
+    .o_prm_reintentar {
+        display: block;
+        padding: 4px 0 0;
+        font-size: .88rem;
+    }
+
     .o_prm_live_fin .o_prm_live_titulo { color: var(--o-color-success, #28a745); }
     .o_prm_live_fin.o_prm_fin_con_error .o_prm_live_titulo {
         color: var(--o-color-warning, #b3831a);

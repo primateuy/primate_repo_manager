@@ -29,7 +29,7 @@
  * queda muda: dice que hace rato que no recibe novedades y por qué puede pasar.
  */
 
-import { Component, onWillUnmount, onWillUpdateProps, useState } from "@odoo/owl";
+import { Component, onWillUnmount, useEffect, useState } from "@odoo/owl";
 import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
 import { standardFieldProps } from "@web/views/fields/standard_field_props";
@@ -53,6 +53,7 @@ export class LiveProgress extends Component {
     setup() {
         this.bus = useService("bus_service");
         this.action = useService("action");
+        this.orm = useService("orm");
 
         // `vivo` es lo último que dijo el bus, o null si todavía no dijo nada. Nunca se
         // inicializa con el registro: para eso está el registro.
@@ -68,9 +69,19 @@ export class LiveProgress extends Component {
         this.yaRecargo = false;
         this._alRecibir = (payload) => this._recibir(payload);
         this.bus.subscribe(AVISO, this._alRecibir);
-        this._sincronizarCanal(this.props.record);
 
-        onWillUpdateProps((siguientes) => this._sincronizarCanal(siguientes.record));
+        // POR QUÉ `useEffect` Y NO `onWillUpdateProps`. El registro que llega por props es
+        // SIEMPRE el mismo objeto: al guardar una corrida nueva, Odoo le pone el id
+        // encima en vez de entregar otro. `onWillUpdateProps` puede no dispararse nunca
+        // —los props no cambiaron, cambió lo de adentro— y entonces la suscripción se
+        // queda esperando un id que ya llegó. Es el mismo error que dejó la pantalla muda
+        // la primera vez, corrido un paso más adelante: ahí era `setup()`, acá sería el
+        // hook equivocado. `useEffect` mira el VALOR del id después de cada render, que
+        // es lo único que importa.
+        useEffect(
+            () => this._sincronizarCanal(),
+            () => [this.props.record.resId],
+        );
 
         // Un solo reloj para el cronómetro y para detectar el silencio.
         this.reloj = setInterval(() => {
@@ -96,8 +107,8 @@ export class LiveProgress extends Component {
         }
     }
 
-    _sincronizarCanal(registro) {
-        const id = registro.resId;
+    _sincronizarCanal() {
+        const id = this.props.record.resId;
         if (id === this.corridaId) {
             return;
         }
@@ -191,6 +202,15 @@ export class LiveProgress extends Component {
         const hasta = d.finished_at ? d.finished_at.toMillis() : this.state.ahora;
         const s = Math.max(0, Math.round((hasta - d.started_at.toMillis()) / 1000));
         return s < 60 ? _t("%s s", s) : _t("%s min %s s", Math.floor(s / 60), s % 60);
+    }
+
+    async volverAPreguntar() {
+        // El servidor reemite su estado por el mismo canal de siempre. No se recarga la
+        // pantalla: si la respuesta llega, entra por donde entran todas las demás.
+        if (this.corridaId) {
+            await this.orm.call("repo.audit.run", "action_refresh_progress",
+                                [[this.corridaId]]);
+        }
     }
 
     verHallazgos() {

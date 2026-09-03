@@ -46,6 +46,10 @@
                     Puede ser un repositorio grande, o que el procesamiento se haya
                     detenido.
                 </t>
+                <button class="btn btn-link btn-sm o_prm_reintentar"
+                        t-on-click="volverAPreguntar">
+                    Volver a preguntar
+                </button>
             </div>
         </div>
 

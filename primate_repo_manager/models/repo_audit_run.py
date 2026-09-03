@@ -121,6 +121,26 @@ class RepoAuditRun(models.Model):
 		with self._cursor_de_avisos() as cr:
 			self.env(cr=cr)["repo.audit.run"].browse(self.id)._bus_send(self.AVISO, aviso)
 
+	def action_refresh_progress(self):
+		"""Vuelve a emitir el estado actual a las pantallas abiertas.
+
+		Existe por el caso degradado que el propio componente sabe reconocer: cuando hace
+		rato que no llegan novedades, el usuario no tiene forma de saber si la corrida
+		avanza sin novedades o si se cortó el hilo que las trae. Recargar la página entera
+		para averiguarlo es lo que este componente vino a evitar, así que hay un «volver a
+		preguntar» que cuesta una consulta y no pierde nada de lo que haya en pantalla.
+
+		`actual` NO se guarda en ningún lado y no hace falta: el repositorio que se está
+		recorriendo es el que tiene el espejo en «en curso». Derivarlo de ahí en vez de
+		pasearlo por parámetros es lo que hace que este método pueda decir la verdad sin
+		que nadie se la cuente.
+		"""
+		self.ensure_one()
+		en_curso = self.backend_id.repository_ids.filtered(
+			lambda r: r.sync_state == "running")
+		self._emitir_avance(actual=en_curso[:1].full_name or None)
+		return True
+
 	def _cursor_de_avisos(self):
 		"""Conexión propia para los avisos que tienen que salir antes de confirmar.
 
