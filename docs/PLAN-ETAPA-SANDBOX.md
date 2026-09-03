@@ -96,11 +96,23 @@ mano. Eso es interfaz de desarrollador. Hacen falta dos caminos:
   plantilla;
 - un asistente por tipo de operación, para lo que no nace de un hallazgo.
 
-**A5 · Vistas de política.** Plantillas, reglas por rol de rama y excepciones de acceso no
-tienen menú. Sin eso, la política que gobierna todo es invisible desde la aplicación.
+**A5 · Vistas de política.** *(hecho)* Plantillas con sus reglas por rol de rama, checks y
+excepciones; reglas de clasificación y de rol de rama, ordenables. Cada plantilla dice a
+cuántos repositorios gobierna y lleva a ellos.
 
-**A6 · Personas y empleados.** `repo.member` no tiene vista. El hallazgo «cuenta sin
-persona asociada» no se puede resolver desde la interfaz.
+*La pieza de fondo:* **todo cambio de política va a la bitácora inmutable** —campo, valor
+anterior, valor nuevo, quién y cuándo—, no sólo al chatter. Cambiar la política es la
+escritura más silenciosa del módulo: no toca un repositorio y redefine qué cuenta como
+incumplimiento para todos. Se registra TODO campo que cambie, sin lista blanca: una lista
+de «campos importantes» es una lista que alguien va a olvidar de actualizar el día que
+agregue el que importaba. **B4 va a leer de este registro** — es la única fuente que dice
+cuándo cambió la política y qué cambió. Verificado por mutación: sin la entrada, rojo.
+
+**A6 · Personas y empleados.** *(hecho)* Lista, formulario con sus accesos —lo que hay que
+mirar antes de un offboarding— y buscador. El hallazgo «cuenta sin persona asociada» se
+resuelve con un asistente que **propone candidatos y nunca vincula solo**: las
+coincidencias por mail y por nombre son pistas, no pruebas, y un vínculo equivocado pone
+los permisos de una persona a nombre de otra.
 
 **A7 · Flag explícito «escritura habilitada en producción».**
 Durante toda la F2, `write_client()` rechazaba cualquier escritura desde una conexión de
@@ -120,10 +132,18 @@ Va en el bloque A porque es de la misma naturaleza que el resto: no agrega capac
 protege la que ya existe. No es urgente mientras producción esté sin credenciales, pero
 tiene que estar antes de volver a cargarlas.
 
-**A8 · Pantalla de configuración.** El módulo no tiene vista de `res.config.settings`:
-sus parámetros —el umbral, los umbrales de severidad— existen pero no aparecen en
-*Ajustes*, y sólo se tocan por *Técnico → Parámetros del sistema*. Lo descubrió el primer
-recorrido de la guía, que documentaba una pantalla inexistente.
+**A8 · Pantalla de configuración.** *(hecho)* Los cuatro parámetros con su explicación, y
+un bloque de diagnóstico de sólo lectura que responde con evidencia —hay tareas esperando
+hace rato, o no— en vez de con configuración. Es la respuesta a «¿por qué mi auditoría se
+quedó En curso?», que antes obligaba a entrar al servidor.
+
+*Hallazgo de la implementación:* se hizo primero como `res.config.settings`, que era lo
+obvio, y la pantalla tiraba **Access Error** para cualquiera que no fuera administrador de
+Odoo: ese modelo exige `base.group_system`, que da la administración entera de la
+instancia. Darle ese grupo a quien administra Repo Manager para que pueda mover un umbral
+sería cambiar un problema chico por uno grande. Rehecho como modelo propio, `repo.settings`,
+con el `sudo()` del guardado acotado a cuatro claves fijas en el código. Lo destapó una
+captura para la guía; desde el código la vista cargaba bien.
 
 **A9 · Componente de estado vivo.** Requisito de producto: lo que está en pantalla y
 cambia, tiene que actualizarse solo. Nada de refrescar para ver avanzar una auditoría.

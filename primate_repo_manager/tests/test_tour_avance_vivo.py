@@ -136,3 +136,53 @@ class TestTourRepositorio(HttpCase):
 		self.start_tour(
 			"/odoo/action-primate_repo_manager.action_repo_repository",
 			"prm_repositorio", login="admin")
+
+
+@tagged("post_install", "-at_install")
+class TestTourPolitica(HttpCase):
+	"""Política y personas: que la consecuencia se vea desde la aplicación."""
+
+	def setUp(self):
+		super().setUp()
+		backend = self.env["repo.backend"].create({
+			"name": "GitHub — tour política",
+			"owner_login": "cuenta-%s" % uuid.uuid4().hex[:8],
+			"owner_type": "organization", "app_id": "1", "installation_id": "2",
+			"state": "connected", "environment": "sandbox",
+		})
+		backend.private_key = _clave_rsa_de_prueba()
+		self.plantilla = self.env["repo.policy.template"].create({
+			"name": "Plantilla del tour", "code": "tour-%s" % uuid.uuid4().hex[:6],
+			"classification_default": "interno", "required_approvals": 2,
+		})
+		for n in range(2):
+			self.env["repo.repository"].create({
+				"backend_id": backend.id, "name": "sbx-int-%s" % n,
+				"full_name": "%s/sbx-int-%s" % (backend.owner_login, n),
+				"github_id": uuid.uuid4().hex[:8], "classification": "interno",
+			})
+		self.persona = self.env["repo.member"].create({
+			"github_login": "sin-duenio", "name": "Nadie Todavía"})
+		# No se crean empleados: crear uno arrastra un partner, y en esta base eso no se
+		# puede dentro de un test. Ver el docstring de TestPropuestaDeEmpleado.
+		self.empleado = self.env["hr.employee"].search([], limit=1)
+		self.assertTrue(self.empleado, "la base necesita al menos un empleado")
+		self.empleado.name = "Empleado Del Tour"
+
+		self.env.ref("base.user_admin").write({
+			"active": True, "password": "admin",
+			"group_ids": [(4, self.env.ref(
+				"primate_repo_manager.group_repo_admin").id),
+				(4, self.env.ref("primate_repo_manager.group_repo_lead").id),
+				(4, self.env.ref("primate_repo_manager.group_repo_reader").id)],
+		})
+
+	def test_un_cambio_de_politica_se_ve_en_la_bitacora_desde_la_aplicacion(self):
+		self.start_tour(
+			"/odoo/action-primate_repo_manager.action_repo_policy_template",
+			"prm_politica", login="admin")
+
+	def test_vincular_una_cuenta_hace_desaparecer_el_aviso(self):
+		self.start_tour(
+			"/odoo/action-primate_repo_manager.action_repo_member",
+			"prm_personas", login="admin")

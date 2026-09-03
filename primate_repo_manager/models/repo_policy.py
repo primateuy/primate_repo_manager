@@ -26,6 +26,7 @@ MERGE_STRATEGIES = [
 
 class RepoPolicyTemplate(models.Model):
 	_name = "repo.policy.template"
+	_inherit = ["repo.policy.audited", "mail.thread"]
 	_description = "Plantilla de política de gobernanza"
 	_order = "sequence, name"
 
@@ -68,6 +69,11 @@ class RepoPolicyTemplate(models.Model):
 	access_rule_ids = fields.One2many(
 		"repo.policy.access.rule", "template_id", string="Permisos máximos")
 
+	repository_count = fields.Integer(
+		string="Repositorios que gobierna", compute="_compute_repository_count",
+		help="Los que tienen la clasificación por defecto de esta plantilla. Es lo que "
+			 "convierte un formulario de configuración en una decisión con alcance.")
+
 	max_permission_default = fields.Selection(
 		PERMISSIONS, string="Permiso máximo por defecto", default="push",
 		help="El techo para cualquier persona que no tenga una excepción declarada. "
@@ -102,8 +108,27 @@ class RepoPolicyTemplate(models.Model):
 		return self.max_permission_default
 
 
+	@api.depends("classification_default")
+	def _compute_repository_count(self):
+		Repo = self.env["repo.repository"]
+		for plantilla in self:
+			plantilla.repository_count = Repo.search_count(
+				[("classification", "=", plantilla.classification_default)]
+			) if plantilla.classification_default else 0
+
+	def action_open_repositories(self):
+		"""Los repositorios que esta plantilla gobierna."""
+		self.ensure_one()
+		accion = self.env["ir.actions.actions"]._for_xml_id(
+			"primate_repo_manager.action_repo_repository")
+		accion["domain"] = [("classification", "=", self.classification_default)]
+		accion["display_name"] = _("Repositorios bajo «%s»") % self.name
+		return accion
+
+
 class RepoPolicyBranchRule(models.Model):
 	_name = "repo.policy.branch.rule"
+	_inherit = ["repo.policy.audited"]
 	_description = "Override de política para un rol de rama"
 	_order = "template_id, branch_role"
 
@@ -142,6 +167,7 @@ class RepoPolicyBranchRule(models.Model):
 
 class RepoPolicyStatusCheck(models.Model):
 	_name = "repo.policy.status.check"
+	_inherit = ["repo.policy.audited"]
 	_description = "Check de CI requerido por una plantilla"
 	_order = "template_id, name"
 
@@ -154,6 +180,7 @@ class RepoPolicyStatusCheck(models.Model):
 
 class RepoPolicyAccessRule(models.Model):
 	_name = "repo.policy.access.rule"
+	_inherit = ["repo.policy.audited"]
 	_description = "Permiso máximo admitido para una persona"
 	_order = "template_id, member_id"
 

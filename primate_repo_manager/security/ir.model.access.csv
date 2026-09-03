@@ -40,3 +40,5 @@ access_repo_write_plan_reader,repo.write.plan.reader,model_repo_write_plan,group
 access_repo_write_plan_lead,repo.write.plan.lead,model_repo_write_plan,group_repo_lead,1,1,1,1
 access_repo_write_operation_reader,repo.write.operation.reader,model_repo_write_operation,group_repo_reader,1,0,0,0
 access_repo_write_operation_lead,repo.write.operation.lead,model_repo_write_operation,group_repo_lead,1,1,1,1
+access_repo_member_link_wizard,repo.member.link.wizard,model_repo_member_link_wizard,group_repo_lead,1,1,1,1
+access_repo_settings_admin,repo.settings,model_repo_settings,group_repo_admin,1,1,1,1

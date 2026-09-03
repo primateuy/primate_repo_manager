@@ -18,6 +18,9 @@
 			  parent="menu_repo_root" action="action_repo_write_plan"
 			  groups="group_repo_lead"/>
 
+	<menuitem id="menu_repo_members" name="Personas" sequence="35"
+			  parent="menu_repo_root" action="action_repo_member"/>
+
 	<menuitem id="menu_repo_audit_log" name="Bitácora" sequence="40"
 			  parent="menu_repo_root" action="action_repo_audit_log"/>
 
@@ -26,5 +29,18 @@
 
 	<menuitem id="menu_repo_backend" name="Conexiones" sequence="10"
 			  parent="menu_repo_config" action="action_repo_backend"/>
+
+	<menuitem id="menu_repo_policy" name="Plantillas de política" sequence="20"
+			  parent="menu_repo_config" action="action_repo_policy_template"/>
+
+	<menuitem id="menu_repo_classification_rules" name="Reglas de clasificación"
+			  sequence="30" parent="menu_repo_config"
+			  action="action_repo_classification_rule"/>
+
+	<menuitem id="menu_repo_branch_role_rules" name="Roles de rama" sequence="40"
+			  parent="menu_repo_config" action="action_repo_branch_role_rule"/>
+
+	<menuitem id="menu_repo_settings" name="Ajustes" sequence="99"
+			  parent="menu_repo_config" action="action_repo_config_settings"/>
 
 </odoo>

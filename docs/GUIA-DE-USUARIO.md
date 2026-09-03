@@ -9,7 +9,8 @@
 > no se puede hacer desde la aplicación.
 
 **Última actualización:** 3 de septiembre de 2026
-**Cubre:** conexión con GitHub · auditoría · hallazgos · repositorios y clasificación.
+**Cubre:** conexión con GitHub · auditoría · hallazgos · repositorios y clasificación ·
+política · personas · configuración.
 
 > **Regla de esta guía:** ninguna sección se publica sin haber recorrido la pantalla real.
 > Las secciones 2 y 3 se escribieron una vez mirando el código y **fallaron ese contrato**:
@@ -26,7 +27,10 @@
 3. [Traer los repositorios y auditarlos](#3-traer-los-repositorios-y-auditarlos)
 4. [Leer los hallazgos](#4-leer-los-hallazgos)
 5. [Los repositorios, y clasificarlos a mano](#5-los-repositorios-y-clasificarlos-a-mano)
-6. [Secciones que faltan](#6-secciones-que-faltan)
+6. [La política: contra qué se compara todo](#6-la-política-contra-qué-se-compara-todo)
+7. [Las personas detrás de las cuentas](#7-las-personas-detrás-de-las-cuentas)
+8. [Configuración](#8-configuración)
+9. [Secciones que faltan](#9-secciones-que-faltan)
 
 **Anexo:** [Configuración del servidor](#anexo--configuración-del-servidor) — sólo para
 quien administra la instancia de Odoo.
@@ -349,7 +353,106 @@ dice antes de que lo cambies.
 
 ---
 
-## 6. Secciones que faltan
+## 6. La política: contra qué se compara todo
+
+**Menú: Repo Manager → Configuración → Plantillas de política**
+
+Una auditoría no inventa lo que está bien: compara lo que hay en GitHub contra una
+**plantilla**. Qué plantilla le toca a cada repositorio lo decide su clasificación.
+
+![Una plantilla de política](img/08-plantilla.png)
+
+> **Cambiar una plantilla no toca ningún repositorio.** Cambia qué se considera
+> incumplimiento para todos los que gobierna, desde la próxima auditoría. Bajar una
+> exigencia hace desaparecer hallazgos sin haber arreglado nada — y por eso **cada cambio
+> queda en la bitácora**, con el campo, el valor anterior y el nuevo, quién y cuándo.
+> El botón de arriba dice a cuántos repositorios alcanza lo que estás por tocar.
+
+Las pestañas:
+
+- **Exigencias generales** — lo que vale para todo el repositorio.
+- **Por rol de rama** — lo que gana sobre lo general para las ramas de ese rol. El campo
+  *Por qué* no es decorativo: es lo que va a leer quien encuentre la regla dentro de un año.
+- **Checks requeridos** — hoy ninguna plantilla los define, y la pantalla explica que eso
+  produce el hallazgo «checks no evaluables» a propósito: comparar contra un nombre de
+  check inventado bloquea todos los merges del repositorio, que es peor que no comparar.
+- **Excepciones de acceso** — quién puede tener más permiso que el máximo, **con el
+  motivo escrito**. Una excepción sin motivo es una excepción que nadie va a poder revisar.
+
+### 6.1 Las reglas que clasifican
+
+**Menú: Repo Manager → Configuración → Reglas de clasificación**
+
+![Las reglas de clasificación](img/09-reglas.png)
+
+Gana la **primera** que matchea, de arriba hacia abajo: el orden es parte de la regla, y se
+cambia arrastrando.
+
+**No hay regla comodín, y es a propósito.** Es la explicación de por qué hay repositorios
+sin clasificar: mandarlos por defecto a «cliente» sería adivinar, y una clasificación
+equivocada compara el repositorio contra la plantilla equivocada — produce hallazgos falsos
+y esconde los verdaderos. Antes de clasificar cuarenta a mano conviene mirar acá: a veces
+una regla nueva resuelve treinta de una.
+
+**Roles de rama** funciona igual, y decide contra qué exigencias se compara cada rama.
+
+---
+
+## 7. Las personas detrás de las cuentas
+
+**Menú: Repo Manager → Personas**
+
+![La lista de personas](img/10-personas.png)
+
+Cada cuenta de GitHub que aparece como colaboradora en algún repositorio. La pestaña
+**Accesos** de cada una responde la pregunta que hay que hacerse antes de dar de baja a
+alguien: *qué toca esta persona*.
+
+### 7.1 Cuentas sin persona asociada
+
+Es un hallazgo, y se resuelve acá. Mientras una cuenta no esté vinculada, sus accesos
+figuran a nombre de un usuario de GitHub y no de alguien de la empresa: al revisar quién
+tiene qué, esa cuenta es un agujero.
+
+El botón **¿Quién es?** abre un asistente que **propone candidatos** por mail de trabajo y
+por nombre. Son **pistas, no pruebas** —hay homónimos, y un usuario de GitHub puede no
+tener nada que ver con el nombre de nadie— así que **la confirmación siempre es tuya**: el
+módulo nunca vincula solo. Un vínculo equivocado pone los permisos de una persona a nombre
+de otra, y eso se descubre sacando justo la conclusión contraria a la verdadera.
+
+> **Dejar una cuenta sin vincular es una respuesta válida** — un bot, alguien externo—
+> pero conviene que sea una decisión y no un pendiente. El hallazgo va a seguir avisando.
+
+---
+
+## 8. Configuración
+
+**Menú: Repo Manager → Configuración → Ajustes**
+
+![La pantalla de ajustes](img/11-ajustes.png)
+
+Tres bloques. Los dos primeros se editan; el tercero sólo se lee.
+
+**Cómo se ejecutan las auditorías.** El umbral por debajo del cual la auditoría se hace de
+una sola vez. Con el procesamiento en segundo plano funcionando conviene **0**: siempre
+repartido, y sólo repartido se ve la barra avanzar.
+
+**Cuándo un hallazgo es más grave.** Los números de los moduladores de severidad. La lógica
+vive en el código y está probada; esto es criterio, y el criterio cambia sin que cambie la
+regla.
+
+**Estado de la instancia.** Responde con evidencia, no con configuración: mira si hay
+tareas esperando hace rato. Es la respuesta a *«¿por qué mi auditoría se quedó En curso?»*,
+que antes obligaba a entrar al servidor.
+
+> **La clave de cifrado no se muestra ni se edita desde acá, y eso es la decisión y no un
+> olvido.** Vive en el archivo de configuración del servidor justamente para que un backup
+> de la base robado no alcance para descifrar nada. El respaldo de la base y el de la clave
+> van juntos: uno sin el otro no sirve.
+
+---
+
+## 9. Secciones que faltan
 
 Están construidas por dentro pero **todavía no se pueden operar desde la interfaz**, así
 que no se documentan. Cada una tiene su ítem en el plan de la etapa:
@@ -357,8 +460,6 @@ que no se documentan. Cada una tiene su ítem en el plan de la etapa:
 | Sección | Qué falta para poder escribirla | Ítem |
 |---|---|---|
 | Armar un plan de cambios | Hoy hay que escribir el detalle de cada operación en formato JSON | A4 |
-| Ver y ajustar la política | Las plantillas no tienen menú | A5 |
-| Vincular cuentas de GitHub con empleados | Las personas no tienen pantalla | A6 |
 
 El informe en PDF, la aprobación y ejecución de un plan, el registro de bitácora y la
 reversión **sí funcionan**, pero dependen de pasos anteriores que todavía no son
@@ -390,7 +491,7 @@ server_wide_modules = base,web,queue_job
 ; Cuántas tareas se procesan a la vez, por canal.
 ;   root              : capacidad general de la instancia
 ;   root.repo_manager : el canal propio de Repo Manager
-channels = root:2,root.repo_manager:2
+channels = root:2,root.repo_manager:1
 ```
 
 **Hay que reiniciar Odoo** para que tome el cambio.
@@ -403,9 +504,16 @@ channels = root:2,root.repo_manager:2
 - El canal `root.repo_manager` **existe porque el módulo lo declara**. Tener canal propio
   permite darle capacidad sin competir con el resto del sistema; si no se declarara,
   compartiría la del canal general con todo lo demás.
+- **Su capacidad está en 1 a propósito y de forma provisoria.** Con dos o más, las tareas
+  de una misma auditoría chocan al actualizar los contadores de la corrida y `queue_job`
+  las reintenta: el resultado final es correcto, pero cada repositorio se recorre dos o
+  tres veces —el triple de llamadas a la API de GitHub y el triple de tiempo—. El arreglo
+  de fondo está pendiente; hasta entonces, subirlo empeora las cosas.
 
-**Cómo verificar que quedó andando.** En el registro de arranque tienen que aparecer estas
-líneas:
+**Cómo verificar que quedó andando.** Lo más rápido es desde la aplicación: *Repo Manager
+→ Configuración → Ajustes*, bloque **Estado de la instancia**. Si dice «Funcionando», está.
+Si dice «Hay tareas esperando», falta esto. En el registro de arranque, además, tienen que
+aparecer estas líneas:
 
 ```
 queue_job.jobrunner: starting jobrunner thread (in threaded server)
@@ -419,15 +527,9 @@ esperando.
 
 ### El límite entre las dos formas de auditar
 
-> **Hoy este valor no tiene pantalla propia.** Se cambia por el camino técnico que sigue.
-> Que llegue a *Ajustes*, con su explicación al lado, es el ítem **A8** del plan de la
-> etapa.
-
-**Ajustes → Técnico → Parámetros del sistema**, buscar la clave
-`repo_manager.sync_threshold` y editar su valor. Si no existe, se crea con esa clave.
-
-(El menú *Técnico* sólo aparece con el modo desarrollador activado, en
-*Ajustes → Ajustes generales → Herramientas de desarrollador*.)
+Se cambia desde **Repo Manager → Configuración → Ajustes**, sin pasar por el modo
+desarrollador y sin ser administrador de Odoo: alcanza con ser administrador de Repo
+Manager. Ver la [sección 8](#8-configuración).
 
 **Qué valor poner.** Con el procesador en segundo plano configurado, lo razonable es
 **0**: todo pasa por segundo plano y todas las auditorías muestran el avance en vivo. El

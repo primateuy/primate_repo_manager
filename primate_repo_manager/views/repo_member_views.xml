@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 - PrimateUY / License AGPL-3.0 or later -->
+<odoo>
+
+	<record id="view_repo_member_list" model="ir.ui.view">
+		<field name="name">repo.member.list</field>
+		<field name="model">repo.member</field>
+		<field name="arch" type="xml">
+			<list string="Personas" create="false"
+				  decoration-muted="state == 'offboarded'"
+				  decoration-warning="not employee_id and state == 'active'">
+				<field name="github_login"/>
+				<field name="name"/>
+				<field name="employee_id"/>
+				<field name="user_id" optional="hide"/>
+				<field name="signing_configured" string="Firma"/>
+				<field name="state" widget="badge"
+					   decoration-success="state == 'active'"
+					   decoration-muted="state == 'offboarded'"/>
+			</list>
+		</field>
+	</record>
+
+	<record id="view_repo_member_form" model="ir.ui.view">
+		<field name="name">repo.member.form</field>
+		<field name="model">repo.member</field>
+		<field name="arch" type="xml">
+			<form string="Persona" create="false">
+				<header>
+					<button name="action_link_employee" type="object"
+							string="¿Quién es?" class="btn-primary"
+							invisible="employee_id"/>
+					<field name="state" widget="statusbar"/>
+				</header>
+				<sheet>
+					<div class="oe_title">
+						<h1><field name="github_login" readonly="1"/></h1>
+						<div><field name="name" readonly="1"/></div>
+					</div>
+					<!-- El hallazgo «cuenta sin persona asociada», dicho donde se resuelve
+						 y no sólo en la lista de hallazgos. -->
+					<div class="alert alert-warning" role="alert"
+						 invisible="employee_id or state == 'offboarded'">
+						Esta cuenta no está vinculada a ninguna persona. Mientras siga así,
+						sus accesos figuran a nombre de un usuario de GitHub y no de
+						alguien de la empresa: al revisar quién tiene qué, esta cuenta es un
+						agujero. <b>Sin vincular es una respuesta válida</b> —una cuenta de
+						un bot, o de alguien externo— pero es una decisión que conviene
+						tomar a propósito.
+					</div>
+					<group>
+						<group string="Quién es">
+							<field name="employee_id"/>
+							<field name="user_id"/>
+							<field name="github_id" readonly="1"/>
+						</group>
+						<group string="Firma de commits">
+							<field name="signing_configured" readonly="1"/>
+							<field name="signing_checked_at" readonly="1"/>
+						</group>
+					</group>
+					<notebook>
+						<page string="Accesos" name="accesos">
+							<div class="text-muted mb-2">
+								Todo lo que esta cuenta puede tocar. Es lo que hay que
+								mirar antes de dar de baja a alguien.
+							</div>
+							<field name="collaborator_ids" readonly="1">
+								<list string="Accesos" create="false">
+									<field name="repository_id"/>
+									<field name="permission"/>
+									<field name="source"/>
+								</list>
+							</field>
+						</page>
+					</notebook>
+				</sheet>
+				<chatter/>
+			</form>
+		</field>
+	</record>
+
+	<record id="view_repo_member_search" model="ir.ui.view">
+		<field name="name">repo.member.search</field>
+		<field name="model">repo.member</field>
+		<field name="arch" type="xml">
+			<search string="Personas">
+				<field name="github_login"/>
+				<field name="name"/>
+				<field name="employee_id"/>
+				<filter name="sin_empleado" string="Sin persona asociada"
+						domain="[('employee_id', '=', False)]"/>
+				<filter name="sin_usuario" string="Sin usuario de Odoo"
+						domain="[('user_id', '=', False)]"/>
+				<filter name="sin_firma" string="Sin firma configurada"
+						domain="[('signing_configured', '=', False)]"/>
+				<separator/>
+				<filter name="activos" string="Activos"
+						domain="[('state', '=', 'active')]"/>
+				<filter name="bajas" string="Dados de baja"
+						domain="[('state', '=', 'offboarded')]"/>
+				<group>
+					<filter name="g_estado" string="Estado" domain="[]"
+							context="{'group_by': 'state'}"/>
+					<filter name="g_empleado" string="Empleado" domain="[]"
+							context="{'group_by': 'employee_id'}"/>
+				</group>
+			</search>
+		</field>
+	</record>
+
+	<record id="action_repo_member" model="ir.actions.act_window">
+		<field name="name">Personas</field>
+		<field name="res_model">repo.member</field>
+		<field name="view_mode">list,form</field>
+		<field name="search_view_id" ref="view_repo_member_search"/>
+	</record>
+
+	<record id="view_repo_member_link_wizard" model="ir.ui.view">
+		<field name="name">repo.member.link.wizard.form</field>
+		<field name="model">repo.member.link.wizard</field>
+		<field name="arch" type="xml">
+			<form string="Vincular con un empleado">
+				<div class="alert alert-info" role="alert">
+					Los candidatos salen de coincidencias por mail y por nombre. Son
+					<b>pistas, no pruebas</b>: hay homónimos, y un usuario de GitHub puede
+					no tener nada que ver con el nombre de nadie. La confirmación es tuya.
+				</div>
+				<group>
+					<field name="member_id" invisible="1"/>
+					<field name="github_login" readonly="1"/>
+					<field name="github_name" readonly="1"/>
+				</group>
+				<group string="Candidatos" invisible="not suggestion_ids">
+					<field name="suggestion_ids" nolabel="1" readonly="1">
+						<list create="false">
+							<field name="name"/>
+							<field name="work_email"/>
+							<field name="job_title" optional="show"/>
+						</list>
+					</field>
+				</group>
+				<div class="text-muted" invisible="suggestion_ids">
+					Ninguna coincidencia automática. Buscá el empleado a mano, o cerrá:
+					dejar la cuenta sin vincular es una respuesta válida.
+				</div>
+				<group>
+					<field name="employee_id"/>
+				</group>
+				<footer>
+					<button name="action_confirm" type="object" string="Vincular"
+							class="btn-primary"/>
+					<button string="Cancelar" class="btn-secondary" special="cancel"/>
+				</footer>
+			</form>
+		</field>
+	</record>
+
+</odoo>

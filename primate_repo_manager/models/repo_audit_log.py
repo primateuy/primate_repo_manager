@@ -46,6 +46,12 @@ EVENT_TYPES = [
 	# antes de verificar nada. Ver la taxonomía en repo_write_apply.
 	("write_identity", "Identidad creada, registrada antes de verificar"),
 	("write_rolled_back", "Escritura revertida"),
+	# Cambiar la política es la escritura más silenciosa de todas: no toca un solo
+	# repositorio y sin embargo redefine qué cuenta como incumplimiento para todos los de
+	# esa clasificación, en todas las auditorías que vengan. El chatter no alcanza —es
+	# editable y se va con el registro—; el mismo argumento que hizo inmutable esta
+	# bitácora para las escrituras a GitHub vale más acá, no menos.
+	("policy_changed", "Cambio de política"),
 ]
 
 

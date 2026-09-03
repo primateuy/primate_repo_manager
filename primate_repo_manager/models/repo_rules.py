@@ -42,6 +42,7 @@ BRANCH_ROLES = [
 
 class RepoClassificationRule(models.Model):
 	_name = "repo.classification.rule"
+	_inherit = ["repo.policy.audited"]
 	_description = "Regla para clasificar un repositorio automáticamente"
 	_order = "sequence, id"
 
@@ -101,6 +102,7 @@ class RepoClassificationRule(models.Model):
 
 class RepoBranchRoleRule(models.Model):
 	_name = "repo.branch.role.rule"
+	_inherit = ["repo.policy.audited"]
 	_description = "Regla para asignar el rol de una rama por su nombre"
 	_order = "sequence, id"
 

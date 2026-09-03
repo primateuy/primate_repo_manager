@@ -1,0 +1,223 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 - PrimateUY / License AGPL-3.0 or later -->
+<odoo>
+
+	<!-- ==================== Plantillas de política ==================== -->
+
+	<record id="view_repo_policy_template_list" model="ir.ui.view">
+		<field name="name">repo.policy.template.list</field>
+		<field name="model">repo.policy.template</field>
+		<field name="arch" type="xml">
+			<list string="Plantillas de política">
+				<field name="sequence" widget="handle"/>
+				<field name="name"/>
+				<field name="code"/>
+				<field name="classification_default"/>
+				<field name="repository_count"/>
+				<field name="require_pr"/>
+				<field name="required_approvals"/>
+				<field name="status_checks_defined" string="Define checks"/>
+				<field name="active" widget="boolean_toggle"/>
+			</list>
+		</field>
+	</record>
+
+	<record id="view_repo_policy_template_form" model="ir.ui.view">
+		<field name="name">repo.policy.template.form</field>
+		<field name="model">repo.policy.template</field>
+		<field name="arch" type="xml">
+			<form string="Plantilla de política">
+				<sheet>
+					<div class="oe_button_box" name="button_box">
+						<button name="action_open_repositories" type="object"
+								class="oe_stat_button" icon="fa-database"
+								invisible="not classification_default">
+							<field name="repository_count" widget="statinfo"
+								   string="Repositorios"/>
+						</button>
+					</div>
+					<widget name="web_ribbon" title="Archivada" bg_color="text-bg-danger"
+							invisible="active"/>
+					<div class="oe_title">
+						<h1><field name="name" placeholder="Nombre de la plantilla"/></h1>
+					</div>
+					<!-- Lo que hay que tener presente antes de tocar nada de esta
+						 pantalla, dicho antes y no después. -->
+					<div class="alert alert-info" role="alert">
+						Cambiar esta plantilla <b>no toca ningún repositorio</b>: cambia
+						qué se considera incumplimiento para todos los que gobierna, desde
+						la próxima auditoría. Bajar una exigencia hace desaparecer
+						hallazgos sin haber arreglado nada. <b>Cada cambio queda en la
+						bitácora</b> con el campo, el valor anterior y el nuevo.
+					</div>
+					<group>
+						<group string="Identidad">
+							<field name="code"/>
+							<field name="classification_default"/>
+							<field name="active"/>
+						</group>
+						<group string="Permiso máximo por defecto">
+							<field name="max_permission_default"/>
+						</group>
+					</group>
+					<notebook>
+						<page string="Exigencias generales" name="general">
+							<group>
+								<group string="Revisión">
+									<field name="require_pr"/>
+									<field name="required_approvals"/>
+									<field name="require_codeowner_review"/>
+								</group>
+								<group string="Integridad de la historia">
+									<field name="block_force_push"/>
+									<field name="block_deletion"/>
+									<field name="require_signed_commits"/>
+								</group>
+								<group string="Convenciones">
+									<field name="branch_name_pattern"/>
+									<field name="commit_message_pattern"/>
+								</group>
+								<group string="Estrategia de merge">
+									<field name="merge_strategy_base"/>
+									<field name="merge_strategy_promotion"/>
+								</group>
+							</group>
+						</page>
+						<page string="Por rol de rama" name="ramas">
+							<div class="text-muted mb-2">
+								Lo de acá gana sobre las exigencias generales para las
+								ramas de ese rol. El campo <b>Por qué</b> no es decorativo:
+								es lo que va a leer quien encuentre la regla dentro de un
+								año.
+							</div>
+							<field name="branch_rule_ids">
+								<list string="Reglas por rol de rama" editable="bottom">
+									<field name="branch_role"/>
+									<field name="require_pr"/>
+									<field name="required_approvals"/>
+									<field name="require_codeowner_review"/>
+									<field name="block_force_push"/>
+									<field name="block_deletion"/>
+									<field name="require_signed_commits"/>
+									<field name="block_human_push"/>
+									<field name="note"/>
+								</list>
+							</field>
+						</page>
+						<page string="Checks requeridos" name="checks">
+							<field name="status_checks_defined"/>
+							<div class="alert alert-warning" role="alert"
+								 invisible="status_checks_defined">
+								Esta plantilla <b>no define checks requeridos</b>, y por eso
+								la auditoría emite el hallazgo «checks no evaluables» en vez
+								de afirmar que faltan. No es un olvido: comparar contra un
+								nombre de check inventado es peor que no comparar — un
+								nombre equivocado en un ruleset bloquea todos los merges del
+								repositorio. Poder definirlos y proponerlos a partir de los
+								workflows relevados es el ítem <b>B3</b>.
+							</div>
+							<field name="required_check_ids">
+								<list string="Checks requeridos" editable="bottom">
+									<field name="name"/>
+								</list>
+							</field>
+						</page>
+						<page string="Excepciones de acceso" name="accesos">
+							<div class="text-muted mb-2">
+								Personas que pueden tener más permiso que el máximo por
+								defecto, con el motivo. Una excepción sin motivo escrito es
+								una excepción que nadie va a poder revisar.
+							</div>
+							<field name="access_rule_ids">
+								<list string="Excepciones" editable="bottom">
+									<field name="member_id"/>
+									<field name="max_permission"/>
+									<field name="reason"/>
+								</list>
+							</field>
+						</page>
+						<page string="Notas" name="notas">
+							<field name="note" nolabel="1"/>
+						</page>
+					</notebook>
+				</sheet>
+				<chatter/>
+			</form>
+		</field>
+	</record>
+
+	<record id="action_repo_policy_template" model="ir.actions.act_window">
+		<field name="name">Plantillas de política</field>
+		<field name="res_model">repo.policy.template</field>
+		<field name="view_mode">list,form</field>
+	</record>
+
+	<!-- ==================== Reglas de clasificación ==================== -->
+
+	<record id="view_repo_classification_rule_list" model="ir.ui.view">
+		<field name="name">repo.classification.rule.list</field>
+		<field name="model">repo.classification.rule</field>
+		<field name="arch" type="xml">
+			<list string="Reglas de clasificación" editable="bottom">
+				<field name="sequence" widget="handle"/>
+				<field name="name"/>
+				<field name="match_type"/>
+				<field name="value"/>
+				<field name="classification"/>
+				<field name="note"/>
+				<field name="active" widget="boolean_toggle"/>
+			</list>
+		</field>
+	</record>
+
+	<record id="action_repo_classification_rule" model="ir.actions.act_window">
+		<field name="name">Reglas de clasificación</field>
+		<field name="res_model">repo.classification.rule</field>
+		<field name="view_mode">list</field>
+		<field name="help" type="html">
+			<p class="o_view_nocontent_smiling_face">Todavía no hay reglas</p>
+			<p>
+				Gana la <b>primera</b> que matchea, de arriba hacia abajo: el orden es
+				parte de la regla.
+			</p>
+			<p>
+				<b>No hay regla comodín, y es a propósito.</b> Un repositorio que ninguna
+				regla alcanza queda sin clasificar, y eso produce un hallazgo para que
+				alguien decida. Mandarlo por defecto a «cliente» sería adivinar, y una
+				clasificación equivocada compara el repositorio contra la plantilla
+				equivocada — o sea, produce hallazgos falsos y esconde los verdaderos.
+			</p>
+		</field>
+	</record>
+
+	<!-- ==================== Roles de rama ==================== -->
+
+	<record id="view_repo_branch_role_rule_list" model="ir.ui.view">
+		<field name="name">repo.branch.role.rule.list</field>
+		<field name="model">repo.branch.role.rule</field>
+		<field name="arch" type="xml">
+			<list string="Reglas de rol de rama" editable="bottom">
+				<field name="sequence" widget="handle"/>
+				<field name="name"/>
+				<field name="pattern"/>
+				<field name="role"/>
+				<field name="note"/>
+				<field name="active" widget="boolean_toggle"/>
+			</list>
+		</field>
+	</record>
+
+	<record id="action_repo_branch_role_rule" model="ir.actions.act_window">
+		<field name="name">Roles de rama</field>
+		<field name="res_model">repo.branch.role.rule</field>
+		<field name="view_mode">list</field>
+		<field name="help" type="html">
+			<p class="o_view_nocontent_smiling_face">Todavía no hay reglas</p>
+			<p>
+				Deciden qué rol tiene cada rama por su nombre, y del rol depende contra qué
+				exigencias se la compara. Gana la primera que matchea.
+			</p>
+		</field>
+	</record>
+
+</odoo>

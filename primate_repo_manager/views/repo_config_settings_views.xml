@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 - PrimateUY / License AGPL-3.0 or later -->
+<odoo>
+
+	<!-- Pantalla propia y no `res.config.settings`: aquélla exige ser administrador de
+		 Odoo entero, y quien administra Repo Manager no tiene por qué serlo. Ver el
+		 docstring de `repo.settings`. -->
+
+	<record id="view_repo_settings_form" model="ir.ui.view">
+		<field name="name">repo.settings.form</field>
+		<field name="model">repo.settings</field>
+		<field name="arch" type="xml">
+			<form string="Configuración de Repo Manager">
+				<sheet>
+					<group string="Cómo se ejecutan las auditorías">
+						<field name="sync_threshold"/>
+						<div colspan="2" class="text-muted">
+							Con el procesamiento en segundo plano funcionando, poner
+							<b>0</b> hace que siempre se reparta — y sólo repartido se ve
+							la barra avanzar: hasta que una operación no termina, no hay
+							nada que contar.
+						</div>
+					</group>
+
+					<group string="Cuándo un hallazgo es más grave">
+						<div colspan="2" class="text-muted mb-2">
+							La lógica de qué sube y qué baja vive en el código y está
+							probada. Estos son los números, que son criterio: cambian sin
+							que cambie la regla.
+						</div>
+						<field name="commit_violation_ratio"/>
+						<field name="fork_behind_threshold"/>
+						<field name="pr_stale_days"/>
+					</group>
+
+					<group string="Estado de la instancia">
+						<div colspan="2" class="text-muted mb-2">
+							Sólo lectura. Está acá para no tener que entrar al servidor a
+							responder por qué una auditoría no avanza.
+						</div>
+						<field name="runner_state" widget="badge" readonly="1"
+							   decoration-success="runner_state == 'ok'"
+							   decoration-danger="runner_state == 'atascado'"
+							   decoration-warning="runner_state == 'sin_datos'"/>
+						<field name="runner_detail" readonly="1"/>
+						<field name="key_loaded" readonly="1"/>
+						<field name="key_detail" readonly="1"/>
+						<div colspan="2" class="text-muted">
+							La clave de cifrado <b>no se muestra ni se edita desde acá</b>,
+							y eso es la decisión y no un olvido: vive en el archivo de
+							configuración del servidor justamente para que un backup de la
+							base robado no alcance para descifrar nada. El respaldo de la
+							base y el de la clave van juntos.
+						</div>
+					</group>
+				</sheet>
+				<footer>
+					<button name="action_save" type="object" string="Guardar"
+							class="btn-primary"/>
+					<button string="Cancelar" class="btn-secondary" special="cancel"/>
+				</footer>
+			</form>
+		</field>
+	</record>
+
+	<record id="action_repo_config_settings" model="ir.actions.act_window">
+		<field name="name">Ajustes de Repo Manager</field>
+		<field name="res_model">repo.settings</field>
+		<field name="view_mode">form</field>
+		<field name="target">new</field>
+	</record>
+
+</odoo>
