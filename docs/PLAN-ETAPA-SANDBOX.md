@@ -117,6 +117,36 @@ avance** —corre entero en una transacción—. Por eso el encolado pasa a ser 
 umbral 0 cuando hay procesador configurado, y el inmediato queda como respaldo
 documentado.
 
+La misma regla muerde adentro del camino encolado: un job confirma recién cuando termina
+el repositorio, así que el aviso «arranqué con X» emitido por el camino normal llegaría
+junto con el «terminé con X» y la pantalla diría «Ahora: X» con X ya hecho. Por eso el
+aviso de apertura sale por una conexión propia que confirma en el acto (`inmediato=True`).
+Es deliberado que esos avisos no sean transaccionales: son señales de vida, no datos.
+
+*Estado:* **A9.1 y A9.2 hechos.** Falta A9.3 (el tour, o la verificación visual si el tour
+no corre en el entorno) y reutilizar el componente en el plan aplicándose y en el sync.
+
+**A10 · Los contadores de la corrida no pueden ser una fila compartida.**
+Lo destapó la primera corrida encolada mirada de cerca. Con dos hilos en
+`root.repo_manager`, cada job actualiza `repos_done`/`repos_error` de la MISMA fila de
+`repo.audit.run` al terminar. La transacción del job dura todo el recorrido del
+repositorio —unos 8 segundos—, así que cualquier otro job que confirme en esa ventana lo
+mata con «could not serialize access». `queue_job` reintenta y el resultado final es
+correcto, pero **cada repositorio se recorre 2 o 3 veces**: el triple de llamadas a la API
+de GitHub, el triple de tiempo y el triple de cuota. Medido: 7 repositorios, 19 ejecuciones.
+
+Mitigación aplicada el 3-sep-2026: `channels = root:2,root.repo_manager:1`. Sin
+concurrencia no hay colisión — 7 repositorios, 7 ejecuciones, 71 segundos— pero también
+sin paralelismo, y con 113 repositorios eso se nota.
+
+El arreglo de fondo tiene dos formas, y la elección no es obvia:
+- *Contadores calculados*: los jobs sólo escriben el estado de SU repositorio —fila propia,
+  sin contención— y la corrida cuenta. Hay que congelar los números al cerrar, porque un
+  conteo vivo sobre el espejo haría cambiar las cifras de corridas viejas.
+- *Contador en micro-transacción*: `UPDATE ... SET repos_done = repos_done + 1 RETURNING`
+  en una conexión propia que abre y cierra en microsegundos. Más chico, pero rompe la
+  atomicidad que hoy existe entre «el repositorio quedó guardado» y «se contó».
+
 ---
 
 ## Bloque B — F3, política
@@ -169,7 +199,7 @@ Lenguaje de usuario: qué hago, qué veo, qué significa. No de desarrollador.
 ## Orden propuesto
 
 1. **A1** — sin la auditoría lanzable desde la interfaz no hay flujo que documentar. *(hecho)*
-2. **A9** — el componente de estado vivo, primero: define el lenguaje visual con el que nacen las dos pantallas siguientes.
+2. **A9** — el componente de estado vivo, primero: define el lenguaje visual con el que nacen las dos pantallas siguientes. *(A9.1 y A9.2 hechos; falta A9.3)*
 3. **A2 + A3** — hallazgos y repositorio: cierran el tramo de lectura, que es la mitad del criterio de salida.
 4. **A5 + A6 + A8** — política, personas y configuración visibles.
 5. **A7** — el flag de producción, antes de que producción vuelva a tener credenciales.
