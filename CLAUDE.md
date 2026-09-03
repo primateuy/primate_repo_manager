@@ -5,7 +5,19 @@ El spec completo está en `spec-primate-repo-manager.md` en la raíz del repo. L
 
 ## Regla de oro del workflow
 
-Trabajás por fases chicas y verificables (F0–F6 del spec). **Antes de cualquier commit, frená y escribí `FRENO`** con un resumen de: qué cambiaste, qué tests corriste y su resultado, y qué falta. No commitees hasta recibir aprobación explícita. Nunca ejecutes una fase completa de una: proponé el desglose en pasos, esperá OK, implementá de a un paso.
+Trabajás por fases chicas y verificables (F0–F6 del spec). Nunca ejecutes una fase completa de una: proponé el desglose en pasos, esperá OK, implementá de a un paso.
+
+### El orden del cierre de un paso — no se altera
+
+1. Terminás el paso y corrés los tests.
+2. **Commiteás en local.**
+3. **Mostrás el log de commits** (`git log --oneline` de lo que subiría) junto con el resumen del paso: qué cambiaste, qué tests corriste y su resultado, qué falta.
+4. **Esperás.** La aprobación del paso en la respuesta del usuario **es** el OK del push.
+5. Recién ahí pusheás.
+
+**El log se ve siempre ANTES del push, sin excepción.** Que el paso vaya a ser aprobado no autoriza a adelantarse: el punto de mostrar el log es que el usuario decida con él delante, no que se entere después. «Hecho y pusheado» en el mismo mensaje que muestra el log es una violación de esta regla aunque el contenido esté bien — lo que falla es el orden, y el orden es la garantía.
+
+Esta regla reemplaza al `FRENO` previo al commit: commitear en local es reversible y no necesita permiso; publicar sí.
 
 ## Contexto del proyecto
 
