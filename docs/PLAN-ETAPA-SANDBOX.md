@@ -284,6 +284,143 @@ Lenguaje de usuario: qué hago, qué veo, qué significa. No de desarrollador.
 Con A completo, el criterio de salida ya es alcanzable para el flujo de auditoría y
 escritura que existe hoy. B y C agregan funcionalidad; A la hace usable.
 
+---
+
+## Bloque D — Ciclo de vida de módulos entre repositorios
+
+Requisito de producto agregado el 3-sep-2026. El caso real: un módulo nace en el repo de
+un cliente, se copia a otros porque sirve, y cuando mantenerlo en cuatro lugares se vuelve
+tedioso se **promueve** al repo general que se decida —`general_primate` o
+`LocalizacionUy`— y se saca de los particulares. También la dirección general →
+localización.
+
+### Una aclaración de vocabulario, antes de que se mezclen
+
+**«Promoción» ya significa otra cosa en este proyecto.** F4 tiene `repo.promotion`: mover
+código **entre ramas** de un mismo repositorio (staging → support), con merge por API y
+pre-validaciones. Lo de este bloque es entre **repositorios** y su objeto es un módulo, no
+una rama. Son cosas distintas y el modelo tiene que llamarse distinto —
+`repo.module.promotion` o similar — o en seis meses nadie va a saber cuál es cuál leyendo
+un método.
+
+### D1 · Inventario de módulos *(sólo lectura)*
+
+Hoy el espejo sabe de repos, ramas, colaboradores, PRs, commits y workflows. **No sabe qué
+módulos Odoo viven en cada repositorio**, que es el dato sobre el que se apoya todo lo
+demás.
+
+**D1.1 · Escanear manifests.** Modelo `repo.module` (nombre técnico, repositorio, rama,
+ruta, versión, `depends`, autor, licencia) y `repo.module.copy` para cada aparición.
+
+*El camino barato:* `GET /repos/{o}/{r}/git/trees/{sha}?recursive=1` devuelve el árbol
+entero en **una llamada por rama**, y de ahí salen todos los `__manifest__.py` por su ruta.
+Recién después se baja el contenido de cada manifest. No hay que caminar directorios.
+
+*El techo:* la respuesta viene con `truncated: true` en repos muy grandes —el fork de
+`enterprise` seguro—. Se trata como todo lo que no se pudo leer en este módulo: se marca
+como no legible con su causa, **nunca se reporta como «no tiene módulos»**.
+
+*Costo:* ~113 repos × 3-4 ramas relevantes ≈ **400 llamadas de árbol**, más una por
+manifest encontrado. Entra en la cuota de una App (5.000/hora) con holgura, pero no entra
+en el tiempo de una pantalla: va como job del canal propio, igual que la auditoría.
+
+**D1.2 · Detectar el mismo módulo en varios repositorios.** Agrupar por nombre técnico.
+Sale gratis una vez que existe D1.1.
+
+**D1.3 · Detectar si las copias divergieron.** *Y acá está el hallazgo de diseño de este
+bloque:* **no hace falta bajar ni comparar contenido.** El árbol recursivo trae, para cada
+subdirectorio, una entrada `tree` con su propio SHA, que es un hash de contenido de todo
+el subárbol. **Dos copias con el mismo SHA de directorio son idénticas byte a byte; dos
+SHAs distintos son divergencia.** Una comparación por copia, cero llamadas extra.
+
+Lo que ese hash NO dice es *en qué* difieren ni *cuál va adelante*. Para eso hace falta
+bajar los dos y diferenciarlos, y sólo se hace bajo pedido, sobre las que ya se sabe que
+divergen. La pregunta «¿hay divergencia?» es barata; «¿cuál gana?» es cara y es humana.
+
+**D1.4 · La pantalla.** Un módulo con sus copias, cuáles coinciden y cuáles no, y desde
+dónde se promovería. Es lo que convierte el inventario en una decisión.
+
+*Dimensión de D1:* comparable a A2+A3 juntos — un modelo nuevo con su sync, un job, dos
+pantallas. **Sin permisos nuevos:** la App de auditoría ya tiene `contents:read`,
+verificado contra GitHub el 3-sep-2026. Es el bloque de lectura más grande que queda.
+
+### D2 · La promoción *(escritura)*
+
+**D2.1 · Copiar al destino.** Crear los archivos del módulo en el repositorio general, en
+la rama que corresponda. Necesita `contents:write`.
+
+**D2.2 · Limpiar los orígenes.** Son **commits de borrado en repositorios de clientes**, y
+entran por el embudo como toda escritura: plan → aprobación → apply → bitácora → rollback.
+No hay excepción; si algo la merecía menos, es justamente esto.
+
+**D2.3 · El plan de promoción como una sola unidad.** Una promoción es una escritura al
+destino y N borrados en orígenes. Media promoción aplicada —copiado al general, borrado de
+dos de cuatro clientes— es un estado peor que no haber empezado. Hay que decidir si el
+plan se aplica todo-o-nada o si el rollback alcanza; ver «decisiones abiertas».
+
+**D2.4 · Con copias divergentes, primero se decide.** Si D1.3 dice que las copias no son
+idénticas, la promoción **no puede armarse sola**: alguien tiene que elegir qué versión
+gana y qué se hace con lo que se pierde. La pantalla tiene que forzar esa elección, no
+resolverla por antigüedad ni por tamaño.
+
+*Dimensión de D2:* comparable a A4 — reusa todo el motor de escritura de F2, que ya está
+probado; lo nuevo es el tipo de operación y su reversión.
+
+*Dependencia dura:* hoy **producción no tiene App de escritura**. D2 sobre repos reales
+exige crear e instalar una segunda App con `contents:write` sobre los repos de la tanda, y
+después habilitar la escritura por A7. En el sandbox ya se puede: `prm-sandbox` tiene
+`contents:write`.
+
+### D3 · El borde con el despliegue — lo que Repo Manager NO hace
+
+Sacar un módulo del repo de un cliente significa que su instancia tiene que empezar a
+tomarlo de otro lado. **Eso es `addons_path`, y Repo Manager no lo toca.** Cambiar dónde
+busca módulos una instancia es despliegue: es PCM, o es una intervención en el servidor.
+
+Decirlo no alcanza con ponerlo en un comentario. Lo que sí puede hacer Repo Manager, y
+tiene que hacer, es **no dejar que la omisión sea silenciosa**:
+
+- La promoción **avisa, en la pantalla de aprobación**, que el módulo va a dejar de estar
+  en esos repositorios y que las instancias que los usan necesitan un cambio de
+  `addons_path` que este módulo no hace.
+- Si el bridge de PCM está instalado (F6), puede además **nombrar qué instancias** quedan
+  afectadas. Sin el bridge, avisa igual pero en general.
+
+Un módulo que borra código de un repo de cliente y no dice que algo más tiene que cambiar
+es un módulo que rompe producciones ajenas en silencio.
+
+### Dónde encaja D en el orden
+
+**D1 va temprano, y en paralelo conceptual con B — no después.** Tres razones:
+
+1. **Es sólo lectura y no depende de nada de B ni de C.** Escanea árboles y manifests; no
+   toca política ni forks.
+2. **Responde una pregunta que hoy no tiene respuesta y que no depende de que se decida
+   nada.** Cuántos módulos duplicados hay, y cuántos divergieron, es un dato que cambia la
+   conversación sobre qué promover — y conviene tenerlo antes de discutirlo, no después.
+3. **B4 —el drift de política— y D1 leen cosas distintas del mismo árbol.** Hacer D1 antes
+   deja el escaneo del árbol ya resuelto para cuando B4 lo necesite.
+
+**D2 va después de A4**, y no por capricho: A4 es lo que hace que un plan se pueda armar y
+leer sin escribir JSON. D2 es un tipo de operación más dentro de ese plan; construirlo
+antes obligaría a armar promociones a mano en JSON, que es exactamente lo que A4 viene a
+eliminar.
+
+*Orden recomendado:* `A4 → D1 → B → D2 → C`.
+
+### Decisiones abiertas de D
+
+1. **¿La promoción es todo-o-nada?** Un plan que copia al general y borra en cuatro
+   clientes puede fallar en el tercero. El motor de F2 ya sabe revertir operación por
+   operación, pero «revertir un borrado» significa volver a commitear archivos, que no es
+   lo mismo que restaurar un permiso.
+2. **¿Qué rama del destino?** Un módulo vive en `17.0` en un cliente y el general tiene
+   `17.0` y `19.0`. Hay que decidir si la promoción es por rama, o si es una matriz.
+3. **¿Se deja rastro en el origen?** Borrar el módulo y ya, o dejar una nota —un README, o
+   una entrada en el propio repo— que diga dónde vive ahora. Lo segundo es lo que evita
+   que alguien lo vuelva a crear en seis meses.
+
+
 ## Validación visual pendiente
 
 **A5 + A6 + A8 quedaron aprobados en forma provisoria**, sin recorrido visual: Daryl estaba
