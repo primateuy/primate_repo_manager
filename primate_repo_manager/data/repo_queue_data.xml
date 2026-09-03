@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 - PrimateUY / License AGPL-3.0 or later -->
+<!--
+	Canal y funciones de trabajo en segundo plano, DECLARADOS.
+
+	`with_delay(channel="root.repo_manager")` funciona sin esto: queue_job acepta el nombre
+	del canal como texto y crea la función al vuelo. Pero entonces el canal no existe como
+	registro, no aparece en ninguna pantalla, y sobre todo NO SE LE PUEDE DAR CAPACIDAD
+	PROPIA — queda compartiendo la del canal raíz con todo lo demás que corra en la
+	instancia.
+
+	Declarándolo, una auditoría de 113 repositorios puede tener sus dos hilos sin competir
+	con el resto del sistema, y quien administre el servidor ve el canal al que le está
+	asignando capacidad en el archivo de configuración.
+-->
+<odoo noupdate="1">
+
+	<record id="channel_repo_manager" model="queue.job.channel">
+		<field name="name">repo_manager</field>
+		<field name="parent_id" ref="queue_job.channel_root"/>
+	</record>
+
+	<!-- El recorrido de un repositorio: es el trabajo pesado y el que se paraleliza. -->
+	<record id="job_function_sync_repository" model="queue.job.function">
+		<field name="model_id" ref="model_repo_repository"/>
+		<field name="method">_job_sync_repository</field>
+		<field name="channel_id" ref="channel_repo_manager"/>
+	</record>
+
+	<!-- El enumerado: una sola llamada, pero va por el mismo canal para que la capacidad
+		 asignada cubra la auditoría entera y no se reparta en dos lugares. -->
+	<record id="job_function_enumerate" model="queue.job.function">
+		<field name="model_id" ref="model_repo_audit_run"/>
+		<field name="method">_job_enumerate</field>
+		<field name="channel_id" ref="channel_repo_manager"/>
+	</record>
+
+</odoo>

@@ -49,6 +49,26 @@ Trabajás por fases chicas y verificables (F0–F6 del spec). **Antes de cualqui
 - Tests por fase, obligatorios antes de cada FRENO. `odoo-bin -c <conf> -d <db_test> -i primate_repo_manager --test-enable --stop-after-init`.
 - Toda interacción con la API de GitHub en tests va **mockeada** (responses/vcr o mocks manuales de la capa cliente). Ningún test pega a GitHub real.
 - Un test verde no alcanza: verificá que la semántica del test refleja el escenario real del spec (lección PCM). Los fixtures deben describir escenarios reales (un repo fork con espejo+parches, un grant vigente y uno vencido, etc.).
+- **LA MUTACIÓN AUDITA LOS TESTS, NO EL CÓDIGO.** Toda guarda se verifica ROMPIÉNDOLA una
+  vez: se introduce a propósito el error que la guarda debería impedir y se comprueba que
+  algún test se ponga en rojo. Una guarda que nunca falló no está probada, está supuesta.
+
+  El rendimiento real de esta práctica, medido en F2: de las mutaciones que corrimos, tres
+  **no** se cazaron — y en los tres casos el problema estaba en el test, no en el código.
+
+  1. El arnés registraba método y URL pero no el **cuerpo** de la petición, así que los
+     tests afirmaban «hubo una escritura» sin decir con qué. Una reversión que devolviera
+     un permiso menor que el original pasaba en verde.
+  2. Un test decía comprobar que el umbral se decide con lo enumerado y no con el espejo,
+     pero su premisa —«el espejo arranca vacío»— era falsa: el enumerado corre antes de la
+     decisión y lo llena. No distinguía las dos lógicas.
+  3. Un test de F1 sobre el upstream de los forks pasaba contra un fixture donde el listado
+     de GitHub traía `parent`, cosa que GitHub no hace nunca. Probaba una propiedad que no
+     se cumplía en la realidad, y por eso la auditoría real salió con los upstreams vacíos
+     sin que nada se pusiera rojo.
+
+  Ninguno de los tres se habría encontrado leyendo los tests. La mutación es lo que
+  convierte «tengo cobertura» en «sé qué cubre».
 - Casos de seguridad mínimos: webhook con firma inválida → 403; usuario del grupo Lectura no puede crear grants; audit log no editable ni por admin.
 
 ## Capa cliente GitHub

@@ -15,6 +15,7 @@
 	"data": [
 		"security/repo_security.xml",
 		"security/ir.model.access.csv",
+		"data/repo_queue_data.xml",
 		"data/repo_rules_data.xml",
 		"data/repo_policy_data.xml",
 		"data/repo_config_data.xml",

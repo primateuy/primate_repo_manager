@@ -9,7 +9,7 @@
 > no se puede hacer desde la aplicación.
 
 **Última actualización:** 2 de septiembre de 2026
-**Cubre:** conexión con GitHub.
+**Cubre:** conexión con GitHub · lanzar una auditoría.
 
 ---
 
@@ -17,7 +17,11 @@
 
 1. [Qué hace Repo Manager](#1-qué-hace-repo-manager)
 2. [Conectar Odoo con GitHub](#2-conectar-odoo-con-github)
-3. [Secciones que faltan](#3-secciones-que-faltan)
+3. [Traer los repositorios y auditarlos](#3-traer-los-repositorios-y-auditarlos)
+4. [Secciones que faltan](#4-secciones-que-faltan)
+
+**Anexo:** [Configuración del servidor](#anexo--configuración-del-servidor) — sólo para
+quien administra la instancia de Odoo.
 
 ---
 
@@ -125,14 +129,70 @@ cargarlas — Repo Manager lo va a decir con ese mensaje exacto cuando pase.
 
 ---
 
-## 3. Secciones que faltan
+## 3. Traer los repositorios y auditarlos
+
+Una **auditoría** hace dos cosas de una vez: trae el estado actual de GitHub a Odoo, y lo
+compara con la política para producir la lista de cosas que no cierran. No modifica nada
+en GitHub — se puede repetir cuantas veces se quiera.
+
+### 3.1 Lanzarla
+
+**Menú: Repo Manager → Auditorías → Nuevo**
+
+- **Referencia:** un nombre para reconocerla después. Por ejemplo *Auditoría de septiembre*.
+- **Conexión:** cuál de las conexiones auditar.
+
+Guardá y apretá **Auditar**.
+
+### 3.2 Qué pasa después, y por qué a veces tarda
+
+Depende de cuántos repositorios tenga la cuenta, y el producto elige solo:
+
+**Pocos repositorios** (hasta 25 por defecto). La auditoría se hace **en el momento**: la
+pantalla queda esperando y, cuando responde, la corrida ya está terminada con todo
+adentro. Con seis repositorios son unos 70 segundos. Es normal que parezca colgada un
+rato: está trabajando.
+
+**Muchos repositorios.** El trabajo se **reparte en tareas** que se procesan en segundo
+plano. El botón responde enseguida y la corrida queda *En curso*. Los contadores
+—*Recorridos*, *Con error*— y la barra de avance van subiendo a medida que termina cada
+repositorio.
+
+> **La pantalla no se actualiza sola.** Para ver cómo avanza, volvé a entrar a la corrida
+> o refrescá. Cuando el estado pase a *Terminada*, está lista.
+
+El límite entre un caso y otro se puede cambiar (ver el anexo). Si tu instancia no tiene
+el procesamiento en segundo plano configurado y la cuenta supera el límite, la corrida se
+va a quedar *En curso* sin avanzar: eso no es un error del producto, es que falta esa
+pieza del servidor.
+
+### 3.3 Cómo saber que salió bien
+
+Al terminar, el estado queda en uno de estos:
+
+| Estado | Qué significa |
+|---|---|
+| **Terminada** | Se recorrieron todos los repositorios sin problemas |
+| **Terminada con errores** | Se recorrieron todos, pero alguno no se pudo leer del todo. El número está en *Con error* |
+| **Fallida** | No se pudo ni siquiera listar los repositorios. El motivo está en *Detalle del error* |
+
+Que un repositorio quede *con error* no invalida la auditoría: los demás se auditaron
+igual, y el que falló aparece como un hallazgo propio para que nadie suponga que se revisó.
+
+### 3.4 Volver a intentar lo que falló
+
+Si quedaron repositorios con error, **Reanudar** vuelve a recorrer sólo esos. No repite
+los que ya salieron bien, así que no gasta tiempo ni cuota de GitHub de más.
+
+---
+
+## 4. Secciones que faltan
 
 Están construidas por dentro pero **todavía no se pueden operar desde la interfaz**, así
 que no se documentan. Cada una tiene su ítem en el plan de la etapa:
 
 | Sección | Qué falta para poder escribirla | Ítem |
 |---|---|---|
-| Traer los repositorios y auditarlos | El botón *Auditar* deja la corrida esperando: encola el trabajo y nadie lo ejecuta | A1 |
 | Ver los hallazgos | No hay ninguna pantalla de hallazgos; el resultado sólo se ve en el PDF | A2 |
 | Abrir un repositorio y clasificarlo | Sólo hay lista, sin formulario. Clasificar a mano es un paso obligatorio del flujo | A3 |
 | Armar un plan de cambios | Hoy hay que escribir el detalle de cada operación en formato JSON | A4 |
@@ -142,3 +202,67 @@ que no se documentan. Cada una tiene su ítem en el plan de la etapa:
 El informe en PDF, la aprobación y ejecución de un plan, el registro de bitácora y la
 reversión **sí funcionan**, pero dependen de pasos anteriores que todavía no son
 operables. Se documentan cuando el camino completo se pueda recorrer desde la aplicación.
+
+
+---
+
+## Anexo — Configuración del servidor
+
+Esta parte no es del flujo de trabajo: la necesita quien administra la instancia de Odoo,
+una sola vez.
+
+### El procesamiento en segundo plano
+
+Cuando una cuenta supera el límite de repositorios, la auditoría se reparte en tareas que
+alguien tiene que ejecutar. Ese «alguien» es un componente de Odoo que hay que encender en
+el archivo de configuración.
+
+**Qué cambió en `odoo.conf` y por qué:**
+
+```ini
+[options]
+; Carga el módulo de tareas en segundo plano al arrancar la instancia. Sin esto el
+; procesador no existe y las tareas se acumulan sin que nadie las tome.
+server_wide_modules = base,web,queue_job
+
+[queue_job]
+; Cuántas tareas se procesan a la vez, por canal.
+;   root              : capacidad general de la instancia
+;   root.repo_manager : el canal propio de Repo Manager
+channels = root:2,root.repo_manager:2
+```
+
+**Hay que reiniciar Odoo** para que tome el cambio.
+
+**Dos consecuencias que conviene saber:**
+
+- `server_wide_modules` aplica a **todas** las bases de datos que sirva esa instancia, no
+  sólo a la que usa Repo Manager. Es como está pensado el componente. El arranque tarda un
+  poco más y el registro muestra el procesador conectándose a cada base.
+- El canal `root.repo_manager` **existe porque el módulo lo declara**. Tener canal propio
+  permite darle capacidad sin competir con el resto del sistema; si no se declarara,
+  compartiría la del canal general con todo lo demás.
+
+**Cómo verificar que quedó andando.** En el registro de arranque tienen que aparecer estas
+líneas:
+
+```
+queue_job.jobrunner: starting jobrunner thread (in threaded server)
+queue_job.jobrunner.channels: Configured channel: root(C:2,...)
+queue_job.jobrunner.channels: Configured channel: root.repo_manager(C:2,...)
+queue_job.jobrunner.runner: queue job runner ready for db <tu base>
+```
+
+Si no aparecen, el procesador no arrancó y las auditorías grandes se van a quedar
+esperando.
+
+### El límite entre las dos formas de auditar
+
+**Ajustes → Repo Manager → Repositorios que se auditan en el momento** (por defecto 25).
+
+El valor por defecto sale de una medición, no de un número redondo: 11,5 segundos por
+repositorio contra una cuenta real de 113. Con 25 son unos 5 minutos, cómodos dentro del
+tiempo máximo que Odoo le da a una pantalla.
+
+Subirlo mucho hace que auditorías grandes corten por tiempo agotado; bajarlo a 0 fuerza
+que todo pase por segundo plano, lo que es razonable si el procesador está configurado.
