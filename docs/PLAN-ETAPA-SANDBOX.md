@@ -94,6 +94,29 @@ Va en el bloque A porque es de la misma naturaleza que el resto: no agrega capac
 protege la que ya existe. No es urgente mientras producción esté sin credenciales, pero
 tiene que estar antes de volver a cargarlas.
 
+**A8 · Pantalla de configuración.** El módulo no tiene vista de `res.config.settings`:
+sus parámetros —el umbral, los umbrales de severidad— existen pero no aparecen en
+*Ajustes*, y sólo se tocan por *Técnico → Parámetros del sistema*. Lo descubrió el primer
+recorrido de la guía, que documentaba una pantalla inexistente.
+
+**A9 · Componente de estado vivo.** Requisito de producto: lo que está en pantalla y
+cambia, tiene que actualizarse solo. Nada de refrescar para ver avanzar una auditoría.
+
+Un componente OWL propio, reutilizable, que se embebe donde hay estado cambiante —la
+corrida de auditoría primero, después el plan aplicándose y el sync— se suscribe al bus de
+Odoo y pinta el avance sin recargar la pantalla.
+
+*Corte adoptado:* **lo vivo es propio, los datos son estándar.** Los hallazgos se
+benefician de la búsqueda y el agrupado que Odoo da gratis; el progreso no se puede
+resolver con vistas estándar. Si más adelante se decide una interfaz completa, este
+componente se reutiliza adentro.
+
+*Consecuencia técnica aceptada:* las notificaciones del bus se entregan al confirmar la
+transacción, así que **el camino sincrónico es estructuralmente incapaz de mostrar
+avance** —corre entero en una transacción—. Por eso el encolado pasa a ser el default, con
+umbral 0 cuando hay procesador configurado, y el inmediato queda como respaldo
+documentado.
+
 ---
 
 ## Bloque B — F3, política
@@ -145,13 +168,14 @@ Lenguaje de usuario: qué hago, qué veo, qué significa. No de desarrollador.
 
 ## Orden propuesto
 
-1. **A1** — sin la auditoría lanzable desde la interfaz no hay flujo que documentar.
-2. **A2 + A3** — hallazgos y repositorio: cierran el tramo de lectura, que es la mitad del criterio de salida.
-3. **A5 + A6** — política y personas visibles.
-3b. **A7** — el flag de producción, antes de que producción vuelva a tener credenciales.
-4. **A4** — armar planes sin JSON; cierra el tramo de escritura.
-5. **B** — F3.
-6. **C** — F5.
+1. **A1** — sin la auditoría lanzable desde la interfaz no hay flujo que documentar. *(hecho)*
+2. **A9** — el componente de estado vivo, primero: define el lenguaje visual con el que nacen las dos pantallas siguientes.
+3. **A2 + A3** — hallazgos y repositorio: cierran el tramo de lectura, que es la mitad del criterio de salida.
+4. **A5 + A6 + A8** — política, personas y configuración visibles.
+5. **A7** — el flag de producción, antes de que producción vuelva a tener credenciales.
+6. **A4** — armar planes sin JSON; cierra el tramo de escritura.
+7. **B** — F3.
+8. **C** — F5.
 
 Con A completo, el criterio de salida ya es alcanzable para el flujo de auditoría y
 escritura que existe hoy. B y C agregan funcionalidad; A la hace usable.

@@ -8,8 +8,13 @@
 > paso no aparezca en esta guía no es un olvido — es la forma en que decimos que todavía
 > no se puede hacer desde la aplicación.
 
-**Última actualización:** 2 de septiembre de 2026
+**Última actualización:** 3 de septiembre de 2026
 **Cubre:** conexión con GitHub · lanzar una auditoría.
+
+> **Regla de esta guía:** ninguna sección se publica sin haber recorrido la pantalla real.
+> Las secciones 2 y 3 se escribieron mirando el código y **fallaron ese contrato** en su
+> primera prueba: los nombres y los caminos no coincidían con lo que se ve. Están
+> pendientes de corrección contra capturas de la interfaz. El anexo ya se corrigió.
 
 ---
 
@@ -258,11 +263,23 @@ esperando.
 
 ### El límite entre las dos formas de auditar
 
-**Ajustes → Repo Manager → Repositorios que se auditan en el momento** (por defecto 25).
+> **Hoy este valor no tiene pantalla propia.** Se cambia por el camino técnico que sigue.
+> Que llegue a *Ajustes*, con su explicación al lado, es el ítem **A8** del plan de la
+> etapa.
 
-El valor por defecto sale de una medición, no de un número redondo: 11,5 segundos por
-repositorio contra una cuenta real de 113. Con 25 son unos 5 minutos, cómodos dentro del
-tiempo máximo que Odoo le da a una pantalla.
+**Ajustes → Técnico → Parámetros del sistema**, buscar la clave
+`repo_manager.sync_threshold` y editar su valor. Si no existe, se crea con esa clave.
 
-Subirlo mucho hace que auditorías grandes corten por tiempo agotado; bajarlo a 0 fuerza
-que todo pase por segundo plano, lo que es razonable si el procesador está configurado.
+(El menú *Técnico* sólo aparece con el modo desarrollador activado, en
+*Ajustes → Ajustes generales → Herramientas de desarrollador*.)
+
+**Qué valor poner.** Con el procesador en segundo plano configurado, lo razonable es
+**0**: todo pasa por segundo plano y todas las auditorías muestran el avance en vivo. El
+camino inmediato queda como respaldo para instancias sin procesador — funciona, pero **no
+vas a ver el avance**: la pantalla queda esperando y vuelve con todo hecho.
+
+Si preferís mantener el camino inmediato para cuentas chicas, el valor de referencia es
+**25**: sale de una medición, no de un número redondo — 11,5 segundos por repositorio
+contra una cuenta real de 113, así que 25 son unos 5 minutos, cómodos dentro del tiempo
+máximo que Odoo le da a una pantalla. Subirlo mucho hace que las auditorías grandes corten
+por tiempo agotado.
