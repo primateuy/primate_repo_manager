@@ -101,9 +101,24 @@ mano. Eso es interfaz de desarrollador.
   «nunca en lote» de la spec de F2 es sobre la decisión, no sobre el armado, y una lista
   que enumera y termina en un botón se saltea leyendo en diagonal. La guarda vive en el
   modelo, no en el asistente, porque una pantalla se saltea llamando al método.
-- **A4.1 · «Remediar esto» desde un hallazgo**, con el payload derivado de la plantilla.
-  Acumula en el plan en borrador de esa conexión, con opción de crear uno nuevo.
-- **A4.2 · Remediar varios de una vez** desde la lista de hallazgos.
+- **A4.1 · «Remediar esto» desde un hallazgo** *(hecho)*, con el payload derivado. Acumula
+  en el borrador abierto de esa conexión. **El botón arma y termina: no escribe nada.**
+  Si el hallazgo ya está planificado, no crea una segunda operación — dice en qué plan
+  está y lleva ahí. Esa no-duplicación tiene dos capas: la comprobación en Python, que da
+  el mensaje, y un **índice único parcial** sobre las operaciones vivas, que cierra la
+  ventana entre comprobar y crear. Verificado: sacando la comprobación, la base rechaza
+  igual.
+
+  *Hallazgo del paso:* de las 16 acciones de remediación del catálogo, **sólo 2 son
+  escrituras a GitHub** que el módulo sepa armar (`revoke_permission` y `apply_ruleset`).
+  Las otras 14 se resuelven en Odoo, en la cuenta de una persona, en la consola de GitHub
+  o en una fase que todavía no existe. Cada una tiene escrito dónde se resuelve, y la
+  pantalla lo muestra: un botón ausente sin explicación se lee como un olvido del
+  producto. Hay un test que falla si alguien agrega una acción sin decidir de qué lado cae.
+- **A4.2 · Remediar varios de una vez** *(hecho, salió con A4.1)* desde la lista de
+  hallazgos. Los que ya están planificados y los que no se planifican se saltean y se
+  cuentan, en vez de cortar el lote: negarse entero porque uno de veinte no aplicaba
+  obliga a ir de a uno, que es lo que este botón viene a evitar.
 - **A4.3 · Asistente por tipo de operación**, para lo que no nace de un hallazgo.
 - **A4.5 · El apply y el rollback con estado vivo**, reusando el componente de A9 y su
   patrón: derivar del espejo, no de parámetros.
@@ -315,9 +330,8 @@ localización.
 **«Promoción» ya significa otra cosa en este proyecto.** F4 tiene `repo.promotion`: mover
 código **entre ramas** de un mismo repositorio (staging → support), con merge por API y
 pre-validaciones. Lo de este bloque es entre **repositorios** y su objeto es un módulo, no
-una rama. Son cosas distintas y el modelo tiene que llamarse distinto —
-`repo.module.promotion` o similar — o en seis meses nadie va a saber cuál es cuál leyendo
-un método.
+una rama. Son cosas distintas y el modelo se llama distinto: **`repo.module.promotion`**, decidido
+el 4-sep-2026. `repo.promotion` queda reservado para F4, entre ramas.
 
 ### D1 · Inventario de módulos *(sólo lectura)*
 

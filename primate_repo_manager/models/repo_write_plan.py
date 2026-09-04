@@ -323,6 +323,14 @@ class RepoWriteOperation(models.Model):
 		help="Rama, login o slug sobre el que opera, según el tipo.")
 	payload_json = fields.Text(string="Payload (JSON)")
 
+	# De dónde salió esta operación. Es PROCEDENCIA, no contenido ejecutable, así que NO
+	# entra en la huella: cambiar de qué hallazgo vino no cambia lo que se va a ejecutar.
+	# Sirve para dos cosas: que el hallazgo sepa que ya está planificado, y que la
+	# bitácora pueda decir por qué se hizo cada cosa.
+	finding_id = fields.Many2one(
+		"repo.audit.finding", string="Hallazgo de origen", ondelete="set null",
+		index=True, copy=False)
+
 	# --- A4.4: qué va a pasar, en castellano -----------------------------
 	description = fields.Char(
 		string="Qué va a pasar", compute="_compute_description", store=True,
@@ -355,6 +363,28 @@ class RepoWriteOperation(models.Model):
 	# ver el docstring de `repo.write.plan._huella`.
 	CAMPOS_EJECUTABLES = (
 		"sequence", "kind", "repository_id", "target", "payload_json", "description")
+
+	def init(self):
+		"""Un hallazgo no puede tener DOS operaciones vivas al mismo tiempo.
+
+		POR QUÉ UN ÍNDICE Y NO UNA COMPROBACIÓN EN PYTHON. La comprobación existe igual
+		—es la que da el mensaje amable «ya está en el plan N»— pero entre comprobar y
+		crear hay una ventana, y el caso que hay que cerrar es exactamente ése: dos
+		personas mirando la misma lista de hallazgos, o un doble clic. Un índice único
+		parcial lo hace imposible en la base, no improbable.
+
+		Es PARCIAL —sólo sobre las operaciones pendientes— porque una operación ya aplicada
+		o revertida no estorba: si el hallazgo vuelve a aparecer en una auditoría
+		posterior, tiene que poder planificarse de nuevo.
+		"""
+		super().init()
+		from odoo.tools.sql import create_index
+
+		create_index(
+			self.env.cr, "repo_write_operation_finding_viva_uniq",
+			self._table, ["finding_id"], unique=True,
+			where="finding_id IS NOT NULL AND state = 'pending'",
+			comment="Un hallazgo, una operación viva. Ver init().")
 
 	@api.depends("kind", "repository_id", "target", "payload_json")
 	def _compute_description(self):

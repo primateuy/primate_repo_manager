@@ -14,6 +14,7 @@ import json
 import logging
 
 from odoo import _, api, fields, models
+from odoo.exceptions import UserError
 
 _logger = logging.getLogger(__name__)
 
@@ -134,6 +135,56 @@ REMEDIATION_BY_TYPE = {
 # Las que quitan acceso o cambian algo que puede romper el trabajo de otro.
 DESTRUCTIVE_ACTIONS = ("revoke_permission", "rename_default_branch")
 
+# QUÉ ACCIONES SE PUEDEN CONVERTIR EN UNA OPERACIÓN DE PLAN, Y CUÁLES NO.
+#
+# Sale de mirar el catálogo completo: de las dieciséis acciones de remediación, sólo dos
+# son escrituras a GitHub que el módulo sepa armar hoy. Las demás se resuelven en otro
+# lado —en Odoo, en la cuenta de una persona, en la consola de GitHub, o en una fase que
+# todavía no existe— y ofrecer «Remediar esto» sobre ellas sería un botón que promete algo
+# que no puede cumplir.
+#
+# La lista es explícita y no una heurística: agregar un tipo de operación nuevo obliga a
+# venir acá y decidir, en vez de que el botón aparezca solo el día que alguien amplíe
+# `OPERATION_KINDS` sin pensar en esto.
+PLANIFICABLES = {
+	"revoke_permission": "collaborator_revoke",
+	"apply_ruleset": "branch_protection_apply",
+}
+
+# Por qué NO se puede planificar cada una de las otras. Se muestra en pantalla: un botón
+# ausente sin explicación se lee como un olvido del producto.
+POR_QUE_NO_PLANIFICABLE = {
+	"set_classification": (
+		"Se resuelve en Odoo, en el propio repositorio: campo «Clasificación»."),
+	"link_employee": (
+		"Se resuelve en Odoo, en «Personas»: el botón «¿Quién es?» de esa cuenta."),
+	"define_required_checks": (
+		"Ninguna plantilla define checks requeridos todavía. Es el ítem B3."),
+	"sync_fork": "Sincronizar forks es la fase de forks (bloque C).",
+	"migrate_fork": (
+		"Migrar un fork al patrón espejo+parches es la fase de forks (bloque C). "
+		"Mientras tanto se marca «Gobernado» a mano en el repositorio."),
+	"reinstall_app": (
+		"Se resuelve en GitHub, reinstalando la App con una cuenta que tenga admin. "
+		"Ningún token puede darse a sí mismo un permiso que no tiene."),
+	"check_app_access": "Se resuelve en GitHub, revisando el alcance de la instalación.",
+	"upgrade_plan": (
+		"Es una decisión de plan de GitHub, con costo. No hay nada que aplicar."),
+	"configure_signing": (
+		"Lo configura cada persona en su propia cuenta de GitHub. El módulo lo verifica, "
+		"no lo puede hacer por ella."),
+	"enforce_commit_convention": (
+		"Los mensajes ya escritos no se cambian sin reescribir la historia. Lo que sí se "
+		"puede es exigir la convención de acá en adelante, que es una protección de rama."),
+	"rename_default_branch": (
+		"Renombrar la rama por defecto rompe los clones de todo el mundo y las URLs "
+		"guardadas. Se hace a mano y avisando, no desde un plan."),
+	"create_version_branch": (
+		"Crear ramas todavía no es un tipo de operación del plan."),
+	"review_manually": "No hay una acción automática: hay que mirarlo.",
+	"no_action_owner": "No requiere acción.",
+}
+
 UNREADABLE_CAUSES = [
 	("plan_limit", "Límite del plan de GitHub"),
 	("no_admin_permission", "La App no tiene permiso de administrador"),
@@ -192,11 +243,165 @@ class RepoAuditFinding(models.Model):
 		help="Quita acceso o cambia algo que puede romper el trabajo de otro. Nunca entra "
 			 "en una aprobación por lote.")
 
+	# --- A4.1: de un hallazgo a una operación de plan ---------------------
+
+	operation_ids = fields.One2many(
+		"repo.write.operation", "finding_id", string="Operaciones planificadas")
+	planned_operation_id = fields.Many2one(
+		"repo.write.operation", string="Ya planificado en",
+		compute="_compute_planificacion",
+		help="La operación VIVA que remedia este hallazgo, si ya hay una.")
+	planned_plan_id = fields.Many2one(
+		"repo.write.plan", string="Plan", compute="_compute_planificacion")
+	can_be_planned = fields.Boolean(
+		string="Se puede remediar con un plan", compute="_compute_planificacion")
+	why_not_planned = fields.Char(
+		string="Dónde se resuelve", compute="_compute_planificacion")
+
+	@api.depends("operation_ids.state", "operation_ids.plan_id.state",
+				 "remediation_action")
+	def _compute_planificacion(self):
+		"""Qué se puede hacer con este hallazgo, y si ya se hizo.
+
+		«Viva» es una operación pendiente en un plan que todavía no se ejecutó. Una ya
+		aplicada no cuenta: si el hallazgo volvió a aparecer en una auditoría posterior,
+		hay que poder planificarlo de nuevo.
+		"""
+		for hallazgo in self:
+			viva = hallazgo.operation_ids.filtered(
+				lambda o: o.state == "pending"
+				and o.plan_id.state in ("draft", "approved"))[:1]
+			hallazgo.planned_operation_id = viva
+			hallazgo.planned_plan_id = viva.plan_id
+			accion = hallazgo.remediation_action
+			hallazgo.can_be_planned = accion in PLANIFICABLES
+			hallazgo.why_not_planned = (
+				False if hallazgo.can_be_planned
+				else POR_QUE_NO_PLANIFICABLE.get(accion, ""))
+
 	@api.depends("severity")
 	def _compute_severity_order(self):
 		for hallazgo in self:
 			hallazgo.severity_order = SEVERITY_ORDER.get(hallazgo.severity, 9)
 			hallazgo.severity_rank = RANK_BY_SEVERITY.get(hallazgo.severity, False)
+
+	# ------------------------------------------------------------------
+	# Remediar: armar la operación. NADA se escribe en GitHub desde acá.
+	# ------------------------------------------------------------------
+
+	def action_remediate(self):
+		"""Arma la operación de plan de este hallazgo y lleva al plan.
+
+		LO QUE ESTE BOTÓN NO HACE, Y ES LO IMPORTANTE: no escribe en GitHub. Arma una
+		operación en un plan en borrador y termina. Después hace falta aprobar —con
+		confirmación individual de cada destructiva— y recién ahí aplicar. La tentación de
+		que «remediar» remedie de una es fuerte y es exactamente la que saltearía las tres
+		guardas de F2.
+		"""
+		self.ensure_one()
+		if self.planned_operation_id:
+			# Ya está planificado: se lleva ahí en vez de crear la misma operación otra
+			# vez. Es el caso del doble clic y el de dos personas mirando la misma lista.
+			return self._ir_al_plan(_(
+				"Este hallazgo ya está en el plan «%s», pendiente de aplicar."
+			) % self.planned_plan_id.display_name)
+		if not self.can_be_planned:
+			raise UserError(_(
+				"Este hallazgo no se remedia con un plan de escritura.\n\n%s"
+			) % (self.why_not_planned or _("No hay una acción automática.")))
+
+		plan = self._plan_destino()
+		self.env["repo.write.operation"].create(self._valores_de_operacion(plan))
+		return self._ir_al_plan(_(
+			"Operación agregada al plan «%s». Todavía no se aplicó nada: falta aprobarlo."
+		) % plan.display_name)
+
+	def _plan_destino(self):
+		"""El borrador abierto de esa conexión, o uno nuevo si no hay.
+
+		Acumular es lo que evita veinte planes de una operación y veinte aprobaciones. Se
+		elige el borrador MÁS RECIENTE si hubiera varios, que es el que alguien está
+		armando ahora.
+		"""
+		self.ensure_one()
+		backend = self.run_id.backend_id
+		plan = self.env["repo.write.plan"].search(
+			[("backend_id", "=", backend.id), ("state", "=", "draft")],
+			order="id desc", limit=1)
+		if plan:
+			return plan
+		return self.env["repo.write.plan"].create({
+			"name": _("Remediaciones de %s") % backend.name,
+			"backend_id": backend.id,
+		})
+
+	def _valores_de_operacion(self, plan):
+		"""Traduce el hallazgo a los campos de la operación."""
+		self.ensure_one()
+		payload = self.remediation_payload
+		if not payload:
+			raise UserError(_(
+				"El hallazgo no trae el detalle de la remediación, así que no hay con qué "
+				"armar la operación. Es un problema del motor de auditoría, no algo que "
+				"se resuelva desde acá."))
+		siguiente = max(plan.operation_ids.mapped("sequence") or [0]) + 10
+		return {
+			"plan_id": plan.id,
+			"kind": PLANIFICABLES[self.remediation_action],
+			"repository_id": self.repository_id.id,
+			"target": self.subject or "",
+			"payload_json": payload,
+			"finding_id": self.id,
+			"sequence": siguiente,
+		}
+
+	def _ir_al_plan(self, mensaje):
+		self.ensure_one()
+		plan = self.planned_plan_id
+		return {
+			"type": "ir.actions.act_window",
+			"name": plan.display_name,
+			"res_model": "repo.write.plan",
+			"res_id": plan.id,
+			"view_mode": "form",
+			"context": dict(self.env.context, prm_aviso=mensaje),
+		}
+
+	def action_remediate_many(self):
+		"""Varios hallazgos de una. Veinte ramas sin proteger son UN plan, no veinte.
+
+		Los que ya están planificados y los que no se planifican no cortan el lote: se
+		saltean y se cuentan. Un botón que se niega entero porque uno de veinte no
+		aplicaba obliga a seleccionar de a uno, que es justamente lo que este botón viene
+		a evitar.
+		"""
+		agregados = self.env["repo.write.operation"]
+		ya_estaban = self.browse()
+		sin_camino = self.browse()
+		plan = False
+		for hallazgo in self:
+			if hallazgo.planned_operation_id:
+				ya_estaban |= hallazgo
+				continue
+			if not hallazgo.can_be_planned or not hallazgo.remediation_payload:
+				sin_camino |= hallazgo
+				continue
+			plan = plan or hallazgo._plan_destino()
+			agregados |= self.env["repo.write.operation"].create(
+				hallazgo._valores_de_operacion(plan))
+		if not agregados:
+			raise UserError(_(
+				"No se agregó ninguna operación.\n\n"
+				"· %(ya)s ya estaban en un plan.\n"
+				"· %(no)s no se remedian con un plan de escritura."
+			) % {"ya": len(ya_estaban), "no": len(sin_camino)})
+		accion = self.env["ir.actions.actions"]._for_xml_id(
+			"primate_repo_manager.action_repo_write_plan")
+		accion.update({
+			"res_id": plan.id, "view_mode": "form",
+			"views": [(False, "form")],
+		})
+		return accion
 
 	@api.model
 	def build(self, run, finding_type, summary, repository=None, **kwargs):

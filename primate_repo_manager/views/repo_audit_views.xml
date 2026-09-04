@@ -112,6 +112,12 @@
 				<field name="run_id" optional="hide"/>
 				<field name="severity_order" column_invisible="1"/>
 				<field name="severity_rank" column_invisible="1"/>
+				<field name="can_be_planned" column_invisible="1"/>
+				<field name="planned_plan_id" optional="hide" string="Ya en el plan"/>
+				<button name="action_remediate" type="object" icon="fa-wrench"
+						title="Remediar esto: arma la operación en un plan. No escribe nada."
+						groups="primate_repo_manager.group_repo_lead"
+						invisible="not can_be_planned"/>
 			</list>
 		</field>
 	</record>
@@ -121,7 +127,34 @@
 		<field name="model">repo.audit.finding</field>
 		<field name="arch" type="xml">
 			<form string="Hallazgo" create="false" edit="false">
+				<header>
+					<button name="action_remediate" type="object"
+							string="Remediar esto" class="btn-primary"
+							groups="primate_repo_manager.group_repo_lead"
+							invisible="not can_be_planned or planned_operation_id"/>
+					<button name="action_remediate" type="object"
+							string="Ver el plan donde ya está" class="btn-secondary"
+							groups="primate_repo_manager.group_repo_lead"
+							invisible="not planned_operation_id"/>
+				</header>
 				<sheet>
+					<field name="can_be_planned" invisible="1"/>
+					<field name="planned_operation_id" invisible="1"/>
+					<!-- Ya planificado: se dice dónde, en vez de dejar que alguien lo
+						 agregue de nuevo y se entere al aprobar. -->
+					<div class="alert alert-info" role="alert"
+						 invisible="not planned_operation_id">
+						Ya está en el plan
+						<field name="planned_plan_id" readonly="1" nolabel="1"
+							   class="oe_inline"/>, pendiente de aplicar.
+					</div>
+					<!-- Y si no se puede planificar, por qué. Un botón ausente sin
+						 explicación se lee como un olvido del producto. -->
+					<div class="alert alert-secondary" role="alert"
+						 invisible="can_be_planned or not why_not_planned">
+						Este hallazgo no se remedia con un plan de escritura.
+						<field name="why_not_planned" readonly="1" nolabel="1"/>
+					</div>
 					<div class="oe_title"><h1><field name="summary"/></h1></div>
 					<group>
 						<group>
@@ -189,6 +222,17 @@
 				</group>
 			</search>
 		</field>
+	</record>
+
+	<!-- Acción de lote: veinte ramas sin proteger son UN plan, no veinte. -->
+	<record id="action_remediate_findings" model="ir.actions.server">
+		<field name="name">Remediar: armar plan con estos</field>
+		<field name="model_id" ref="model_repo_audit_finding"/>
+		<field name="binding_model_id" ref="model_repo_audit_finding"/>
+		<field name="binding_view_types">list</field>
+		<field name="group_ids" eval="[Command.link(ref('group_repo_lead'))]"/>
+		<field name="state">code</field>
+		<field name="code">action = records.action_remediate_many()</field>
 	</record>
 
 	<record id="action_repo_audit_finding" model="ir.actions.act_window">
