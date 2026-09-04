@@ -1,0 +1,277 @@
+# Recorrido de validación del Bloque A
+
+> Documento de trabajo, no guía de usuario. La guía dice **cómo se usa**; esto dice **qué
+> hay que comprobar y qué sería señal de problema**. Cuando este recorrido salga completo,
+> el criterio de salida del flujo existente queda cerrado.
+
+**Para:** Daryl · **Con:** `desarrollo@primate.uy` · **Contra:** `prm-sandbox`
+**Escrito:** 4 de septiembre de 2026 · **Cubre:** A4 completo, y la deuda visual de A5+A6+A8.
+
+Cada paso tiene tres partes: **hago**, **tengo que ver**, **sería problema**. Si algo de
+la tercera columna aparece, anotalo y seguí — no hace falta cortar el recorrido salvo que
+diga lo contrario.
+
+---
+
+## Paso 0 — Prerrequisitos (10 minutos, una sola vez)
+
+**Sin esto, el recorrido llega hasta «aprobar» y no puede aplicar nada.**
+
+La conexión `GitHub — prm-sandbox` **no tiene cargadas las credenciales de escritura**.
+Comprobado el 4-sep-2026: `write_app_id` vacío. Es a propósito —quedaron fuera al cerrar
+F2— pero el tramo de apply y rollback las necesita.
+
+**Hago:** *Repo Manager → Configuración → Conexiones → GitHub — prm-sandbox*. En el bloque
+**App de escritura**: App ID `4808079`, Installation ID `158565221`, y cargar el archivo
+`prm-sandbox.2026-09-02.private-key.pem` de la carpeta PRM en *Private key de escritura*.
+Guardar.
+
+**Tengo que ver:** *Clave de escritura cargada* tildado. El campo del PEM vuelve a estar
+vacío — no se muestra nunca más.
+
+**Sería problema:** que aparezca el botón **Habilitar escritura**. No debería: esa
+habilitación es sólo para conexiones de **producción**, y ésta es de sandbox. Si aparece,
+revisá que el campo *Entorno* diga *Sandbox*.
+
+> **Verificación de que el módulo también levantó:** *Auditorías* tiene que mostrar
+> corridas anteriores, y la última en *Terminada*.
+
+---
+
+## Parte 1 · El camino completo, de punta a punta
+
+### 1.1 Una auditoría fresca
+
+**Hago:** *Auditorías → Nuevo*, conexión `GitHub — prm-sandbox`, guardar, **Auditar**.
+
+**Tengo que ver:** la barra llenándose sola, *N de 6*, «Ahora: …» cambiando de
+repositorio, el cronómetro corriendo. **Debería terminar en unos 25–30 segundos.**
+
+**Sería problema:**
+- Que tarde más de 70 segundos. Antes de A10 tardaba eso, con un solo hilo; si volvió a
+  ese número, la corrida está reintentando y hay contención otra vez.
+- Que quede en *En curso* con todo terminado. Es el defecto que A10 arregló con el job de
+  cierre; si vuelve, es que el job de cierre no corrió.
+- Que la pantalla no se mueva sola.
+
+### 1.2 Remediar un hallazgo — el que NO es destructivo
+
+**Hago:** *Hallazgos*, quitar el agrupado si molesta, buscar uno de tipo **«Rama sin
+protección»** en `sbx-localizacion` (hay tres: `17.0`, `17.0.Staging`, `19.0`). Abrirlo y
+apretar **Remediar esto**.
+
+**Tengo que ver:** te lleva a un plan **en borrador** llamado *Remediaciones de GitHub —
+prm-sandbox*, con **una** operación. En la columna *Qué va a pasar*, una frase en
+castellano — algo como «En prm-sandbox/sbx-localizacion, la rama 17.0 pasa a exigir 1
+aprobación(es) y bloquear force-push». La columna *Saca algo* en blanco.
+
+**Sería problema:**
+- Que la frase no esté, o que muestre JSON.
+- Que el plan salga en cualquier estado que no sea borrador.
+- **Que algo haya cambiado en GitHub.** Este botón no escribe nada. Si mirás el repo en
+  GitHub y la rama quedó protegida, eso es grave y hay que cortar.
+
+### 1.3 El segundo clic no duplica
+
+**Hago:** volvé al mismo hallazgo (*Hallazgos*, el que acabás de remediar) y apretá
+**Remediar esto** otra vez. Y si podés, abrí el mismo hallazgo en dos pestañas y apretá en
+las dos.
+
+**Tengo que ver:** el botón ahora dice **«Ver el plan donde ya está»**, y arriba un aviso
+*«Ya está en el plan …»*. Te lleva al mismo plan. **Sigue habiendo una sola operación.**
+
+**Sería problema:** dos operaciones iguales en el plan. Hay dos capas para impedirlo —la
+comprobación y un índice en la base—; si aparecen dos, fallaron las dos.
+
+### 1.4 Sumar por lote, incluyendo destructivos
+
+**Hago:** *Hallazgos*. Seleccioná con los tildes de la izquierda: las otras dos ramas sin
+protección de `sbx-localizacion`, **dos hallazgos de «Permiso de administrador excedido»**
+(hay cuatro), y **uno de «Cuenta sin persona asociada»** — este último a propósito, porque
+no se remedia con un plan. Menú de acciones (el engranaje) → **Remediar: armar plan con
+estos**.
+
+**Tengo que ver:** te lleva al **mismo** plan en borrador, que ahora tiene **cinco**
+operaciones: las tres de protección más las dos de permisos. La de «cuenta sin persona» no
+está, y el lote no se cayó por eso.
+
+**Sería problema:**
+- Que se abra un plan nuevo en vez de acumular en el borrador.
+- Que el lote falle entero por el hallazgo que no aplicaba.
+- Que la de «cuenta sin persona» sí haya entrado.
+
+### 1.5 Leer el plan antes de aprobarlo
+
+**Hago:** quedate en el plan y leé la lista de operaciones.
+
+**Tengo que ver:**
+- Las cinco frases en castellano, legibles sin abrir nada.
+- Las dos de permisos **en rojo**, con *Saca algo* tildado, y su frase diciendo qué se
+  pierde: «…SE LE QUITA el permiso directo. Si además está en un team con acceso, va a
+  conservar el del team».
+- El payload JSON escondido (se puede prender desde el botón de columnas).
+
+**Sería problema:** que una operación que saca acceso no esté marcada, o que su frase diga
+sólo «quitar permiso» sin explicar la consecuencia.
+
+### 1.6 Aprobar, con confirmación individual
+
+**Hago:** botón **Aprobar**. Se abre el asistente. **Primero probá apretar *Aprobar* sin
+tildar nada.**
+
+**Tengo que ver:** se niega, y el mensaje **enumera las dos operaciones destructivas por su
+descripción**. Después tildá **una sola** y volvé a intentar: se sigue negando, ahora por
+una. Tildá la segunda y aprobá.
+
+**Tengo que ver al cerrar:** el plan en *Aprobado*, con *Intacto desde la aprobación*
+tildado, y un mensaje en el chatter que dice cuántas operaciones y cuántas destructivas se
+confirmaron una por una.
+
+**Sería problema:** que apruebe sin tildar nada. Es el control central de F2 y si falla,
+**cortá el recorrido y avisame**.
+
+### 1.7 La huella congela lo que leíste
+
+**Hago:** con el plan ya aprobado, apretá **Volver a borrador** y después cambiá algo — por
+ejemplo, borrá una de las operaciones de protección. Volvé a mirar el estado.
+
+**Tengo que ver:** el plan en *Borrador*, la aprobación borrada, y *Intacto desde la
+aprobación* **sin** tildar. Volvé a aprobarlo (con sus tildes) para seguir.
+
+**Sería problema:** que siga diciendo *Aprobado* después de cambiarle una operación.
+
+### 1.8 Aplicar, mirando la barra
+
+**Hago:** botón **Aplicar**.
+
+**Tengo que ver:** la **misma barra** que en la auditoría, ahora sobre el plan: se llena
+operación por operación, dice cuál se está haciendo, y el cronómetro corre. Al terminar,
+el plan en *Aplicado* y cada operación en *Aplicada*.
+
+**Sería problema:**
+- Que la barra no se mueva y todo salte al final de golpe.
+- Que alguna operación quede en *Fallida* — leé el error y anotalo.
+- *Bloqueada* **no** es un fallo: es un techo del plan de GitHub, y está bien que aparezca.
+
+**Comprobación fuera de Odoo:** entrá a `github.com/prm-sandbox/sbx-localizacion/settings/branches`
+y mirá que la rama `17.0` esté protegida de verdad.
+
+### 1.9 La bitácora, con antes y después
+
+**Hago:** *Bitácora*.
+
+**Tengo que ver:** una entrada por operación aplicada, con **el estado previo guardado**.
+Abrí una de las de permisos: tiene que decir qué permiso tenía esa persona **antes**.
+
+**Sería problema:** entradas sin estado previo. Sin eso el rollback no tiene a qué volver.
+
+### 1.10 Revertir
+
+**Hago:** volvé al plan y usá **Revertir** sobre **una** operación de permisos — la de
+`primateuy`, no la tuya, para no sacarte el acceso a vos mismo.
+
+**Tengo que ver:** la operación en *Revertida*, una entrada nueva en la bitácora, y en
+GitHub el permiso **de vuelta como estaba** — no borrado, sino en el valor previo.
+
+**Sería problema:** que el permiso quede en algo distinto del original, o que el rollback
+pida confirmaciones que la operación original no pidió.
+
+---
+
+## Parte 2 · La deuda de A5 + A6 + A8
+
+Cuatro puntos, ninguno depende de la Parte 1.
+
+### 2.1 Ajustes abre y diagnostica
+
+**Hago:** *Repo Manager → Configuración → Ajustes*.
+
+**Tengo que ver:** la pantalla **abre**. Tres bloques, y en *Estado de la instancia*:
+**Procesamiento en segundo plano: Funcionando** en verde, y *Clave de cifrado cargada*
+tildada.
+
+**Sería problema:** **un «Access Error»**. Es exactamente el defecto que se corrigió
+rehaciendo la pantalla sin `res.config.settings`; si vuelve, volvió el problema de fondo.
+También sería problema que la clave apareciera escrita en algún lado: no se muestra nunca.
+
+### 2.2 Un cambio de política queda en la bitácora
+
+**Hago:** *Configuración → Plantillas de política → «Cliente estándar»*. Cambiá
+*Aprobaciones requeridas* de 1 a 2 y guardá. Después andá a *Bitácora*.
+
+**Tengo que ver:** una entrada nueva de tipo **Cambio de política**, con **tu nombre**, y
+en su detalle el campo, el valor anterior y el nuevo — «Aprobaciones requeridas: 1 → 2».
+En la plantilla, antes de tocar nada, tenía que estar el aviso de que cambiarla no toca
+ningún repositorio pero cambia qué cuenta como incumplimiento.
+
+**Sería problema:** que el cambio no aparezca en la bitácora. El chatter no alcanza: es
+editable y se va con el registro.
+
+*(Dejalo en 2 o volvelo a 1, da igual: queda registrado en los dos sentidos.)*
+
+### 2.3 El asistente de personas propone sin decidir
+
+**Hago:** *Personas*. Filtro **Sin persona asociada** (hay 18). Abrí una y apretá
+**¿Quién es?**.
+
+**Tengo que ver:** el asistente con el aviso de que las coincidencias son **pistas, no
+pruebas**, la lista de candidatos si los hay, y el campo *Es esta persona* **vacío** si hay
+más de un candidato. Probá **Vincular** sin elegir: se niega. Elegí y confirmá: el aviso
+amarillo de la ficha **desaparece**.
+
+**Sería problema:** que el empleado venga elegido de antemano cuando hay varios candidatos.
+Un vínculo equivocado pone los permisos de una persona a nombre de otra.
+
+### 2.4 Las reglas de clasificación se entienden mirándolas
+
+**Hago:** *Configuración → Reglas de clasificación*.
+
+**Tengo que ver:** la lista ordenable por arrastre, cada regla con su *Por qué*, y —si
+alguna vez la lista queda vacía— el texto que explica que **gana la primera que matchea** y
+que **no hay regla comodín a propósito**.
+
+**Prueba de lectura, que es el punto:** mirando esa pantalla, ¿podés explicar por qué
+`sbx-cliente-publico` no se clasificó solo? Si la respuesta es no, la pantalla falló.
+
+**Sería problema:** que el orden no se pueda cambiar, o que no se vea que el orden importa.
+
+---
+
+## Parte 3 · Armar una operación desde cero (A4.3)
+
+**Hago:** creá un plan nuevo —*Planes de escritura → Nuevo*, conexión `prm-sandbox`,
+guardar— y apretá **Agregar operación**. Elegí *Aplicar protección de rama*, repositorio
+`sbx-cliente-publico`, rama `17.0.Staging`, y tildá: exigir pull request con **2**
+aprobaciones, bloquear force-push, bloquear borrado.
+
+**Tengo que ver:** abajo, en *Cómo va a quedar escrito*, la frase armada. **Copiala
+mentalmente.** Apretá *Agregar al plan*.
+
+**Y esto es lo que se valida:** la frase de la columna *Qué va a pasar* en el plan tiene
+que ser **exactamente la misma** que mostraba la vista previa.
+
+**Sería problema:** que difieran, aunque sea en una palabra. La que se aprueba es la del
+plan; si el asistente dice otra cosa, alguien va a aprobar algo distinto de lo que leyó.
+
+**Probá también:** elegí *Crear ruleset* en el desplegable. **No está**, y es a propósito:
+un ruleset se define por las reglas de una plantilla y tenerlo también acá haría que dos
+lugares decidan lo mismo. Es B1.
+
+---
+
+## Al terminar
+
+Con la Parte 1 completa, el criterio de salida del flujo existente queda cumplido:
+
+    espejo → auditoría → hallazgos → informe → armar plan → aprobar → apply
+           → bitácora → rollback
+
+todo desde la aplicación, sin consola.
+
+**Limpieza opcional:** el plan aplicado y sus cambios quedan en el sandbox. Si querés
+dejarlo como estaba, revertí las operaciones restantes desde el plan — que además es una
+segunda pasada por el rollback.
+
+**Lo que este recorrido NO cubre**, y no es olvido: el informe en PDF (funciona desde F1 y
+no cambió), y todo lo que todavía no existe — política aplicada por plantilla (B), forks
+(C), inventario de módulos (D).

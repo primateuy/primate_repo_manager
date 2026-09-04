@@ -675,6 +675,10 @@ lo mismo, y conviene recorrerlo una sola vez.
 
 ## Validación visual pendiente
 
+> **El guion está escrito:** [`RECORRIDO-DE-VALIDACION.md`](RECORRIDO-DE-VALIDACION.md).
+> Cubre el flujo completo de A4, la deuda de A5+A6+A8 y el asistente de A4.3, cada paso con
+> qué hacer, qué hay que ver y qué sería señal de problema.
+
 **A5 + A6 + A8 quedaron aprobados en forma provisoria**, sin recorrido visual: Daryl estaba
 fuera. No está salteado, está en deuda. Se suma al guion del recorrido de **A4**, que
 valida los dos bloques de una:
