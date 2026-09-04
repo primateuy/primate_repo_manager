@@ -19,6 +19,38 @@ Trabajás por fases chicas y verificables (F0–F6 del spec). Nunca ejecutes una
 
 Esta regla reemplaza al `FRENO` previo al commit: commitear en local es reversible y no necesita permiso; publicar sí.
 
+## Reglas de construcción para B, C y D — leer antes de tocar el espejo
+
+Los webhooks llegan en F4, pero **B y D se construyen como si ya estuvieran**. Hoy el
+espejo sólo cambia cuando corre una auditoría; el día que un evento de GitHub pueda
+cambiarlo en cualquier momento, lo que se haya construido asumiendo lo contrario hay que
+rehacerlo. Estas cuatro reglas cuestan poco ahora y mucho después.
+
+1. **`run_id` no siempre va a estar.** Un hallazgo nacido de un webhook no tiene corrida.
+   El campo sigue siendo obligatorio hoy —cambiarlo sin necesidad es peor— pero **no
+   escribas lógica nueva que asuma que todo hallazgo pertenece a una corrida**. Si
+   necesitás «lo último», pensá si «lo último que se supo» sirve igual que «lo de la
+   última corrida». *Deuda conocida:* el conteo de A3 ya lo asume.
+
+2. **Un objeto del espejo, un método que lo actualiza.** Si tu código lee de GitHub y
+   escribe en el espejo, tiene que hacerlo por el mismo upsert que usa el sync. Dos
+   caminos que escriben el mismo objeto divergen, y el día del webhook habrá tres.
+
+3. **`last_seen_at` y origen en lo que agregues al espejo.** Cuándo se supo y por dónde
+   entró. Sin eso, «¿esto está desactualizado o es así?» no tiene respuesta, y con
+   webhooks conviviendo con auditorías esa pregunta se vuelve diaria.
+
+4. **Nada que incremente lo que puede contarse.** Un contador que alguien suma es una fila
+   compartida: dos procesos se pisan y el resultado es un reintento silencioso que
+   multiplica el trabajo. Derivá contando. Está probado dos veces —el avance del plan
+   (A4.5) y los contadores de la corrida (A10)— y en A10 costó medir contra el sandbox
+   para descubrir que un `store=True` inocente reintroducía el problema entero.
+
+   *Corolario que también costó medir:* **no escribas valores que no cambiaron.** Un
+   `write` con los mismos datos igual genera un `UPDATE ... SET write_date`, y sobre una
+   fila compartida —la de una persona que colabora en varios repos— eso basta para matar
+   al job de al lado.
+
 ## Contexto del proyecto
 
 - Odoo 19.0 Enterprise. Python 3.12+.

@@ -483,10 +483,30 @@ la misma conversación. B3 pregunta «¿qué tiene que pasar antes de mergear?»
 «¿qué encontró GitHub por su cuenta?». Las dos alimentan la misma decisión sobre un
 repositorio y comparten la pantalla de política.
 
+*Definición funcional (4-sep-2026):*
+- **Secret scanning → crítico SIEMPRE.** Un secreto en el historial no prescribe: rotarlo
+  es urgente aunque la alerta sea vieja, porque el historial sigue ahí.
+- **Dependabot → severidad mapeada de GitHub:** `critical`→crítico, `high`→alto,
+  `moderate`→medio, `low`→informativo. GitHub ya hizo ese trabajo y rehacerlo sería
+  inventar un criterio propio peor informado.
+- **Sin remediación por plan, y el hallazgo lo dice:** un secreto se rota, no se aplica.
+  Una alerta de Dependabot se resuelve con un PR. Van al catálogo de A4.1 como *se
+  resuelve en otro lado*, con esa frase.
+- El techo de plan en los 31 privados se reporta como *no legible por plan*, como siempre.
+  Anotado además en la spec (§10.1.4) como argumento de migración.
+
+*El paso exacto del re-consentimiento*, para cuando B llegue:
+1. GitHub → *Settings* de la cuenta → *Developer settings* → *GitHub Apps* → **App 4805796**.
+2. *Permissions & events* → *Repository permissions*: poner **Dependabot alerts: Read-only**
+   y **Secret scanning alerts: Read-only**. Guardar.
+3. GitHub manda la solicitud a la instalación. Ir a *Settings* → *Applications* →
+   *Installed GitHub Apps* → la App → **Review request** → *Accept new permissions*.
+4. Avisar. El módulo lo verifica solo: la respuesta del token de instalación trae los
+   permisos concedidos, y sin los dos nuevos los hallazgos se reportan como no legibles en
+   vez de fallar.
+
 *Dimensión:* chica-media. Dos tipos de hallazgo nuevos, dos llamadas en el sync, su
-severidad y su lugar en el informe. **No tiene remediación por plan**: un secreto filtrado
-se rota, no se «aplica»; una alerta de Dependabot se resuelve con un PR. Van al catálogo de
-A4.1 como *se resuelve en otro lado*, con su explicación.
+severidad y su lugar en el informe.
 
 ### E2 · Auditoría programada, y el delta contra la corrida anterior
 
@@ -502,8 +522,12 @@ por id, que cambia en cada corrida— y clasificar cada hallazgo en *nuevo*, *si
 «tres cosas nuevas esta semana». Y es la mitad de **B4**, el drift de política, que
 pregunta lo mismo sobre otra dimensión.
 
-**E2.3 · La notificación.** Actividad o correo con el delta. La matriz de a quién se le
-avisa qué ya está en la spec (§7.2) y todavía no se implementó.
+**E2.3 · La notificación.** *Definido:* **Discuss + mail**, destinatarios configurables,
+por ahora sólo Daryl. El delta lleva **nuevos y resueltos**: los resueltos son la evidencia
+de progreso y son la mitad que un informe de incumplimientos nunca muestra.
+
+*Definido para E2.1:* **cron semanal, lunes por la mañana**, frecuencia editable desde
+Ajustes.
 
 *Dónde encaja:* **E2.1 y E2.2 después de B4**, para no construir dos veces la comparación
 entre corridas. E2.3 con ellas.
@@ -513,12 +537,25 @@ chicas.
 
 ### E3 · Higiene: ramas muertas y repos candidatos a archivar
 
-**E3.1 · Hallazgos de higiene (lectura).** Ramas sin commits en N meses que no son base ni
-staging; repositorios sin push en N meses, sin PRs abiertas y sin ramas vivas. Los umbrales
-van a Ajustes, como todos los demás: son criterio.
+**E3.1 · Hallazgos de higiene (lectura).** *Redefinido el 4-sep-2026, y el cambio es de
+fondo: la higiene se ata al CICLO DE VIDA, no a las fechas.* El flujo real es
+`prod (ej. 17.0) → staging → support → producción`, y los **roles de rama que ya existen**
+definen cuál es prod en cada repositorio.
 
-*El dato ya está en el espejo*: `repo.branch.last_commit_date` y `repo.repository.pushed_at`
-se relevan desde F1 y hoy nadie los usa. Este ítem es sobre todo **evaluación**, no sync.
+| Situación | Hallazgo | Qué se puede hacer |
+|---|---|---|
+| Rama **integrada a prod**: 0 commits propios pendientes, verificado contra la rama de producción | *Candidata a borrar*, severidad informativa | Borrado por el embudo, como **destructiva** |
+| Rama con **commits que nunca llegaron** y sin actividad hace 6 meses | *Abandonada* | **Sólo se lista. Jamás se propone borrar** |
+| Repositorio **sin push hace 18 meses** (configurable) | *Candidato a archivar* | Archivar por el embudo, con el aviso de despliegue estilo D3 |
+
+La distinción entre las dos primeras es la que importa y es la que una regla por fecha no
+puede hacer: **una rama vieja e integrada es basura; una rama vieja con trabajo que nunca
+se mergeó puede ser trabajo por rescatar.** Proponer borrar la segunda sería ofrecer perder
+algo, y por eso el producto no lo ofrece — ni siquiera detrás de una confirmación.
+
+*Verificar «0 commits propios pendientes» no es mirar fechas*: es comparar contra la rama
+de producción del repositorio. Ese dato hay que traerlo; es la única parte de E3.1 que
+agrega sync y no sólo evaluación. `last_commit_date` y `pushed_at` ya están desde F1.
 
 **E3.2 · Archivar por el embudo.** Un tipo de operación nuevo, `repository_archive`, con su
 reversión (desarchivar). Es de las pocas operaciones **reversibles de verdad y sin pérdida**
@@ -539,6 +576,11 @@ hecho.
 ### E4 · Panel de salud
 
 Dimensión funcional, que es lo que se pide acá; el diseño visual va por su carril.
+
+*Definido:* **tres números arriba** —% de ramas de entorno protegidas, críticos+altos
+abiertos con su tendencia, repositorios gobernados sobre el total— y todo lo demás debajo.
+La prueba ácida que tiene que pasar: **sin jerga, cinco segundos, ¿mejoramos o
+empeoramos?** El visual viene de la sesión de diseño que va aparte.
 
 **Lo que el panel necesita del backend, y no existe todavía:**
 
@@ -613,12 +655,22 @@ de vencimiento.
 
 ---
 
-## Orden actualizado
+## Orden final (4-sep-2026)
 
-    A4 ✓ → D1 + E3.1 → B (+ E1 en B3) → B4 + E2.2 + métricas de E4
-         → D2 → E3.2 → E2.1 + E2.3 → panel E4 → C
+    A10 ✓ → D1 (+E3.1) → B (+E1) → D2 → E3.2 → C → E2 → E4
 
-Con **A10 metido antes de D2**, por el punto 4 de arriba.
+Confirmado, **con un ajuste que no cambia el orden sino qué entra en B**: las **métricas**
+de E4 —una fila por corrida y métrica— se empiezan a guardar **junto con B4**, aunque el
+panel se construya al final.
+
+El motivo es que la tendencia no se puede reconstruir hacia atrás: recalcular el pasado
+desde el espejo daría el estado de HOY, no el de entonces. Si las métricas empiezan a
+guardarse recién en E4, el panel abre con un punto — y un gráfico de tendencia con un solo
+punto es un número con adornos. Guardarlas desde B4 cuesta un modelo chico y hace que para
+cuando llegue E4 haya meses de historia.
+
+Es la misma razón por la que E2.2 va con B4: las tres cosas —delta, métricas y drift— leen
+lo mismo, y conviene recorrerlo una sola vez.
 
 
 ## Validación visual pendiente

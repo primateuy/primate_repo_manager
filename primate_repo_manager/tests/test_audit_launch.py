@@ -65,7 +65,10 @@ class TestLanzarAuditoria(TransactionCase):
 
 		self.assertEqual(run.repos_total, 2)
 		self.assertEqual(run.state, "running", "queda en curso hasta que corran los jobs")
-		self.assertEqual(self.env["queue.job"].search_count([]) - antes, 2,
+		# 2 repositorios + 1 job de CIERRE. El cierre es un job aparte desde A10: quién
+		# es el último sólo se sabe cuando todos confirmaron, y eso no se puede ver desde
+		# adentro de la transacción de ninguno. Ver `_encolar`.
+		self.assertEqual(self.env["queue.job"].search_count([]) - antes, 3,
 						 "un job por repositorio")
 
 	def test_el_umbral_se_decide_con_LO_ENUMERADO_no_con_el_espejo(self):

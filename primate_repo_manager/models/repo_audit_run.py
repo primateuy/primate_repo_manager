@@ -11,6 +11,7 @@ gastar cuota de API.
 import logging
 
 from odoo import _, api, fields, models
+from odoo.addons.queue_job.delay import chain, group
 from odoo.exceptions import UserError
 
 from .res_config_settings import DEFAULTS, ResConfigSettings
@@ -34,9 +35,37 @@ class RepoAuditRun(models.Model):
 	started_at = fields.Datetime(string="Inicio", readonly=True)
 	finished_at = fields.Datetime(string="Fin", readonly=True)
 
-	repos_total = fields.Integer(string="Repos a recorrer", readonly=True)
-	repos_done = fields.Integer(string="Recorridos", readonly=True)
-	repos_error = fields.Integer(string="Con error", readonly=True)
+	# A10 · LOS CONTADORES SE CUENTAN, NO SE INCREMENTAN.
+	#
+	# Antes eran tres enteros que cada job sumaba al terminar su repositorio. Como la
+	# transacción de un job dura todo el recorrido —unos ocho segundos— cualquier otro job
+	# que confirmara en esa ventana lo mataba con «could not serialize access». queue_job
+	# reintentaba y el número final salía bien, así que nadie lo notaba: lo que se pagaba
+	# era que CADA REPOSITORIO se recorriera dos o tres veces. Medido: 7 repositorios, 19
+	# ejecuciones; en producción, ~20 minutos donde alcanzaban 7.
+	#
+	# Ahora cada job escribe SU PROPIA fila —`repo.audit.run.line`— y nadie comparte una.
+	# Los totales se derivan contando, que es el patrón que ya se probó en el avance del
+	# plan (A4.5): un conteo no puede desfasarse de la realidad porque ES la realidad.
+	#
+	# El efecto que importa para lo que viene: la fila de la corrida deja de escribirse en
+	# cada repositorio y pasa a escribirse UNA vez, al cerrar. Sin eso, los webhooks de F4
+	# —que escribirían en paralelo con las auditorías— volverían a chocar contra lo mismo.
+	line_ids = fields.One2many(
+		"repo.audit.run.line", "run_id", string="Repositorios de la corrida")
+	# SIN `store=True`, Y ES EL PUNTO ENTERO DE A10. Guardarlos parecía gratis y no lo
+	# es: un campo calculado y almacenado hace que Odoo ESCRIBA la fila de la corrida cada
+	# vez que cambia una línea, o sea exactamente la escritura compartida que este cambio
+	# vino a eliminar. Se descubrió midiendo contra el sandbox: con `store=True` y dos
+	# hilos, la mitad de los jobs murió con «could not serialize access».
+	#
+	# El precio es que no se pueden ordenar las listas por estas columnas. Es barato: los
+	# números de una corrida vieja siguen siendo suyos porque las LÍNEAS se guardan, que
+	# es lo que había que preservar.
+	repos_total = fields.Integer(
+		string="Repos a recorrer", compute="_compute_conteos")
+	repos_done = fields.Integer(string="Recorridos", compute="_compute_conteos")
+	repos_error = fields.Integer(string="Con error", compute="_compute_conteos")
 	progress = fields.Float(string="Avance", compute="_compute_progress")
 
 	error_detail = fields.Text(string="Detalle del error", readonly=True)
@@ -60,6 +89,14 @@ class RepoAuditRun(models.Model):
 		self.env["repo.audit.engine"].evaluate(self)
 		self.message_post(body=_("Hallazgos recalculados: %s.") % self.finding_count)
 		return True
+
+	@api.depends("line_ids.state")
+	def _compute_conteos(self):
+		for run in self:
+			estados = run.line_ids.mapped("state")
+			run.repos_total = len(estados)
+			run.repos_done = estados.count("done")
+			run.repos_error = estados.count("error")
 
 	@api.depends("repos_total", "repos_done", "repos_error")
 	def _compute_progress(self):
@@ -198,7 +235,7 @@ class RepoAuditRun(models.Model):
 			) % self.backend_id.name)
 		self.write({
 			"state": "running", "started_at": fields.Datetime.now(),
-			"repos_done": 0, "repos_error": 0, "error_detail": False,
+			"error_detail": False,
 		})
 
 		repos = self._enumerar()
@@ -212,14 +249,52 @@ class RepoAuditRun(models.Model):
 				"%(umbral)s).") % {"n": len(repos), "umbral": umbral})
 			for repo in repos:
 				repo._job_sync_repository(self.id)
+			# En el camino sincrónico todo pasa en la MISMA transacción, así que acá sí se
+			# sabe que no queda nada: no hace falta job de cierre.
+			self._cerrar_si_termino()
+			self._emitir_avance()
 			return True
 
 		self.message_post(body=_(
 			"%(n)s repositorio(s) encolados: son más de %(umbral)s y el recorrido no "
 			"entra en el tiempo de una pantalla.") % {"n": len(repos), "umbral": umbral})
-		for repo in repos:
-			repo.with_delay(channel="root.repo_manager")._job_sync_repository(self.id)
+		self._encolar(repos)
 		return True
+
+	def _encolar(self, repos):
+		"""Un job por repositorio, y UN job de cierre que espera a todos.
+
+		POR QUÉ EL CIERRE NO LO HACE EL ÚLTIMO REPOSITORIO. Parece lo natural —el que
+		termina último cierra— y con un solo hilo funcionaba. Con dos no: cada job corre en
+		su propia transacción, así que cuando A pregunta «¿queda algo pendiente?» ve su
+		línea hecha y la de B todavía en curso, porque B no confirmó. B ve exactamente lo
+		mismo al revés. **Ninguno se cree el último y la corrida queda abierta para
+		siempre.** Medido contra el sandbox: 6 repositorios, 6 jobs sin un solo reintento,
+		y la corrida en «en curso» con todo terminado.
+
+		No hay forma de arreglarlo mirando desde adentro de una transacción: quién es el
+		último sólo se sabe DESPUÉS de que todos confirmaron. Por eso el cierre es un job
+		aparte que depende de los demás — `queue_job` lo ejecuta cuando el grupo entero
+		terminó, que es justamente la información que a los jobs les falta.
+		"""
+		self.ensure_one()
+		trabajos = group(*[
+			repo.delayable(channel="root.repo_manager")._job_sync_repository(self.id)
+			for repo in repos
+		])
+		cierre = self.delayable(channel="root.repo_manager")._job_cerrar()
+		chain(trabajos, cierre).delay()
+
+	def _job_cerrar(self):
+		"""Cierra la corrida. Corre cuando todos los repositorios terminaron.
+
+		Sigue pasando por `_cerrar_si_termino`, con su candado: el job de cierre es uno
+		solo, pero el camino sincrónico y una reanudación también cierran, y una guarda que
+		depende de que haya un único llamador no es una guarda.
+		"""
+		self.ensure_one()
+		self._cerrar_si_termino()
+		self._emitir_avance()
 
 	def action_resume(self):
 		"""Retoma una corrida cortada: sólo los repos que no cerraron bien."""
@@ -229,8 +304,17 @@ class RepoAuditRun(models.Model):
 		if not pendientes:
 			raise UserError(_("No quedan repositorios pendientes en esta corrida."))
 		self.write({"state": "running", "error_detail": False})
-		for repo in pendientes:
-			repo.with_delay(channel="root.repo_manager")._job_sync_repository(self.id)
+		# Una reanudación puede encontrarse repositorios que no tenían fila —corridas
+		# anteriores a A10, o repos que aparecieron después del enumerado—. Se crean acá
+		# para que el conteo cierre.
+		conocidos = self.line_ids.mapped("repository_id")
+		nuevos = pendientes - conocidos
+		if nuevos:
+			self.env["repo.audit.run.line"].create([
+				{"run_id": self.id, "repository_id": r.id} for r in nuevos])
+		self.line_ids.filtered(
+			lambda l: l.repository_id in pendientes).write({"state": "pending"})
+		self._encolar(pendientes)
 		self.message_post(body=_(
 			"Reanudada: %s repositorio(s) pendientes encolados.") % len(pendientes))
 		return True
@@ -248,7 +332,12 @@ class RepoAuditRun(models.Model):
 			})
 			self.message_post(body=_("La auditoría falló al enumerar repositorios: %s") % exc)
 			raise
-		self.repos_total = len(repos)
+		# Una fila por repositorio de ESTA corrida. Es lo que después permite contar sin
+		# que dos jobs se pisen, y lo que hace que los números de una corrida vieja sigan
+		# siendo los suyos y no los del espejo de hoy.
+		self.line_ids.unlink()
+		self.env["repo.audit.run.line"].create([
+			{"run_id": self.id, "repository_id": repo.id} for repo in repos])
 		repos.write({"sync_state": "pending"})
 		return repos
 
@@ -256,33 +345,64 @@ class RepoAuditRun(models.Model):
 		"""Enumerado diferido, para reanudar una corrida encolada."""
 		self.ensure_one()
 		repos = self._enumerar()
-		for repo in repos:
-			repo.with_delay(channel="root.repo_manager")._job_sync_repository(self.id)
+		self._encolar(repos)
 		self.message_post(body=_("%s repositorio(s) encolados.") % len(repos))
 
-	def _register_repo_done(self, con_error=False):
-		"""Lo llama cada job de repo al terminar. Cierra la corrida cuando no queda nada."""
+	def _register_repo_done(self, repositorio, con_error=False, error=None):
+		"""Lo llama cada job al terminar SU repositorio. Escribe su fila y nada más.
+
+		Ya no toca los contadores de la corrida: eso era la fila compartida que hacía
+		chocar a los jobs entre sí. Lo único que se sigue escribiendo en la corrida es el
+		cierre, y de eso se encarga un solo job — el último — bajo candado.
+		"""
 		self.ensure_one()
-		if con_error:
-			self.repos_error += 1
-		else:
-			self.repos_done += 1
-		if (self.repos_done + self.repos_error) >= (self.repos_total or 0):
-			self.write({
-				"state": "partial" if self.repos_error else "done",
-				"finished_at": fields.Datetime.now(),
-			})
-			self.backend_id.last_sync = fields.Datetime.now()
-			# Los hallazgos se calculan al cerrar: recién ahí están todos los datos.
-			self.env["repo.audit.engine"].evaluate(self)
-			self.message_post(body=_(
-				"Auditoría terminada: %(ok)s repositorio(s) recorridos, %(mal)s con error. "
-				"%(hallazgos)s hallazgo(s)."
-			) % {"ok": self.repos_done, "mal": self.repos_error,
-				 "hallazgos": self.finding_count})
-		# El aviso va DESPUÉS de cerrar: si saliera antes, el último mensaje
-		# —el que la pantalla usa para pintar el resumen— diría «en curso».
+		linea = self.line_ids.filtered(lambda l: l.repository_id == repositorio)[:1]
+		if not linea:
+			# Puede pasar en una reanudación de una corrida vieja, anterior a las filas.
+			linea = self.env["repo.audit.run.line"].create({
+				"run_id": self.id, "repository_id": repositorio.id})
+		linea.write({
+			"state": "error" if con_error else "done",
+			"error": (error or "")[:500] or False,
+			"finished_at": fields.Datetime.now(),
+		})
+		# NO se intenta cerrar acá: un job no puede saber si es el último, porque no ve las
+		# transacciones de los demás. Lo hace el job de cierre. Ver `_encolar`.
 		self._emitir_avance()
+
+	def _cerrar_si_termino(self):
+		"""Cierra la corrida cuando no queda ninguna fila pendiente.
+
+		EL CANDADO NO ES PARANOIA. Dos jobs pueden terminar casi a la vez y ver los dos
+		que «ya no queda nada», y cerrar dos veces significa evaluar los hallazgos dos
+		veces, o sea duplicarlos. El `FOR UPDATE` serializa a los candidatos a cerrar, y
+		la re-lectura del estado hace que el segundo encuentre la corrida ya cerrada y se
+		vaya. Es el único lugar donde dos jobs pueden querer escribir la misma fila, y por
+		eso es el único con candado.
+		"""
+		self.ensure_one()
+		self.env.flush_all()
+		self.env.cr.execute(
+			"SELECT state FROM repo_audit_run WHERE id = %s FOR UPDATE", (self.id,))
+		fila = self.env.cr.fetchone()
+		if not fila or fila[0] != "running":
+			return False
+		self.invalidate_recordset(["repos_total", "repos_done", "repos_error"])
+		if self.line_ids.filtered(lambda l: l.state in ("pending", "running")):
+			return False
+		self.write({
+			"state": "partial" if self.repos_error else "done",
+			"finished_at": fields.Datetime.now(),
+		})
+		self.backend_id.last_sync = fields.Datetime.now()
+		# Los hallazgos se calculan al cerrar: recién ahí están todos los datos.
+		self.env["repo.audit.engine"].evaluate(self)
+		self.message_post(body=_(
+			"Auditoría terminada: %(ok)s repositorio(s) recorridos, %(mal)s con error. "
+			"%(hallazgos)s hallazgo(s)."
+		) % {"ok": self.repos_done, "mal": self.repos_error,
+			 "hallazgos": self.finding_count})
+		return True
 
 	# ------------------------------------------------------------------
 	# Ayudantes del informe

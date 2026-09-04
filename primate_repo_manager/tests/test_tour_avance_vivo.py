@@ -47,9 +47,11 @@ class TestTourAvanceVivo(HttpCase):
 		self.run_ = self.env["repo.audit.run"].create({
 			"name": "Corrida del tour", "backend_id": self.backend.id,
 		})
-		self.run_.write({
-			"state": "running", "repos_total": 3, "repos_done": 0, "repos_error": 0,
-		})
+		self.run_.state = "running"
+		# Los contadores no se escriben: se cuentan. Una línea por repositorio, que es lo
+		# que crea el enumerado de verdad. Ver A10 en `repo.audit.run`.
+		self.env["repo.audit.run.line"].create([
+			{"run_id": self.run_.id, "repository_id": r.id} for r in self.repos])
 		# Dos hallazgos: el resumen del cierre tiene que decir «2 hallazgos», y la lista
 		# tiene que mostrar el texto y no una columna de ids.
 		Finding = self.env["repo.audit.finding"]

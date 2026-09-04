@@ -46,3 +46,5 @@ access_repo_write_enable_wizard,repo.write.enable.wizard,model_repo_write_enable
 access_repo_plan_approve_wizard,repo.plan.approve.wizard,model_repo_plan_approve_wizard,group_repo_lead,1,1,1,1
 access_repo_plan_approve_line,repo.plan.approve.line,model_repo_plan_approve_line,group_repo_lead,1,1,1,1
 access_repo_operation_builder,repo.operation.builder,model_repo_operation_builder,group_repo_lead,1,1,1,1
+access_repo_audit_run_line_reader,repo.audit.run.line.reader,model_repo_audit_run_line,group_repo_reader,1,0,0,0
+access_repo_audit_run_line_lead,repo.audit.run.line.lead,model_repo_audit_run_line,group_repo_lead,1,1,1,1

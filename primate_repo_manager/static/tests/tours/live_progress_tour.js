@@ -22,22 +22,42 @@
 import { registry } from "@web/core/registry";
 import { rpc } from "@web/core/network/rpc";
 
-/** Deja la corrida en un estado y hace que el servidor lo cuente por el bus. */
-async function avanzar(valores) {
-	// El id sale de la URL —`/odoo/action-.../<id>`— y no de una variable global que
-	// alguien tenga que acordarse de poner: si el tour se abre en otra corrida, sigue
-	// apuntando a la que está en pantalla.
-	const id = parseInt(window.location.pathname.split("/").pop(), 10);
-	if (valores) {
-		await rpc("/web/dataset/call_kw", {
-			model: "repo.audit.run", method: "write",
-			args: [[id], valores], kwargs: {},
-		});
+// El id sale de la URL —`/odoo/action-.../<id>`— y no de una variable global que alguien
+// tenga que acordarse de poner: si el tour se abre en otra corrida, sigue apuntando a la
+// que está en pantalla.
+function corridaEnPantalla() {
+	return parseInt(window.location.pathname.split("/").pop(), 10);
+}
+
+function llamar(model, method, args) {
+	return rpc("/web/dataset/call_kw", { model, method, args, kwargs: {} });
+}
+
+/**
+ * Marca UN repositorio de la corrida como terminado, y hace que el servidor lo cuente.
+ *
+ * Se escribe la LÍNEA del repositorio y no un contador de la corrida, porque desde A10 los
+ * contadores no existen como campos: se derivan contando las líneas. El tour hace lo mismo
+ * que hace un job real al terminar, que además es lo que se quiere probar.
+ */
+async function terminarUno(estado) {
+	const id = corridaEnPantalla();
+	const lineas = await llamar("repo.audit.run.line", "search_read",
+		[[["run_id", "=", id], ["state", "in", ["pending", "running"]]], ["id"]]);
+	if (lineas.length) {
+		await llamar("repo.audit.run.line", "write",
+			[[lineas[0].id], { state: estado }]);
 	}
-	await rpc("/web/dataset/call_kw", {
-		model: "repo.audit.run", method: "action_refresh_progress",
-		args: [[id]], kwargs: {},
-	});
+	await avanzar(null);
+}
+
+/** Cambia el estado de la corrida —eso sí es un campo— y reemite. */
+async function avanzar(valores) {
+	const id = corridaEnPantalla();
+	if (valores) {
+		await llamar("repo.audit.run", "write", [[id], valores]);
+	}
+	await llamar("repo.audit.run", "action_refresh_progress", [[id]]);
 }
 
 registry.category("web_tour.tours").add("prm_live_progress", {
@@ -60,7 +80,7 @@ registry.category("web_tour.tours").add("prm_live_progress", {
 			content: "y ahora sí dice qué repositorio está recorriendo",
 			trigger: ".o_prm_live_actual:contains(sbx-uno)",
 			async run() {
-				await avanzar({ repos_done: 1 });
+				await terminarUno("done");
 			},
 		},
 		{
@@ -71,7 +91,7 @@ registry.category("web_tour.tours").add("prm_live_progress", {
 			trigger: ".o_prm_barra_relleno",
 			async run() {
 				// El caso feo: un repositorio falla y quedan otros por recorrer.
-				await avanzar({ repos_error: 1 });
+				await terminarUno("error");
 			},
 		},
 		{
@@ -82,7 +102,8 @@ registry.category("web_tour.tours").add("prm_live_progress", {
 			content: "y el contador de errores deja de estar apagado",
 			trigger: ".o_prm_live_datos .o_prm_alerta:contains(1 con error)",
 			async run() {
-				await avanzar({ state: "partial", repos_done: 2 });
+				await terminarUno("done");
+				await avanzar({ state: "partial" });
 			},
 		},
 		{
@@ -148,15 +169,15 @@ registry.category("web_tour.tours").add("prm_live_progress_nuevo", {
 			content: "sin ejecutar, la pantalla lo dice sin inventar una barra",
 			trigger: ".o_prm_live_quieto:contains(Todavía no se ejecutó)",
 			async run() {
-				await avanzar({ state: "running", repos_total: 3, repos_done: 1 });
+				await avanzar({ state: "running" });
 			},
 		},
 		{
+			// «Ahora:» es el testigo, y no un contador: los contadores viajan en el
+			// registro, así que una recarga los muestra igual y un componente mudo
+			// pasaría por sano. El repositorio en curso SÓLO llega por el bus.
 			content: "y el aviso llega: el componente se suscribió DESPUÉS de guardar",
 			trigger: ".o_prm_live_actual:contains(sbx-uno)",
-		},
-		{
-			trigger: ".o_prm_live_fraccion:contains(1 de 3)",
 		},
 	],
 });

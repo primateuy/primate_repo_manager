@@ -386,6 +386,23 @@ significa quitar grants directos, y nada más.
 por equipos —que es la forma escalable de manejar accesos, y la que la plantilla de
 CODEOWNERS presupone— no existe hasta que los repositorios vivan en la organización.
 
+### 10.1.4 Otro argumento de migración: el escaneo de secretos
+
+Verificado el 4-sep-2026 sobre los permisos concedidos. **Secret scanning sobre
+repositorios privados es una función paga** (Advanced Security); en los públicos funciona
+con el plan gratuito. De los 113 repositorios de la cuenta, **31 son privados**, y son
+justamente los de cliente — donde un secreto filtrado cuesta más.
+
+Con la cuenta personal el resultado esperable es un `403` de techo de plan sobre esos 31.
+El módulo lo va a reportar como *no legible por límite de plan*, que es honesto pero no es
+una respuesta: **«no pudimos mirar» no es «no hay secretos»**.
+
+Se suma a los argumentos de §10.1 y §10.1.3 —sin organización no hay teams, la
+transferencia no es orquestable— con una diferencia de naturaleza que conviene notar: los
+otros son límites de la API; éste es un límite de plan, y se levanta pagando sin migrar
+nada. Pero el plan de organización es donde esa función tiene precio razonable, así que en
+la práctica empuja en la misma dirección.
+
 ## 10.2 Decisiones abiertas
 
 **Doble aprobación de planes de escritura — sin resolver, para el rollout de F3.**

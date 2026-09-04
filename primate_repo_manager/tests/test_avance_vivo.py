@@ -73,7 +73,9 @@ class TestAvanceVivo(TransactionCase):
 
 	def test_hay_un_aviso_al_empezar_cada_repositorio_y_otro_al_cerrarlo(self):
 		run = self._correr()
-		self.assertEqual(len(self.avisos), 4, "2 repositorios x (empieza + cierra)")
+		# 2 repositorios × (empieza + cierra) + el aviso del cierre de la corrida, que es
+		# el que le dice a la pantalla que terminó.
+		self.assertEqual(len(self.avisos), 5)
 		self.assertTrue(all(t == run.AVISO for t, _m in self.avisos))
 
 	def test_el_aviso_de_apertura_dice_QUÉ_repositorio(self):
@@ -198,3 +200,81 @@ class TestCanalDelBus(TransactionCase):
 		"""No se rompe lo que pidan otros módulos."""
 		canales = self._canales(["algo_de_otro_modulo"])
 		self.assertIn("algo_de_otro_modulo", canales)
+
+
+class TestContadoresDerivados(TransactionCase):
+	"""A10: los contadores se cuentan, no se incrementan.
+
+	Eran tres enteros que cada job sumaba en la MISMA fila de la corrida. Como la
+	transacción de un job dura todo el recorrido del repositorio, cualquier otro que
+	confirmara en esa ventana lo mataba con «could not serialize access»; queue_job
+	reintentaba, el número final salía bien, y lo que se pagaba en silencio era recorrer
+	cada repositorio dos o tres veces.
+	"""
+
+	def setUp(self):
+		super().setUp()
+		self.backend = self.env["repo.backend"].create({
+			"name": "Conteo %s" % uuid.uuid4().hex[:6],
+			"owner_login": "cuenta-%s" % uuid.uuid4().hex[:8],
+			"owner_type": "user", "app_id": "1", "installation_id": "2",
+			"state": "connected"})
+		self.run_ = self.env["repo.audit.run"].create({
+			"name": "Corrida", "backend_id": self.backend.id})
+		self.repos = self.env["repo.repository"].browse()
+		for n in range(3):
+			self.repos |= self.env["repo.repository"].create({
+				"backend_id": self.backend.id, "name": "r%s" % n,
+				"full_name": "%s/r%s" % (self.backend.owner_login, n),
+				"github_id": uuid.uuid4().hex[:8]})
+		self.env["repo.audit.run.line"].create([
+			{"run_id": self.run_.id, "repository_id": r.id} for r in self.repos])
+
+	def test_ningun_job_escribe_la_fila_de_la_corrida(self):
+		"""Es EL punto de A10: la corrida se escribe una vez, al cerrar.
+
+		MUTACIÓN: volver a incrementar `repos_done` en `_register_repo_done` y este test
+		lo dice — el método no puede tocar campos de la corrida.
+		"""
+		import inspect
+
+		fuente = inspect.getsource(
+			self.env["repo.audit.run"].__class__._register_repo_done)
+		for prohibido in ("self.repos_done", "self.repos_error", "repos_done +="):
+			self.assertNotIn(prohibido, fuente)
+
+	def test_los_totales_salen_de_contar_las_filas(self):
+		self.assertEqual(self.run_.repos_total, 3)
+		self.run_.line_ids[0].state = "done"
+		self.run_.line_ids[1].state = "error"
+		self.run_.invalidate_recordset()
+		self.assertEqual(self.run_.repos_done, 1)
+		self.assertEqual(self.run_.repos_error, 1)
+
+	def test_una_corrida_vieja_conserva_SUS_numeros(self):
+		"""Contar sobre el espejo daría el estado de hoy. Las filas son de la corrida."""
+		self.run_.line_ids.write({"state": "done"})
+		self.run_.invalidate_recordset()
+		self.assertEqual(self.run_.repos_done, 3)
+		# El espejo cambia después; los números de la corrida no.
+		self.repos.write({"sync_state": "pending"})
+		self.run_.invalidate_recordset()
+		self.assertEqual(self.run_.repos_done, 3)
+
+	def test_no_cierra_mientras_quede_una_pendiente(self):
+		self.run_.state = "running"
+		self.run_.line_ids[0].state = "done"
+		self.assertFalse(self.run_._cerrar_si_termino())
+		self.assertEqual(self.run_.state, "running")
+
+	def test_cerrar_dos_veces_no_duplica_los_hallazgos(self):
+		"""Dos jobs pueden terminar casi a la vez y ver los dos que no queda nada. Cerrar
+		dos veces significa evaluar los hallazgos dos veces, o sea duplicarlos."""
+		self.run_.state = "running"
+		self.run_.line_ids.write({"state": "done"})
+		self.assertTrue(self.run_._cerrar_si_termino())
+		cuantos = self.run_.finding_count
+		self.assertFalse(self.run_._cerrar_si_termino(),
+						 "el segundo cierre tiene que encontrarla cerrada e irse")
+		self.run_.invalidate_recordset()
+		self.assertEqual(self.run_.finding_count, cuantos)

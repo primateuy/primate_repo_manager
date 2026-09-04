@@ -24,6 +24,8 @@ La lección general: no se deduce lo que la credencial puede hacer; se le pregun
 API y se clasifica la respuesta.
 """
 import logging
+
+import psycopg2
 from datetime import datetime
 
 from odoo import _, api, fields, models
@@ -138,6 +140,11 @@ class RepoRepositorySync(models.Model):
 		run = self.env["repo.audit.run"].browse(run_id).exists()
 		self.write({"sync_state": "running", "sync_error": False})
 		if run:
+			# La fila de ESTE repositorio en ESTA corrida. Es propia: nadie más la escribe,
+			# así que no hay con quién chocar. Ver A10 en `repo.audit.run`.
+			linea = run.line_ids.filtered(lambda l: l.repository_id == self)[:1]
+			if linea:
+				linea.write({"state": "running", "started_at": fields.Datetime.now()})
 			# `inmediato`: si saliera por el camino normal llegaría recién al confirmar el
 			# job, o sea junto con el «terminé». Ver el docstring de `_emitir_avance`.
 			run._emitir_avance(actual=self.full_name, inmediato=True)
@@ -159,7 +166,7 @@ class RepoRepositorySync(models.Model):
 				"unreadable_json": ", ".join(no_legible) or False,
 			})
 			if run:
-				run._register_repo_done()
+				run._register_repo_done(self)
 		except GithubRateLimit:
 			# La cuota se repone sola: reintentar es lo correcto, no fallar la corrida.
 			self.sync_state = "pending"
@@ -167,11 +174,24 @@ class RepoRepositorySync(models.Model):
 
 			raise RetryableJobError(
 				"Cuota de API agotada; se reintenta en 15 minutos.", seconds=900) from None
+		except psycopg2.Error:
+			# UN ERROR DE BASE NO SE TRAGA. La transacción ya está abortada: cualquier
+			# escritura que se intente a continuación —marcar el repo, cerrar la línea—
+			# muere con «current transaction is aborted» y encima esconde el error
+			# original. Se re-lanza para que queue_job reintente el job entero, que es lo
+			# correcto para un conflicto de concurrencia.
+			#
+			# Se descubrió con A10: al chocar dos jobs, el `except Exception` de abajo
+			# atrapaba el fallo de serialización y después reventaba al escribir.
+			_logger.warning(
+				"Repo Manager: error de base en el sync de %s; se reintenta",
+				self.full_name)
+			raise
 		except Exception as exc:  # noqa: BLE001
 			_logger.exception("Repo Manager: falló el sync de %s", self.full_name)
 			self.write({"sync_state": "error", "sync_error": str(exc)[:500]})
 			if run:
-				run._register_repo_done(con_error=True)
+				run._register_repo_done(self, con_error=True, error=str(exc))
 			# No se re-lanza: un repo roto no puede tumbar la auditoría de los otros 93.
 
 	# ------------------------------------------------------------------
@@ -412,7 +432,19 @@ class RepoMemberSync(models.Model):
 
 	@api.model
 	def _upsert(self, item):
-		"""Crea o actualiza una persona por su login. Devuelve recordset vacío si no hay dato."""
+		"""Crea o actualiza una persona por su login. Recordset vacío si no hay dato.
+
+		SÓLO ESCRIBE SI ALGO CAMBIÓ, y no es una optimización: es corrección bajo
+		concurrencia. La fila de una persona es COMPARTIDA entre todos los repositorios
+		donde colabora, así que dos jobs que recorren dos repos con el mismo colaborador
+		la tocan a la vez. Escribir valores idénticos igual genera un
+		`UPDATE ... SET write_date`, y ese UPDATE que no cambia nada alcanza para matar al
+		otro job con «could not serialize access».
+		
+		Se descubrió midiendo el arreglo de A10: eliminada la contención de los contadores
+		de la corrida, la mitad de los jobs seguía reintentando, y el motivo era esto —una
+		escritura vacía sobre la fila de `primateuy`, que colabora en todos los repos.
+		"""
 		login = (item or {}).get("login")
 		if not login:
 			return self.browse()
@@ -422,7 +454,9 @@ class RepoMemberSync(models.Model):
 			"github_id": str(item.get("id")) if item.get("id") else False,
 			"avatar_url": item.get("avatar_url"),
 		}
-		if miembro:
-			miembro.write(valores)
-			return miembro
-		return self.create(valores)
+		if not miembro:
+			return self.create(valores)
+		cambios = {c: v for c, v in valores.items() if miembro[c] != v}
+		if cambios:
+			miembro.write(cambios)
+		return miembro
