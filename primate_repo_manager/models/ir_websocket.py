@@ -16,7 +16,12 @@ import re
 from odoo import models
 from odoo.exceptions import AccessError
 
-CANAL_CORRIDA = re.compile(r"^repo\.audit\.run_(\d+)$")
+# Los modelos que pueden pedirse como canal desde el navegador. Es una lista blanca y no
+# una expresión general: sin ella, el navegador podría nombrar CUALQUIER modelo y el
+# servidor lo resolvería, que es una forma silenciosa de filtrar registros por el bus.
+MODELOS_ESCUCHABLES = ("repo.audit.run", "repo.write.plan")
+CANAL_CORRIDA = re.compile(
+	r"^(%s)_(\d+)$" % "|".join(m.replace(".", r"\.") for m in MODELOS_ESCUCHABLES))
 
 
 class IrWebsocket(models.AbstractModel):
@@ -34,13 +39,27 @@ class IrWebsocket(models.AbstractModel):
 		ESCUCHA QUÉ, que es la única con consecuencias de seguridad.
 		"""
 		channels = list(channels)
-		pedidos = []
+		pedidos = {}
 		for canal in list(channels):
-			if isinstance(canal, str) and CANAL_CORRIDA.match(canal):
+			if not isinstance(canal, str):
+				continue
+			encontrado = CANAL_CORRIDA.match(canal)
+			if encontrado:
 				channels.remove(canal)
-				pedidos.append(int(CANAL_CORRIDA.match(canal).group(1)))
-		if not pedidos:
-			return channels
+				pedidos.setdefault(encontrado.group(1), []).append(
+					int(encontrado.group(2)))
+		for modelo, ids in pedidos.items():
+			try:
+				# `search` filtra por reglas de registro, pero LANZA si al usuario le
+				# falta el permiso de lectura sobre el modelo entero. Las dos cosas
+				# significan lo mismo acá —no se suscribe— y por eso la excepción se
+				# traduce a «este modelo no» en vez de dejar que reviente la conexión
+				# del bus de toda la sesión.
+				registros = self.env[modelo].search([("id", "in", ids)])
+			except AccessError:
+				continue
+			channels.extend(registros)
+		return channels
 		try:
 			# `search` filtra por reglas de registro, pero LANZA si al usuario le falta el
 			# permiso de lectura sobre el modelo entero. Las dos cosas significan lo mismo

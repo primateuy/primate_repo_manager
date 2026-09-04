@@ -340,3 +340,110 @@ class TestRemediarDesdeUnHallazgo(BasePlan):
 		with self.assertRaises(UserError) as ctx:
 			malo.action_remediate_many()
 		self.assertIn("no se remedian", str(ctx.exception))
+
+
+class TestArmarOperacionSinJSON(BasePlan):
+	"""A4.3: el otro camino, el que no nace de un hallazgo."""
+
+	def _asistente(self, **valores):
+		base = {"plan_id": self.plan.id, "kind": "branch_protection_apply",
+				"repository_id": self.repo.id, "branch": "17.0"}
+		base.update(valores)
+		return self.env["repo.operation.builder"].create(base)
+
+	def test_las_casillas_se_vuelven_payload(self):
+		a = self._asistente(require_pr=True, required_approvals=2,
+							block_force_push=True, block_deletion=True)
+		a.action_add()
+		op = self.plan.operation_ids[-1]
+		datos = json.loads(op.payload_json)
+		self.assertEqual(
+			datos["required_pull_request_reviews"]["required_approving_review_count"], 2)
+		self.assertFalse(datos["allow_force_pushes"])
+		self.assertFalse(datos["allow_deletions"])
+
+	def test_la_vista_previa_usa_LA_MISMA_frase_que_el_plan(self):
+		"""Dos redacciones parecidas son peores que una: la que se aprueba es la del plan.
+
+		MUTACIÓN: si la vista previa se armara con una frase propia, este test avisa.
+		"""
+		a = self._asistente(required_approvals=3)
+		previa = a.preview
+		a.action_add()
+		self.assertEqual(previa, self.plan.operation_ids[-1].description)
+
+	def test_no_deja_a_medias_lo_que_falta(self):
+		a = self._asistente(branch=False)
+		with self.assertRaises(UserError):
+			a.action_add()
+
+	def test_un_plan_aprobado_no_recibe_operaciones(self):
+		self._op("branch_protection_apply", payload={"allow_force_pushes": False})
+		self.plan._aprobar()
+		a = self._asistente()
+		with self.assertRaises(UserError) as ctx:
+			a.action_add()
+		self.assertIn("aprobación", str(ctx.exception))
+
+	def test_los_rulesets_NO_estan_en_el_asistente(self):
+		"""Un ruleset se define por las reglas de una plantilla, no por un formulario
+		suelto: dos lugares donde se decide lo mismo divergen. Es B1."""
+		from ..wizards.repo_operation_builder import TIPOS_CON_FORMULARIO
+
+		self.assertNotIn("ruleset_create", TIPOS_CON_FORMULARIO)
+		self.assertNotIn("ruleset_delete", TIPOS_CON_FORMULARIO)
+
+
+class TestAvanceDelPlan(BasePlan):
+	"""A4.5: el plan aplicándose usa la misma pieza de pantalla que la auditoría."""
+
+	def test_el_avance_se_deriva_de_las_operaciones(self):
+		"""Un contador que alguien incrementa es una fila compartida que se pisa —A10— y
+		además puede quedar mintiendo si algo se cae. Contar no puede desfasarse."""
+		una = self._op("branch_protection_apply", payload={"allow_force_pushes": False})
+		otra = self._op("branch_protection_apply", sequence=20,
+						payload={"allow_deletions": False})
+		self.assertEqual(self.plan.progress, 0)
+		una.state = "applied"
+		self.plan.invalidate_recordset()
+		self.assertEqual(self.plan.applied_count, 1)
+		self.assertEqual(self.plan.progress, 50)
+		otra.state = "failed"
+		self.plan.invalidate_recordset()
+		self.assertEqual(self.plan.failed_count, 1)
+		self.assertEqual(self.plan.progress, 100)
+
+	def test_lo_bloqueado_cuenta_como_hecho_y_no_como_error(self):
+		"""Un techo de plan de GitHub es un límite conocido y reportado, no una falla."""
+		op = self._op("branch_protection_apply", payload={"allow_force_pushes": False})
+		op.state = "blocked"
+		self.plan.invalidate_recordset()
+		self.assertEqual(self.plan.applied_count, 1)
+		self.assertEqual(self.plan.failed_count, 0)
+
+	def test_el_aviso_habla_el_idioma_del_componente(self):
+		"""Las claves son las del componente y no las del modelo, para que la pieza de
+		pantalla no tenga que saber quién la alimenta."""
+		self._op("branch_protection_apply", payload={"allow_force_pushes": False})
+		avisos = []
+		Plan = self.env["repo.write.plan"].__class__
+		envio = Plan._bus_send
+		Plan._bus_send = lambda s, t, m, **kw: avisos.append(m)
+		self.addCleanup(lambda: setattr(Plan, "_bus_send", envio))
+		self.plan._emitir_avance()
+		self.assertEqual(
+			set(avisos[0]), {"id", "state", "total", "done", "error", "actual",
+							 "findings", "criticos", "altos"})
+
+	def test_el_bus_acepta_el_canal_del_plan(self):
+		"""Sin esto el componente se suscribe a un canal que el servidor descarta."""
+		canales = self.env["ir.websocket"]._traducir_corridas(
+			["repo.write.plan_%s" % self.plan.id])
+		self.assertIn(self.plan, canales)
+
+	def test_el_bus_NO_acepta_cualquier_modelo(self):
+		"""La lista blanca es lo que impide que el navegador nombre un modelo cualquiera
+		y el servidor se lo resuelva."""
+		canales = self.env["ir.websocket"]._traducir_corridas(["res.users_1"])
+		self.assertEqual(canales, ["res.users_1"],
+						 "un modelo fuera de la lista pasa como texto y no se resuelve")

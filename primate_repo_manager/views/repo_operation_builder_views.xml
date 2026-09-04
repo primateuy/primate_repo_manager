@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 - PrimateUY / License AGPL-3.0 or later -->
+<odoo>
+
+	<record id="view_repo_operation_builder" model="ir.ui.view">
+		<field name="name">repo.operation.builder.form</field>
+		<field name="model">repo.operation.builder</field>
+		<field name="arch" type="xml">
+			<form string="Agregar una operación">
+				<div class="alert alert-info" role="alert">
+					Esto <b>arma la operación y nada más</b>. No escribe en GitHub: el plan
+					sigue necesitando aprobación, y recién ahí se aplica.
+				</div>
+				<group>
+					<field name="plan_id" invisible="1"/>
+					<field name="backend_id" invisible="1"/>
+					<field name="kind"/>
+				</group>
+				<group>
+					<field name="repository_id"
+						   invisible="kind in ('team_member_add', 'team_member_remove')"
+						   required="kind not in ('team_member_add', 'team_member_remove')"/>
+					<field name="branch"
+						   invisible="kind not in ('branch_protection_apply', 'branch_protection_remove')"
+						   required="kind in ('branch_protection_apply', 'branch_protection_remove')"/>
+					<field name="member_id"
+						   invisible="kind not in ('collaborator_grant', 'collaborator_revoke', 'team_member_add', 'team_member_remove')"
+						   required="kind in ('collaborator_grant', 'collaborator_revoke', 'team_member_add', 'team_member_remove')"/>
+					<field name="team_slug"
+						   invisible="kind not in ('team_repo_grant', 'team_repo_revoke', 'team_member_add', 'team_member_remove')"
+						   required="kind in ('team_repo_grant', 'team_repo_revoke', 'team_member_add', 'team_member_remove')"/>
+					<field name="permission"
+						   invisible="kind not in ('collaborator_grant', 'team_repo_grant')"
+						   required="kind in ('collaborator_grant', 'team_repo_grant')"/>
+				</group>
+				<group string="Qué va a exigir la rama"
+					   invisible="kind != 'branch_protection_apply'">
+					<field name="require_pr"/>
+					<field name="required_approvals" invisible="not require_pr"/>
+					<field name="require_codeowner" invisible="not require_pr"/>
+					<field name="block_force_push"/>
+					<field name="block_deletion"/>
+					<field name="require_signed"/>
+				</group>
+				<!-- La misma frase que va a mostrar el plan, armada con el mismo método:
+					 dos redacciones parecidas son peores que una, porque la que se aprueba
+					 es la del plan y no la del asistente. -->
+				<group string="Cómo va a quedar escrito" invisible="not preview">
+					<field name="preview" nolabel="1" readonly="1"/>
+				</group>
+				<footer>
+					<button name="action_add" type="object" string="Agregar al plan"
+							class="btn-primary"/>
+					<button string="Cancelar" class="btn-secondary" special="cancel"/>
+				</footer>
+			</form>
+		</field>
+	</record>
+
+</odoo>

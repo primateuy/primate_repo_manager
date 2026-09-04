@@ -55,7 +55,7 @@ OPERATION_KINDS = [
 class RepoWritePlan(models.Model):
 	_name = "repo.write.plan"
 	_description = "Plan de escritura sobre GitHub"
-	_inherit = ["mail.thread"]
+	_inherit = ["mail.thread", "bus.listener.mixin"]
 	_order = "id desc"
 
 	name = fields.Char(string="Referencia", required=True, default="Plan de escritura")
@@ -82,6 +82,14 @@ class RepoWritePlan(models.Model):
 		ondelete="set null", tracking=True)
 	approved_at = fields.Datetime(string="Aprobado el", readonly=True, copy=False,
 								  tracking=True)
+	# --- A4.5: el plan aplicándose se mira, no se refresca ----------------
+	applied_count = fields.Integer(
+		string="Aplicadas", compute="_compute_avance")
+	failed_count = fields.Integer(string="Con problema", compute="_compute_avance")
+	progress = fields.Float(string="Avance", compute="_compute_avance")
+	started_at = fields.Datetime(string="Aplicación iniciada", readonly=True, copy=False)
+	finished_at = fields.Datetime(string="Aplicación terminada", readonly=True, copy=False)
+
 	approval_fingerprint = fields.Char(
 		string="Huella aprobada", readonly=True, copy=False,
 		help="Hash del contenido ejecutable al momento de aprobar.")
@@ -96,6 +104,60 @@ class RepoWritePlan(models.Model):
 	def _compute_operation_count(self):
 		for plan in self:
 			plan.operation_count = len(plan.operation_ids)
+
+	@api.depends("operation_ids.state")
+	def _compute_avance(self):
+		"""Se DERIVA de las operaciones, no se lleva en contadores propios.
+
+		Es el patrón que quedó de A9 y de A10: un contador que alguien incrementa es una
+		fila compartida que dos procesos pueden pisarse, y además puede quedar mintiendo
+		si algo se cae en el medio. Contar las operaciones no puede desfasarse de la
+		realidad, porque ES la realidad.
+		"""
+		for plan in self:
+			estados = plan.operation_ids.mapped("state")
+			plan.applied_count = estados.count("applied") + estados.count("blocked")
+			plan.failed_count = estados.count("failed")
+			total = len(estados)
+			hechas = plan.applied_count + plan.failed_count
+			plan.progress = (hechas / total * 100) if total else 0.0
+
+	# ------------------------------------------------------------------
+	# Avance en vivo del apply
+	# ------------------------------------------------------------------
+
+	AVISO = "repo_manager.audit_progress"
+
+	def _emitir_avance(self, actual=None, inmediato=False):
+		"""Mismo mensaje que la corrida de auditoría: el componente es el mismo.
+
+		Los nombres de las claves son los del componente y no los del modelo —`done`,
+		`error`, `total`— justamente para que la pieza de pantalla no tenga que saber si
+		la está alimentando una auditoría o un plan.
+		"""
+		self.ensure_one()
+		aviso = {
+			"id": self.id,
+			"state": self.state,
+			"total": self.operation_count,
+			"done": self.applied_count,
+			"error": self.failed_count,
+			"actual": actual,
+			"findings": 0, "criticos": 0, "altos": 0,
+		}
+		if not inmediato:
+			self._bus_send(self.AVISO, aviso)
+			return
+		with self.pool.cursor() as cr:
+			self.env(cr=cr)["repo.write.plan"].browse(self.id)._bus_send(
+				self.AVISO, aviso)
+
+	def action_refresh_progress(self):
+		"""Reemite el estado. Lo usa el «Volver a preguntar» del componente."""
+		self.ensure_one()
+		en_curso = self.operation_ids.filtered(lambda o: o.state == "pending")[:1]
+		self._emitir_avance(actual=en_curso.description or None)
+		return True
 
 	# ------------------------------------------------------------------
 	# Huella
@@ -220,6 +282,22 @@ class RepoWritePlan(models.Model):
 		) % {"huella": self.approval_fingerprint[:16],
 			 "total": len(self.operation_ids), "malas": len(destructivas)})
 		return True
+
+	def action_add_operation(self):
+		"""Abre el asistente que arma una operación sin escribir JSON."""
+		self.ensure_one()
+		if self.state != "draft":
+			raise UserError(_(
+				"«%s» no está en borrador: agregarle operaciones le rompería la "
+				"aprobación.") % self.display_name)
+		return {
+			"type": "ir.actions.act_window",
+			"name": _("Agregar una operación a «%s»") % self.name,
+			"res_model": "repo.operation.builder",
+			"view_mode": "form",
+			"target": "new",
+			"context": {"default_plan_id": self.id},
+		}
 
 	def action_back_to_draft(self):
 		self.ensure_one()

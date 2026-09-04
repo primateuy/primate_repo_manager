@@ -451,6 +451,176 @@ eliminar.
    que alguien lo vuelva a crear en seis meses.
 
 
+---
+
+## Bloque E — Lo que entró en la pausa de producto (4-sep-2026)
+
+### E1 · Seguridad: Dependabot y secret scanning como hallazgos
+
+**Permisos nuevos, y no son gratis.** Verificado contra la API: hoy la App de auditoría
+tiene `actions`, `administration`, `contents`, `metadata`, `pull_requests` y `statuses`,
+todos de lectura. Faltan **dos permisos nuevos** en la App de auditoría:
+
+| Qué | Permiso | Endpoint |
+|---|---|---|
+| Alertas de Dependabot | `vulnerability_alerts: read` | `GET /repos/{o}/{r}/dependabot/alerts` |
+| Secret scanning | `secret_scanning_alerts: read` | `GET /repos/{o}/{r}/secret-scanning/alerts` |
+
+Dos avisos que hay que dar antes de prometer nada:
+
+1. **Secret scanning en repos privados es una función paga** (Advanced Security). En los
+   públicos anda con el plan gratuito. Con 31 repos privados en la cuenta real, el
+   resultado esperable es un `403` de techo de plan sobre la mayoría — que el módulo ya
+   sabe reportar como *no legible por límite de plan*, no como «no hay secretos». Esa
+   distinción, que costó construir en F1, es exactamente lo que hace que este ítem se
+   pueda entregar sin mentir.
+2. **Ampliar los permisos de la App 4805796 requiere re-consentir la instalación.** Es la
+   misma operación que rompió el OAuth de Outlook al migrar: se toca y hay que aceptar de
+   nuevo.
+
+*Dónde encaja:* **en B, junto a los checks requeridos (B3)**, y por una razón de fondo: es
+la misma conversación. B3 pregunta «¿qué tiene que pasar antes de mergear?» y E1 pregunta
+«¿qué encontró GitHub por su cuenta?». Las dos alimentan la misma decisión sobre un
+repositorio y comparten la pantalla de política.
+
+*Dimensión:* chica-media. Dos tipos de hallazgo nuevos, dos llamadas en el sync, su
+severidad y su lugar en el informe. **No tiene remediación por plan**: un secreto filtrado
+se rota, no se «aplica»; una alerta de Dependabot se resuelve con un PR. Van al catálogo de
+A4.1 como *se resuelve en otro lado*, con su explicación.
+
+### E2 · Auditoría programada, y el delta contra la corrida anterior
+
+**E2.1 · Cron configurable.** Un `ir.cron` que lanza la auditoría, con su frecuencia
+editable desde la pantalla de Ajustes (A8) y no desde *Técnico*.
+
+**E2.2 · El delta.** Lo que importa de la corrida N no es la lista completa: es **qué
+apareció y qué se resolvió** contra la N-1. Comparar por `(tipo, repositorio, sujeto)` —no
+por id, que cambia en cada corrida— y clasificar cada hallazgo en *nuevo*, *sigue*,
+*resuelto*.
+
+*Esto vale por sí solo, aunque no haya notificación*: es lo que convierte 273 hallazgos en
+«tres cosas nuevas esta semana». Y es la mitad de **B4**, el drift de política, que
+pregunta lo mismo sobre otra dimensión.
+
+**E2.3 · La notificación.** Actividad o correo con el delta. La matriz de a quién se le
+avisa qué ya está en la spec (§7.2) y todavía no se implementó.
+
+*Dónde encaja:* **E2.1 y E2.2 después de B4**, para no construir dos veces la comparación
+entre corridas. E2.3 con ellas.
+
+*Dimensión:* E2.2 es media —un modelo de comparación y su pantalla—; E2.1 y E2.3 son
+chicas.
+
+### E3 · Higiene: ramas muertas y repos candidatos a archivar
+
+**E3.1 · Hallazgos de higiene (lectura).** Ramas sin commits en N meses que no son base ni
+staging; repositorios sin push en N meses, sin PRs abiertas y sin ramas vivas. Los umbrales
+van a Ajustes, como todos los demás: son criterio.
+
+*El dato ya está en el espejo*: `repo.branch.last_commit_date` y `repo.repository.pushed_at`
+se relevan desde F1 y hoy nadie los usa. Este ítem es sobre todo **evaluación**, no sync.
+
+**E3.2 · Archivar por el embudo.** Un tipo de operación nuevo, `repository_archive`, con su
+reversión (desarchivar). Es de las pocas operaciones **reversibles de verdad y sin pérdida**
+—GitHub archiva y desarchiva sin tocar contenido—, lo que la hace un buen primer caso para
+una operación de nivel repositorio.
+
+*Cuidado que hay que tener:* archivar un repositorio lo pone en sólo lectura para todos, y
+si alguna instancia de cliente lo tiene en su `addons_path` como origen de un submódulo,
+sigue funcionando para leer pero no para escribir. **Es el mismo borde que D3**, y merece el
+mismo aviso en la aprobación.
+
+*Dónde encaja:* **E3.1 puede ir con D1** —las dos son lectura y no dependen de nada—;
+**E3.2 después de D2**, cuando las operaciones a nivel repositorio ya tengan un camino
+hecho.
+
+*Dimensión:* E3.1 chica (es evaluación sobre datos que ya están). E3.2 chica-media.
+
+### E4 · Panel de salud
+
+Dimensión funcional, que es lo que se pide acá; el diseño visual va por su carril.
+
+**Lo que el panel necesita del backend, y no existe todavía:**
+
+1. **Métricas por corrida, guardadas.** % de ramas protegidas, adopción de convención de
+   commits, conteo por severidad, repos sin clasificar. Hoy se pueden calcular al vuelo
+   sobre la última corrida, pero **la tendencia exige tenerlas guardadas por corrida**:
+   recalcular el pasado desde el espejo daría el estado de HOY, no el de entonces. Un
+   modelo `repo.audit.metric` de una fila por corrida y métrica.
+2. **La tendencia sale gratis una vez guardadas**, y sólo entonces.
+3. **Nada de esto necesita pantalla nueva del lado del backend**: son campos y un modelo.
+
+*Dónde encaja:* **las métricas, con E2.2** — el delta y la tendencia leen lo mismo y
+conviene que se guarden una sola vez. **El panel, al final del bloque E**, cuando haya al
+menos tres o cuatro corridas guardadas: un panel de tendencia con un punto es un número con
+un gráfico alrededor.
+
+*Dimensión:* métricas chica; panel medio, y depende del diseño visual que va aparte.
+
+### Backlog post-criterio-de-salida
+
+No entran en esta etapa y quedan anotados para no perderlos: **Sagui sobre el espejo**
+(preguntarle en lenguaje natural al inventario), **validación de convención de commits
+contra tareas reales** (que el `[TAG][nro]` apunte a una tarea que existe — necesita el
+vínculo con proyectos de F4), y **releases / settings / secrets** como dimensiones nuevas
+del espejo.
+
+---
+
+## La pregunta de los webhooks, contestada
+
+*¿Qué costaría que B y D se construyan «webhook-ready», sin asumir que el espejo sólo
+cambia por auditoría, aunque los webhooks lleguen en F4?*
+
+**Casi nada, y buena parte ya está hecha sin habérselo propuesto.** Lo verifiqué en el
+código antes de contestar:
+
+- **El sync ya es por repositorio y es idempotente.** `_job_sync_repository` recorre UN
+  repositorio y hace upsert por `github_id`, que es estable ante renombres. Un evento que
+  diga «cambió el repo X» puede llamar a eso mismo. No hay nada que rehacer.
+- **El apply ya lee el estado previo de GitHub EN EL MOMENTO de aplicar**, no del plan.
+  Es el punto que más me preocupaba —un plan aprobado el martes y aplicado el jueves sobre
+  un mundo que se movió— y resulta que la decisión correcta ya estaba tomada en F2.
+- **El componente de pantalla ya es de empuje.** Se alimenta del bus; no le importa quién
+  emita.
+
+**Lo que sí hay que cuidar, y es barato hacerlo ahora:**
+
+1. **No atar los hallazgos nuevos a `run_id` como única procedencia.** Hoy `run_id` es
+   obligatorio en `repo.audit.finding`. Un hallazgo que nazca de un webhook no tiene
+   corrida. Cambiar eso después de que B y D hayan creado sus tipos de hallazgo es una
+   migración; preverlo ahora es una decisión de diseño de diez minutos. **Recomendación:**
+   dejar el campo obligatorio hoy —cambiarlo sin necesidad es peor— pero **no escribir
+   lógica nueva que asuma que todo hallazgo tiene corrida**. Lo que sí conviene revisar es
+   el conteo «de la última corrida» de A3, que sí lo asume.
+2. **Que todo lo que escriba en el espejo pase por los mismos métodos de upsert.** Si B o
+   D leen de GitHub y escriben en el espejo por su cuenta, el día que llegue un webhook va
+   a haber dos caminos que hacen lo mismo distinto. Regla: **un objeto del espejo, un
+   método que lo actualiza.**
+3. **`last_seen_at` y origen en las filas del espejo.** Saber *cuándo* se supo algo y *por
+   dónde* entró. Sin eso, la pregunta «¿esto está desactualizado o es así?» no tiene
+   respuesta, y con webhooks conviviendo con auditorías esa pregunta se vuelve diaria.
+   Son dos campos y cuestan nada ahora.
+4. **A10 se agrava.** El defecto de los contadores compartidos —dos jobs pisándose la fila
+   de la corrida— hoy se mitiga con un solo hilo. Con webhooks escribiendo en paralelo, esa
+   mitigación deja de alcanzar. **A10 pasa de «molesto» a bloqueante para F4**, y conviene
+   resolverlo antes y no durante. El patrón ya está probado en A4.5: **derivar contando, no
+   incrementando.**
+
+**Costo de las cuatro:** los puntos 2 y 3 son disciplina y dos campos. El 1 es una decisión
+escrita, no código. El 4 es trabajo real —A10— pero ya estaba pendiente y ahora tiene fecha
+de vencimiento.
+
+---
+
+## Orden actualizado
+
+    A4 ✓ → D1 + E3.1 → B (+ E1 en B3) → B4 + E2.2 + métricas de E4
+         → D2 → E3.2 → E2.1 + E2.3 → panel E4 → C
+
+Con **A10 metido antes de D2**, por el punto 4 de arriba.
+
+
 ## Validación visual pendiente
 
 **A5 + A6 + A8 quedaron aprobados en forma provisoria**, sin recorrido visual: Daryl estaba

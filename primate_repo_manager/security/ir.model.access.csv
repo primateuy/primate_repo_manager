@@ -45,3 +45,4 @@ access_repo_settings_admin,repo.settings,model_repo_settings,group_repo_admin,1,
 access_repo_write_enable_wizard,repo.write.enable.wizard,model_repo_write_enable_wizard,group_repo_admin,1,1,1,1
 access_repo_plan_approve_wizard,repo.plan.approve.wizard,model_repo_plan_approve_wizard,group_repo_lead,1,1,1,1
 access_repo_plan_approve_line,repo.plan.approve.line,model_repo_plan_approve_line,group_repo_lead,1,1,1,1
+access_repo_operation_builder,repo.operation.builder,model_repo_operation_builder,group_repo_lead,1,1,1,1

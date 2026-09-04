@@ -119,12 +119,20 @@ class RepoWritePlanApply(models.Model):
 		# dentro de una sola operación lógica termina en «could not serialize access due
 		# to concurrent update». Y no hace falta: si una caída se lleva este estado, la
 		# admisibilidad del rollback no depende de él.
-		self.write({"state": "applying"})
+		self.write({"state": "applying", "started_at": fields.Datetime.now(),
+					"finished_at": False})
+		self._emitir_avance(inmediato=True)
 
 		for operacion in self.operation_ids.sorted(lambda o: (o.sequence, o.id)):
 			if operacion.state in ("applied", "blocked"):
 				continue
+			# El aviso de apertura sale fuera de la transacción por el mismo motivo que en
+			# la auditoría: el apply entero corre en UNA transacción, así que un aviso
+			# emitido por el camino normal llegaría recién al final —todos juntos— y la
+			# pantalla no mostraría avance sino un salto. Ver `repo.audit.run._emitir_avance`.
+			self._emitir_avance(actual=operacion.description, inmediato=True)
 			operacion._aplicar(cliente)
+			self._emitir_avance(actual=operacion.description, inmediato=True)
 
 		# `blocked` NO cuenta como fracaso: es un techo conocido y reportado, no algo
 		# que el sistema hizo mal. Sólo `failed` deja el plan en fallido.
@@ -133,6 +141,9 @@ class RepoWritePlanApply(models.Model):
 			self.state = "failed"
 		else:
 			self.state = "applied"
+		self.finished_at = fields.Datetime.now()
+		# Éste SÍ va por el camino normal: el «terminé» sólo vale si el apply confirmó.
+		self._emitir_avance()
 		self.message_post(body=_(
 			"Plan aplicado. Aplicadas: %(ok)s · Bloqueadas: %(bloq)s · Fallidas: %(mal)s"
 		) % {

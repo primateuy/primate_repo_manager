@@ -46,9 +46,31 @@ import { _t } from "@web/core/l10n/translation";
 const SILENCIO_SOSPECHOSO = 60;
 const AVISO = "repo_manager.audit_progress";
 
+// EL COMPONENTE NO SABE DE AUDITORÍAS. Sabe de «algo que avanza»: un total, cuántos van,
+// cuántos fallaron y qué se está haciendo ahora. Los nombres de los campos donde vive eso
+// llegan por opciones del widget, con los de la corrida de auditoría como default para que
+// la vista que ya existía siga funcionando sin tocarla.
+//
+// Es lo que permite que el plan aplicándose reuse esta misma pieza en vez de tener una
+// copia parecida: dos barras que se parecen divergen, y la que se mira menos envejece mal.
+const CAMPOS_POR_DEFECTO = {
+	total: "repos_total",
+	done: "repos_done",
+	error: "repos_error",
+	findings: "finding_count",
+	criticos: "critical_count",
+	altos: "high_count",
+	inicio: "started_at",
+	fin: "finished_at",
+	cuenta: "backend_id",
+	modelo: "repo.audit.run",
+	corriendo: "running",
+	terminado: "done,partial",
+};
+
 export class LiveProgress extends Component {
     static template = "primate_repo_manager.LiveProgress";
-    static props = { ...standardFieldProps };
+    static props = { ...standardFieldProps, options: { type: Object, optional: true } };
 
     setup() {
         this.bus = useService("bus_service");
@@ -64,6 +86,8 @@ export class LiveProgress extends Component {
             ahora: Date.now(),
         });
 
+        this.campos = { ...CAMPOS_POR_DEFECTO, ...(this.props.options || {}) };
+        this.estadosTerminado = this.campos.terminado.split(",");
         this.corridaId = null;
         this.canal = null;
         this.yaRecargo = false;
@@ -120,7 +144,7 @@ export class LiveProgress extends Component {
         this.state.silencio = 0;
         this.yaRecargo = false;
         if (id) {
-            this.canal = `repo.audit.run_${id}`;
+            this.canal = `${this.campos.modelo}_${id}`;
             this.bus.addChannel(this.canal);
         }
     }
@@ -146,15 +170,16 @@ export class LiveProgress extends Component {
 
     get datos() {
         const d = this.props.record.data;
+        const c = this.campos;
         const base = {
             state: d.state,
-            total: d.repos_total || 0,
-            done: d.repos_done || 0,
-            error: d.repos_error || 0,
+            total: d[c.total] || 0,
+            done: d[c.done] || 0,
+            error: d[c.error] || 0,
             actual: null,
-            findings: d.finding_count || 0,
-            criticos: d.critical_count || 0,
-            altos: d.high_count || 0,
+            findings: d[c.findings] || 0,
+            criticos: d[c.criticos] || 0,
+            altos: d[c.altos] || 0,
         };
         return this.state.vivo ? Object.assign(base, this.state.vivo) : base;
     }
@@ -163,7 +188,7 @@ export class LiveProgress extends Component {
         // En Odoo 19 un many2one llega como {id, display_name}; antes llegaba como
         // [id, nombre]. Se contemplan las dos: una regresión acá no rompe nada visible
         // —sólo deja de aparecer el nombre— y eso pasa desapercibido.
-        const valor = this.props.record.data.backend_id;
+        const valor = this.props.record.data[this.campos.cuenta];
         if (!valor) {
             return "";
         }
@@ -171,11 +196,11 @@ export class LiveProgress extends Component {
     }
 
     get corriendo() {
-        return this.datos.state === "running";
+        return this.datos.state === this.campos.corriendo;
     }
 
     get termino() {
-        return ["done", "partial"].includes(this.datos.state);
+        return this.estadosTerminado.includes(this.datos.state);
     }
 
     get porcentaje() {
@@ -196,11 +221,13 @@ export class LiveProgress extends Component {
         // entra a mirar una auditoría a mitad de camino tiene que ver cuánto lleva, no
         // cuánto hace que está mirando.
         const d = this.props.record.data;
-        if (!d.started_at) {
+        const inicio = d[this.campos.inicio];
+        if (!inicio) {
             return "";
         }
-        const hasta = d.finished_at ? d.finished_at.toMillis() : this.state.ahora;
-        const s = Math.max(0, Math.round((hasta - d.started_at.toMillis()) / 1000));
+        const fin = d[this.campos.fin];
+        const hasta = fin ? fin.toMillis() : this.state.ahora;
+        const s = Math.max(0, Math.round((hasta - inicio.toMillis()) / 1000));
         return s < 60 ? _t("%s s", s) : _t("%s min %s s", Math.floor(s / 60), s % 60);
     }
 
@@ -208,7 +235,7 @@ export class LiveProgress extends Component {
         // El servidor reemite su estado por el mismo canal de siempre. No se recarga la
         // pantalla: si la respuesta llega, entra por donde entran todas las demás.
         if (this.corridaId) {
-            await this.orm.call("repo.audit.run", "action_refresh_progress",
+            await this.orm.call(this.campos.modelo, "action_refresh_progress",
                                 [[this.corridaId]]);
         }
     }
@@ -230,6 +257,8 @@ export class LiveProgress extends Component {
 export const liveProgressField = {
     component: LiveProgress,
     supportedTypes: ["float", "integer"],
+    // Los nombres de los campos llegan por `options` en la vista; ver CAMPOS_POR_DEFECTO.
+    extractProps: ({ options }) => ({ options }),
 };
 
 registry.category("fields").add("repo_live_progress", liveProgressField);

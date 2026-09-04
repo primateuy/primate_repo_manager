@@ -31,6 +31,9 @@
 		<field name="arch" type="xml">
 			<form>
 				<header>
+					<button name="action_add_operation" type="object"
+							string="Agregar operación" class="btn-secondary"
+							invisible="state != 'draft'"/>
 					<button name="action_approve" type="object" string="Aprobar"
 							class="btn-primary" invisible="state != 'draft'"/>
 					<button name="action_apply" type="object" string="Aplicar"
@@ -45,6 +48,21 @@
 						   statusbar_visible="draft,approved,applied"/>
 				</header>
 				<sheet>
+					<!-- Los contadores viajan invisibles: el componente los usa como
+						 base mientras el bus todavía no habló. Mismo criterio que en la
+						 corrida de auditoría. -->
+					<field name="operation_count" invisible="1"/>
+					<field name="applied_count" invisible="1"/>
+					<field name="failed_count" invisible="1"/>
+					<field name="started_at" invisible="1"/>
+					<field name="finished_at" invisible="1"/>
+					<field name="progress" widget="repo_live_progress" nolabel="1"
+						   options="{'total': 'operation_count', 'done': 'applied_count',
+									 'error': 'failed_count', 'inicio': 'started_at',
+									 'fin': 'finished_at', 'cuenta': 'backend_id',
+									 'modelo': 'repo.write.plan',
+									 'corriendo': 'applying',
+									 'terminado': 'applied,failed,rolled_back'}"/>
 					<div class="oe_title">
 						<h1><field name="name" placeholder="Referencia del plan"/></h1>
 					</div>
