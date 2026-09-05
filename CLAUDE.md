@@ -51,6 +51,21 @@ rehacerlo. Estas cuatro reglas cuestan poco ahora y mucho después.
    fila compartida —la de una persona que colabora en varios repos— eso basta para matar
    al job de al lado.
 
+## Vistas y acciones: dos cosas que el servidor no valida
+
+1. **El `context` y el `domain` de una acción van en UNA SOLA LÍNEA.** El evaluador de
+   expresiones del NAVEGADOR no acepta la concatenación implícita de literales adyacentes
+   —`'una parte' 'otra parte'`—, que en Python sí es válida. El servidor guarda ese texto
+   sin mirarlo: el módulo carga perfecto y la pantalla revienta al hacer clic con
+   «Can not parse python expression». Hay un test que lo vigila
+   (`test_acciones_abren.py`), y el script `scripts/sandbox/abrir_todas_las_pantallas.py`
+   abre todas las acciones en un Chromium de verdad.
+
+2. **Que el módulo instale no significa que las pantallas abran.** Es la misma familia que
+   el punto anterior y ya mordió tres veces: un `groups_id` que en 19 se llama `group_ids`,
+   un `target` inválido, un campo calculado sin `search` en un filtro. Ninguna la vio la
+   instalación. Antes de dar por terminada una pantalla, abrila.
+
 ## Contexto del proyecto
 
 - Odoo 19.0 Enterprise. Python 3.12+.
