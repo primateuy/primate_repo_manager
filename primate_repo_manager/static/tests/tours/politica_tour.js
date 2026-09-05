@@ -68,8 +68,12 @@ registry.category("web_tour.tours").add("prm_politica", {
 			run: "click",
 		},
 		{
+			// La bitácora dejó de ser una tabla el día que se migró a la línea de tiempo
+			// del diseño, y este paso buscaba un `td`. Se apunta a la frase de la
+			// entrada, que es lo que este tour siempre quiso comprobar: que se pueda
+			// LLEGAR al registro desde la aplicación.
 			content: "EL CAMBIO DE POLÍTICA ESTÁ EN LA BITÁCORA, y se llega desde la app",
-			trigger: ".o_list_view td:contains(Plantilla del tour)",
+			trigger: ".rm-bitacora .rm-bitacora-frase:contains(Plantilla del tour)",
 		},
 	],
 });
