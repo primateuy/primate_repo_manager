@@ -71,7 +71,11 @@ class RepoSettings(models.TransientModel):
 		string="Clave de cifrado cargada", compute="_compute_diagnostico")
 	key_detail = fields.Char(string="Detalle de la clave", compute="_compute_diagnostico")
 	chain_state = fields.Selection(
-		[("ok", "Íntegra"), ("rota", "ROTA"), ("vacia", "Sin entradas todavía")],
+		[("ok", "Íntegra"), ("rota", "ROTA"), ("vacia", "Sin entradas todavía"),
+		 # «Pendiente» apareció cuando el sellado pasó a hacerse después del commit. Sin
+		 # esta opción, el diagnóstico reventaba al asignar un valor que la selección no
+		 # tenía — un estado nuevo del modelo que la pantalla no conocía.
+		 ("pendiente", "Sellado pendiente")],
 		string="Cadena de la bitácora", compute="_compute_diagnostico")
 	chain_detail = fields.Char(
 		string="Detalle de la cadena", compute="_compute_diagnostico")
@@ -136,21 +140,9 @@ class RepoSettings(models.TransientModel):
 
 			# La cadena de la bitácora. Es lo único del diagnóstico que puede acusar a
 			# alguien: si está rota, alguien escribió en la base por fuera de Odoo.
-			cadena = self.env["repo.audit.log"].verificar_cadena()
+			cadena = self.env["repo.audit.log"].estado_de_la_cadena()
 			ajustes.chain_state = cadena["estado"]
-			if cadena["estado"] == "ok":
-				ajustes.chain_detail = _(
-					"Íntegra desde el %(desde)s · %(n)s entradas verificadas."
-				) % {"desde": cadena["desde"], "n": cadena["entradas"]}
-			elif cadena["estado"] == "rota":
-				ajustes.chain_detail = _(
-					"ROTA en la entrada %(id)s (%(momento)s): %(motivo)s. Alguien escribió "
-					"en la base por fuera de la aplicación."
-				) % {"id": cadena["entrada"], "momento": cadena["momento"],
-					 "motivo": cadena["motivo"]}
-			else:
-				ajustes.chain_detail = _(
-					"Todavía no hay entradas encadenadas que verificar.")
+			ajustes.chain_detail = cadena["detalle"]
 
 			# La clave NO se lee ni se muestra: sólo se responde si está.
 			try:

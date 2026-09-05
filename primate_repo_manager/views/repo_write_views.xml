@@ -152,15 +152,27 @@
 			<!-- LOS CUATRO TIPOS DE ENTRADA, del sistema de diseño. No es una
 				 clasificación decorativa: cada uno se lee distinto, y por eso el tipo va
 				 primero y con su chip. La leyenda está en el buscador, agrupando. -->
-			<list create="false" delete="false"
+			<!-- `js_class` reemplaza el CUERPO de la lista por la línea de tiempo del
+				 diseño (página 2d) y deja intacto el panel de control: la búsqueda, los
+				 filtros y el agrupado de Odoo son buenos y la gente ya sabe usarlos. Lo
+				 que el diseño cambia es cómo se lee cada entrada, no cómo se la busca.
+
+				 Los campos declarados acá son los que el componente lee. Uno que falte no
+				 rompe nada visible: se dibuja vacío. Por eso están todos, incluidos los
+				 que no se ven como columna. -->
+			<list create="false" delete="false" js_class="repo_bitacora"
 				  decoration-danger="entry_class == 'irreversible'"
 				  decoration-info="entry_class == 'externo'"
 				  decoration-muted="entry_class == 'lectura'">
 				<field name="timestamp"/>
-				<field name="entry_class" widget="badge" string="Tipo"
-					   decoration-success="entry_class == 'escritura'"
-					   decoration-danger="entry_class == 'irreversible'"
-					   decoration-info="entry_class == 'externo'"/>
+				<field name="entry_class" column_invisible="1"/>
+				<field name="plan_label" column_invisible="1"/>
+				<field name="result_label" column_invisible="1"/>
+				<field name="result_kind" column_invisible="1"/>
+				<field name="can_revert" column_invisible="1"/>
+				<field name="operation_id" column_invisible="1"/>
+				<field name="previous_state_json" column_invisible="1"/>
+				<field name="payload_json" column_invisible="1"/>
 				<field name="event_type" optional="show"/>
 				<field name="summary"/>
 				<field name="repository_name" class="rm-mono"/>

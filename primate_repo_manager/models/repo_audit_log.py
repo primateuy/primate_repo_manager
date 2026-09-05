@@ -77,6 +77,18 @@ CLASES_DE_ENTRADA = [
 	("externo", "Cambio detectado fuera de la app"),
 ]
 
+# Qué dice el chip de resultado de cada entrada, y con qué tono. Es lo que el diseño pone
+# arriba a la derecha de cada tarjeta: no repite el tipo de evento, dice CÓMO TERMINÓ.
+RESULTADO_POR_EVENTO = {
+	"write_applied": ("Verificado en GitHub", "done"),
+	"write_failed": ("Falló · nada cambió en GitHub", "error"),
+	"write_emitted": ("Emitida, sin verificar todavía", "live"),
+	"write_rolled_back": ("Revertida", "quiet"),
+	"write_identity": ("Objeto creado en GitHub", "done"),
+	"drift_detected": ("Cambio hecho fuera de la app", "error"),
+	"chain_genesis": ("Marca de la cadena", "quiet"),
+}
+
 CLASE_POR_EVENTO = {
 	"write_applied": "escritura",
 	"grant": "escritura",
@@ -171,6 +183,96 @@ class RepoAuditLog(models.Model):
 	# que es el único que el hash respeta.
 	chain_seq = fields.Integer(
 		string="Posición en la cadena", readonly=True, copy=False, index=True)
+
+	# --- lo que la línea de tiempo necesita para leerse ------------------
+	#
+	# Se calcula acá y no en el componente por una razón concreta: las etiquetas ya viven
+	# en `EVENT_TYPES` y `CLASES_DE_ENTRADA`, y una segunda copia en JavaScript se
+	# desincroniza el día que alguien agregue un tipo de evento — que es exactamente lo
+	# que pasó esta semana con `write_emitted`. Una sola fuente.
+	plan_label = fields.Char(
+		string="Plan y operación", compute="_compute_etiquetas_de_pantalla")
+	result_label = fields.Char(
+		string="Resultado", compute="_compute_etiquetas_de_pantalla")
+	result_kind = fields.Char(
+		string="Tono del resultado", compute="_compute_etiquetas_de_pantalla")
+
+	# Lo que dice el diseño de esta bitácora: cada entrada de escritura ofrece revertir, y
+	# las que no pueden, dicen que no pueden. Es una aproximación barata a propósito
+	# —mirar el estado de la operación, sin salir a preguntarle a nadie— porque se calcula
+	# para cada fila de la lista. La admisibilidad de verdad, la que sale de los hechos, la
+	# vuelve a comprobar la acción cuando se aprieta.
+	can_revert = fields.Boolean(
+		string="Se puede revertir", compute="_compute_etiquetas_de_pantalla")
+
+	@api.depends("event_type", "operation_id", "operation_id.state")
+	def _compute_etiquetas_de_pantalla(self):
+		etiquetas = dict(EVENT_TYPES)
+		for entrada in self:
+			operacion = entrada.operation_id
+			entrada.plan_label = (
+				"%s · op %02d" % (operacion.plan_id.display_name, operacion.sequence)
+				if operacion else "")
+			resultado, tono = RESULTADO_POR_EVENTO.get(
+				entrada.event_type, (etiquetas.get(entrada.event_type, ""), "quiet"))
+			entrada.result_label = resultado
+			entrada.result_kind = tono
+			entrada.can_revert = bool(
+				operacion and entrada.event_type == "write_applied"
+				and operacion.state == "applied")
+
+	@api.model
+	def estado_de_la_cadena(self):
+		"""El estado de la cadena, ya redactado: `{estado, titulo, detalle, tono}`.
+
+		Vive acá y no en cada pantalla porque son dos las que lo muestran —el diagnóstico
+		de Ajustes y la bitácora— y una tercera va a querer mostrarlo. Dos redacciones del
+		mismo hecho terminan diciendo cosas distintas del mismo problema.
+		"""
+		cadena = self.verificar_cadena()
+		estado = cadena["estado"]
+		if estado == "ok":
+			titulo, tono = _("Íntegra"), "done"
+			detalle = _("Íntegra desde el %(desde)s · %(n)s entradas verificadas."
+						) % {"desde": cadena["desde"], "n": cadena["entradas"]}
+			if cadena.get("segmentos_cerrados"):
+				detalle += _(
+					" Hay %s tramo(s) anterior(es) cerrado(s): cada uno declara por qué."
+				) % cadena["segmentos_cerrados"]
+		elif estado == "rota":
+			titulo, tono = _("ROTA"), "error"
+			detalle = _(
+				"ROTA en la entrada %(id)s (%(momento)s): %(motivo)s. Alguien escribió en "
+				"la base por fuera de la aplicación."
+			) % {"id": cadena["entrada"], "momento": cadena["momento"],
+				 "motivo": cadena["motivo"]}
+		elif estado == "pendiente":
+			# NO es una rotura, y decirlo como tal sería una falsa alarma: son entradas que
+			# confirmaron y todavía no pasaron por el sellador. Se resuelve solo.
+			titulo, tono = _("Sellado pendiente"), "live"
+			detalle = _(
+				"Hay %s entrada(s) esperando su sello. No es una rotura: el sellado corre "
+				"al confirmar y el próximo las toma.") % cadena.get("pendientes", 0)
+		else:
+			titulo, tono = _("Sin entradas"), "quiet"
+			detalle = _("Todavía no hay entradas encadenadas que verificar.")
+		if estado != "pendiente" and cadena.get("pendientes"):
+			detalle += _(" (%s entrada(s) esperando su sello.)") % cadena["pendientes"]
+		return {"estado": estado, "titulo": titulo, "detalle": detalle, "tono": tono}
+
+	@api.model
+	def leyenda(self):
+		"""Los cuatro tipos de entrada, para la leyenda de la pantalla.
+
+		Sale del modelo y no de una constante en el componente: la leyenda tiene que decir
+		exactamente lo que la bitácora clasifica, y si un día son cinco, son cinco en los
+		dos lados o en ninguno.
+		"""
+		formas = {"escritura": "punto", "irreversible": "cuadrado",
+				  "lectura": "hueco", "externo": "rombo"}
+		return [{"clase": clase, "etiqueta": etiqueta,
+				 "forma": formas.get(clase, "punto")}
+				for clase, etiqueta in CLASES_DE_ENTRADA]
 
 	# ------------------------------------------------------------------
 	# Inmutabilidad

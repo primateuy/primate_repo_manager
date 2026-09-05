@@ -44,6 +44,14 @@
 		"web.assets_backend": [
 			# Los tokens van PRIMERO: todo lo demás los usa.
 			"primate_repo_manager/static/src/scss/tokens.scss",
+			# El vocabulario compartido va después de los tokens y antes de todo lo demás:
+			# chips, tarjetas, antes/después y el casillero apagado los usan las pantallas.
+			"primate_repo_manager/static/src/scss/components.scss",
+			"primate_repo_manager/static/src/apagado/apagado.js",
+			"primate_repo_manager/static/src/apagado/apagado.xml",
+			"primate_repo_manager/static/src/bitacora/bitacora.js",
+			"primate_repo_manager/static/src/bitacora/bitacora.xml",
+			"primate_repo_manager/static/src/bitacora/bitacora.scss",
 			"primate_repo_manager/static/src/live_progress/live_progress.js",
 			"primate_repo_manager/static/src/live_progress/live_progress.xml",
 			"primate_repo_manager/static/src/live_progress/live_progress.scss",

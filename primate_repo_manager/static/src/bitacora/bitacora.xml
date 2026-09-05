@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+	<t t-name="primate_repo_manager.Bitacora">
+		<div class="rm-bitacora">
+
+			<!-- VACÍA. No es un error ni una pantalla rota: es una bitácora que todavía
+				 no tiene nada, y conviene que lo diga con todas las letras. -->
+			<div t-if="!props.list.records.length" class="rm-bitacora-vacia">
+				<h2>La bitácora todavía no tiene escrituras</h2>
+				<p>Acá queda todo lo que la aplicación escribe en GitHub, con su antes y su
+					después. Si acabás de filtrar, puede que no haya nada que coincida.</p>
+			</div>
+
+			<!-- FUERA de la grilla, y no es un detalle: adentro se comía la primera
+				 columna y la línea de tiempo se metía en los 300 px del costado. La
+				 grilla tiene DOS hijos, no tres. -->
+			<div t-if="props.list.records.length" class="rm-bitacora-subtitulo">
+				<t t-esc="props.list.records.length"/> entradas a la vista ·
+				ninguna se puede editar ni borrar
+			</div>
+
+			<div t-if="props.list.records.length" class="rm-bitacora-cuerpo">
+				<div class="rm-bitacora-linea">
+					<t t-foreach="dias" t-as="dia" t-key="dia.clave">
+						<h3 class="rm-bitacora-dia" t-esc="dia.titulo"/>
+						<t t-foreach="dia.entradas" t-as="record" t-key="record.id">
+							<div class="rm-bitacora-fila">
+
+								<!-- hora + de qué plan y operación viene -->
+								<div class="rm-bitacora-cuando">
+									<div class="rm-mono rm-bitacora-hora"
+										 t-esc="hora(record)"/>
+									<div t-if="record.data.plan_label"
+										 class="rm-bitacora-plan"
+										 t-esc="record.data.plan_label"/>
+								</div>
+
+								<!-- el riel, con la marca que la leyenda explica -->
+								<div class="rm-bitacora-riel">
+									<span t-attf-class="rm-marca rm-marca-{{formaDeLaMarca(record)}} rm-marca-{{record.data.entry_class}}"/>
+									<span class="rm-bitacora-hilo"/>
+								</div>
+
+								<!-- la tarjeta -->
+								<div t-attf-class="rm-card rm-bitacora-tarjeta{{esIrreversible(record) ? ' rm-bitacora-irreversible' : ''}}">
+									<div class="rm-bitacora-cabeza">
+										<span t-if="esIrreversible(record)"
+											  class="rm-irreversible">IRREVERSIBLE</span>
+										<span class="rm-bitacora-frase"
+											  t-esc="record.data.summary"/>
+										<span t-if="record.data.result_label"
+											  t-attf-class="rm-chip rm-chip-{{record.data.result_kind}}"
+											  t-esc="record.data.result_label"/>
+									</div>
+
+									<div t-if="abierta(record)"
+										 t-attf-class="rm-antes-despues{{esIrreversible(record) ? ' rm-ad-destructiva' : ''}}">
+										<div class="rm-ad-antes">
+											<div class="rm-ad-titulo">Antes</div>
+											<div t-if="antes(record)" class="rm-ad-cuerpo">
+												<div t-foreach="antes(record)" t-as="par"
+													 t-key="par_index">
+													<t t-if="par.clave"><t t-esc="par.clave"/>: </t>
+													<t t-esc="par.valor"/>
+												</div>
+											</div>
+											<!-- Vacío NO es «no había nada»: se dice. -->
+											<div t-else="" class="rm-no-legible">
+												no se guardó estado previo para esta entrada
+											</div>
+										</div>
+										<div class="rm-ad-despues">
+											<div class="rm-ad-titulo">Después</div>
+											<div t-if="despues(record)" class="rm-ad-cuerpo">
+												<div t-foreach="despues(record)" t-as="par"
+													 t-key="par_index">
+													<t t-if="par.clave"><t t-esc="par.clave"/>: </t>
+													<t t-esc="par.valor"/>
+												</div>
+											</div>
+											<div t-else="" class="rm-no-legible">
+												sin detalle registrado
+											</div>
+										</div>
+									</div>
+
+									<div class="rm-bitacora-pie">
+										<span t-if="record.data.repository_name">
+											Repositorio:
+											<span class="rm-mono"
+												  t-esc="record.data.repository_name"/>
+										</span>
+										<span t-if="quien(record)">
+											Lo hizo: <t t-esc="quien(record)"/>
+										</span>
+										<a class="rm-bitacora-mas" href="#"
+										   t-on-click.prevent="() => this.alternar(record)">
+											<t t-if="abierta(record)">Ocultar el antes/después</t>
+											<t t-else="">Ver antes/después</t>
+										</a>
+										<a t-if="record.data.can_revert"
+										   class="rm-bitacora-revertir" href="#"
+										   t-on-click.prevent="() => this.revertir(record)">
+											Revertir esta operación
+										</a>
+										<span t-elif="record.data.entry_class === 'irreversible'"
+											  class="rm-bitacora-sin-vuelta">
+											No se puede revertir
+										</span>
+									</div>
+								</div>
+							</div>
+						</t>
+					</t>
+				</div>
+
+				<!-- la columna de la derecha: qué significa cada marca, y por qué esto
+					 no se puede editar -->
+				<aside class="rm-bitacora-aparte">
+					<div class="rm-card">
+						<div class="rm-bitacora-titulo">Leyenda</div>
+						<div t-foreach="state.leyenda" t-as="item" t-key="item.clase"
+							 class="rm-bitacora-leyenda-item">
+							<span t-attf-class="rm-marca rm-marca-{{item.forma}} rm-marca-{{item.clase}}"/>
+							<span t-esc="item.etiqueta"/>
+						</div>
+					</div>
+
+					<div class="rm-card rm-bitacora-inmutable">
+						<strong>Por qué es inmutable.</strong>
+						Cada entrada guarda el hash de la anterior. Si alguien tocara la
+						base, la cadena se rompe y el diagnóstico lo avisa. No hay botón de
+						editar ni de borrar, ni para administradores.
+						<div t-if="state.cadena" class="rm-bitacora-cadena">
+							<span t-attf-class="rm-chip rm-chip-{{state.cadena.tono}}"
+								  t-esc="state.cadena.titulo"/>
+							<div class="rm-bitacora-cadena-detalle"
+								 t-esc="state.cadena.detalle"/>
+						</div>
+					</div>
+
+					<!-- Regla 2: se ve, no se toca, y dice con qué bloque llega. -->
+					<Apagado que="'Exportar firmado (CSV + hash)'" bloque="'E3'"
+							 forma="'bloque'"
+							 detalle="'Exportar la bitácora con su cadena, para auditoría externa.'"/>
+				</aside>
+			</div>
+		</div>
+	</t>
+
+</templates>

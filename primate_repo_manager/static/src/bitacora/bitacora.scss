@@ -1,0 +1,158 @@
+// Copyright 2026 - PrimateUY / License AGPL-3.0 or later
+//
+// La línea de tiempo de la bitácora — página 2d. Las medidas salen del prototipo: la
+// columna de la hora es de 150 px, el riel de 20, y la columna de al lado de 300.
+
+.rm-bitacora {
+	background: var(--rm-bg);
+	min-height: 100%;
+	padding: var(--rm-space-4) var(--rm-space-6) var(--rm-space-6);
+
+	// EL COLOR SE DECLARA, NO SE HEREDA. La vista lista de Odoo apaga el texto de su
+	// cuerpo —`decoration-muted` y sus propias reglas—, y como esto vive adentro de esa
+	// vista, todo salía gris clarito: el diseño tiene la tinta principal en #14181F y se
+	// veía casi ilegible. Se descubrió abriéndolo, no leyendo el SCSS.
+	color: var(--rm-ink);
+	.rm-mono, .rm-ad-cuerpo { color: var(--rm-ink); }
+
+	// El subtítulo que el diseño pone bajo el título de la pantalla. Odoo sólo muestra el
+	// nombre de la acción, y la frase «ninguna se puede editar ni borrar» es parte de lo
+	// que esta pantalla tiene que decir de sí misma.
+	.rm-bitacora-subtitulo {
+		font-size: .8125rem;
+		color: var(--rm-ink-2);
+		margin-bottom: var(--rm-space-4);
+	}
+
+	.rm-bitacora-vacia {
+		max-width: 45rem;
+		h2 { font-size: 1.25rem; font-weight: 600; }
+		p { color: var(--rm-ink-2); line-height: 1.5; }
+	}
+
+	.rm-bitacora-cuerpo {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) 300px;
+		gap: var(--rm-space-5);
+		align-items: start;
+	}
+
+	// --- el día ------------------------------------------------------------
+	.rm-bitacora-dia {
+		font-size: .8125rem;
+		font-weight: 600;
+		color: var(--rm-ink-2);
+		text-transform: none;
+		margin: var(--rm-space-5) 0 var(--rm-space-3);
+		padding-bottom: var(--rm-space-2);
+		border-bottom: 1px solid var(--rm-border);
+		&:first-child { margin-top: 0; }
+	}
+
+	// --- la fila -----------------------------------------------------------
+	.rm-bitacora-fila {
+		display: grid;
+		grid-template-columns: 150px 20px minmax(0, 1fr);
+		gap: 0 var(--rm-space-4);
+	}
+
+	.rm-bitacora-cuando {
+		text-align: right;
+		padding-top: 14px;
+		.rm-bitacora-hora { font-size: .8125rem; font-weight: 600; }
+		.rm-bitacora-plan { font-size: .75rem; color: var(--rm-ink-2); }
+	}
+
+	.rm-bitacora-riel {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		.rm-bitacora-hilo { width: 2px; flex: 1; background: var(--rm-border); }
+	}
+
+	// La marca dice de un vistazo de qué tipo es la entrada. La FORMA importa tanto como
+	// el color: quien no distingue verde de rojo tiene que poder separarlas igual, y por
+	// eso la leyenda nombra las cuatro.
+	.rm-marca {
+		width: 12px;
+		height: 12px;
+		flex: none;
+		margin-top: 16px;
+		border-radius: 50%;
+		background: var(--rm-done);
+
+		&.rm-marca-cuadrado { border-radius: 2px; background: var(--rm-sev-critical); }
+		&.rm-marca-hueco {
+			background: var(--rm-surface);
+			border: 2px solid var(--rm-ink-3);
+		}
+		&.rm-marca-rombo {
+			border-radius: 2px;
+			transform: rotate(45deg);
+			background: var(--rm-sev-high);
+		}
+	}
+
+	// --- la tarjeta --------------------------------------------------------
+	.rm-bitacora-tarjeta {
+		margin-bottom: var(--rm-space-3);
+		display: flex;
+		flex-direction: column;
+		gap: var(--rm-space-2);
+
+		&.rm-bitacora-irreversible { border-left: 4px solid var(--rm-sev-critical); }
+	}
+
+	.rm-bitacora-cabeza {
+		display: flex;
+		align-items: center;
+		gap: var(--rm-space-2);
+		flex-wrap: wrap;
+		.rm-bitacora-frase { font-size: .875rem; font-weight: 600; }
+		.rm-chip { margin-left: auto; }
+	}
+
+	.rm-bitacora-pie {
+		display: flex;
+		gap: var(--rm-space-4);
+		flex-wrap: wrap;
+		align-items: center;
+		font-size: .75rem;
+		color: var(--rm-ink-2);
+
+		.rm-bitacora-mas { margin-left: auto; color: var(--rm-accent); font-weight: 600; }
+		.rm-bitacora-revertir { color: var(--rm-accent); font-weight: 600; }
+		.rm-bitacora-sin-vuelta { color: var(--rm-ink-3); font-weight: 600; }
+	}
+
+	// --- la columna de al lado ---------------------------------------------
+	.rm-bitacora-aparte {
+		display: flex;
+		flex-direction: column;
+		gap: var(--rm-space-4);
+		position: sticky;
+		top: var(--rm-space-3);
+
+		.rm-bitacora-titulo { font-weight: 600; margin-bottom: var(--rm-space-2); }
+		.rm-bitacora-leyenda-item {
+			display: flex;
+			gap: var(--rm-space-2);
+			align-items: center;
+			font-size: .8125rem;
+			line-height: 1.5;
+			.rm-marca { margin-top: 0; }
+		}
+		.rm-bitacora-inmutable {
+			font-size: .75rem;
+			line-height: 1.5;
+			color: var(--rm-ink-2);
+			strong { color: var(--rm-ink); }
+		}
+		.rm-bitacora-cadena {
+			margin-top: var(--rm-space-3);
+			padding-top: var(--rm-space-3);
+			border-top: 1px solid var(--rm-border);
+			.rm-bitacora-cadena-detalle { margin-top: var(--rm-space-1); }
+		}
+	}
+}
