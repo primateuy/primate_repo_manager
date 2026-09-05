@@ -219,6 +219,12 @@ class RepoAuditFinding(models.Model):
 	_description = "Hallazgo de auditoría"
 	_order = "severity_order, finding_type, id"
 
+	# La conexión a la que pertenece el hallazgo. Sale de la corrida y no se guarda: la
+	# pantalla la necesita para saber en qué borrador acumular, y una copia guardada de un
+	# dato que ya vive en la corrida es una copia que se puede desincronizar.
+	backend_id = fields.Many2one(
+		"repo.backend", string="Conexión", related="run_id.backend_id")
+
 	run_id = fields.Many2one(
 		"repo.audit.run", string="Corrida", required=True, ondelete="cascade", index=True)
 	repository_id = fields.Many2one(
@@ -377,6 +383,41 @@ class RepoAuditFinding(models.Model):
 			"sequence": siguiente,
 		}
 
+	# --- lo que la pantalla de hallazgos necesita mostrar -----------------
+
+	operations_preview = fields.Char(
+		string="Operaciones que generaría", compute="_compute_operations_preview",
+		help="La frase EXACTA que va a tener la operación si se planifica. No una "
+			 "aproximación: se arma la operación en memoria y se le pregunta.")
+	preview_is_destructive = fields.Boolean(
+		string="Lo que generaría saca algo", compute="_compute_operations_preview")
+
+	@api.depends("remediation_action", "remediation_payload", "subject",
+				 "repository_id", "can_be_planned")
+	def _compute_operations_preview(self):
+		"""Qué operación saldría de este hallazgo, dicho con la frase de la operación.
+
+		SE PREGUNTA, NO SE ADIVINA. Redactar acá una versión parecida de la frase sería
+		tener dos redacciones del mismo hecho, y la de la pantalla previa envejecería
+		distinto de la del plan: alguien leería una cosa antes de planificar y otra
+		después. Se arma la operación en memoria —`new()`, que no toca la base— y se le
+		pide su propia descripción.
+		"""
+		Op = self.env["repo.write.operation"]
+		for hallazgo in self:
+			if not hallazgo.can_be_planned or not hallazgo.remediation_payload:
+				hallazgo.operations_preview = False
+				hallazgo.preview_is_destructive = False
+				continue
+			borrador = Op.new({
+				"kind": PLANIFICABLES.get(hallazgo.remediation_action),
+				"repository_id": hallazgo.repository_id.id,
+				"target": hallazgo.subject or "",
+				"payload_json": hallazgo.remediation_payload,
+			})
+			hallazgo.operations_preview = borrador.description
+			hallazgo.preview_is_destructive = borrador.is_destructive
+
 	def _ir_al_plan(self, mensaje):
 		self.ensure_one()
 		plan = self.planned_plan_id
@@ -424,6 +465,50 @@ class RepoAuditFinding(models.Model):
 			"views": [(False, "form")],
 		})
 		return accion
+
+	def agregar_al_borrador(self):
+		"""Lo que hacen el arrastre y el enlace «Agregar al plan». La MISMA puerta.
+
+		Devuelve un resumen en vez de una acción de ventana: la pantalla de hallazgos no
+		se va a ningún lado —la bandeja se actualiza ahí mismo— y por eso no puede usar
+		`action_remediate_many`, que abre el plan. Lo que sí comparte es todo lo demás:
+		las mismas comprobaciones, el mismo plan destino y el mismo armado.
+
+		Los rechazados vuelven CON SU CAUSA CONCRETA. «Acción no permitida» manda a
+		alguien a adivinar; «este hallazgo no propone ninguna acción» se entiende y se
+		puede resolver.
+		"""
+		agregados = self.env["repo.write.operation"]
+		rechazados = []
+		plan = False
+		for hallazgo in self:
+			if hallazgo.planned_operation_id:
+				rechazados.append(_("«%(que)s» ya está en el plan «%(plan)s».") % {
+					"que": hallazgo.summary,
+					"plan": hallazgo.planned_plan_id.display_name})
+				continue
+			if not hallazgo.can_be_planned:
+				rechazados.append("%s %s" % (
+					_("«%s»:") % hallazgo.summary,
+					hallazgo.why_not_planned or _("no propone ninguna acción.")))
+				continue
+			if not hallazgo.remediation_payload:
+				rechazados.append(_(
+					"«%s»: el motor no dejó el detalle de la remediación, así que no hay "
+					"con qué armar la operación.") % hallazgo.summary)
+				continue
+			plan = plan or hallazgo._plan_destino()
+			agregados |= self.env["repo.write.operation"].create(
+				hallazgo._valores_de_operacion(plan))
+		return {
+			"agregadas": len(agregados),
+			"plan_id": plan.id if plan else False,
+			"rechazados": rechazados,
+			"mensaje": (
+				_("%(n)s operación(es) agregada(s) al plan en borrador.")
+				% {"n": len(agregados)} if agregados
+				else _("No entró ninguna al plan.")),
+		}
 
 	@api.model
 	def build(self, run, finding_type, summary, repository=None, **kwargs):

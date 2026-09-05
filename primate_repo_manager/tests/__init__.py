@@ -9,6 +9,7 @@ from . import test_sync
 from . import test_audit_launch
 from . import test_avance_vivo
 from . import test_findings
+from . import test_hallazgos_pantalla
 from . import test_audit_log
 from . import test_write_plan
 from . import test_write_apply

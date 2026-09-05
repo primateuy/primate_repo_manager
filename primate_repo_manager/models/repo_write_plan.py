@@ -183,6 +183,39 @@ class RepoWritePlan(models.Model):
 				plan.approval_fingerprint
 				and plan.approval_fingerprint == plan.current_fingerprint)
 
+	@api.model
+	def bandeja_del_borrador(self, backend_id):
+		"""El borrador abierto de esa conexión y sus operaciones, para la bandeja.
+
+		Una sola llamada en vez de una por operación: la bandeja se recarga en cada
+		soltada, y N llamadas por gesto se notan.
+		"""
+		plan = self.search(
+			[("backend_id", "=", backend_id), ("state", "=", "draft")],
+			order="id desc", limit=1)
+		if not plan:
+			return {"plan": False, "operaciones": []}
+		return {
+			"plan": {"id": plan.id, "nombre": plan.display_name},
+			"operaciones": [
+				{
+					"id": op.id,
+					"descripcion": op.description,
+					"repositorio": op.repository_id.full_name or "",
+					"destructiva": op.is_destructive,
+					"severidad": op.finding_id.severity or "",
+					# La ETIQUETA, no el valor. El chip mostraba «CRITICAL» crudo: la
+					# traducción de la selección vive en el modelo del hallazgo y se manda
+					# desde acá, en vez de tener un segundo diccionario en JavaScript que
+					# se desincronice el día que cambie una etiqueta.
+					"severidad_label": dict(
+						op.finding_id._fields["severity"].selection).get(
+							op.finding_id.severity, "") if op.finding_id else "",
+				}
+				for op in plan.operation_ids.sorted(lambda o: (o.sequence, o.id))
+			],
+		}
+
 	def _huella(self):
 		"""Hash de lo que el plan va a ejecutar Y DE CÓMO SE LO CONTÓ AL APROBARLO.
 
