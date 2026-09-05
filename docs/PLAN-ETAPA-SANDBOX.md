@@ -386,6 +386,14 @@ dónde se promovería. Es lo que convierte el inventario en una decisión.
 pantallas. **Sin permisos nuevos:** la App de auditoría ya tiene `contents:read`,
 verificado contra GitHub el 3-sep-2026. Es el bloque de lectura más grande que queda.
 
+### Tramo visual · antes de seguir con D2
+
+Decidido el 5-sep-2026: cuatro pantallas migradas al entregable de diseño —bitácora, plan
+de escritura, hallazgos y el panel de salud en versión 1, adelanto acotado de E4— antes de
+D2.3. Dimensionado completo en `TRAMO-VISUAL.md`; las tres reglas de proceso que salieron
+con él —el mockup manda, lo no implementado se muestra apagado, y cada pantalla nace
+visual y funcional a la vez— están en `CLAUDE.md` y valen para B, C, D y E.
+
 ### D2 · La promoción *(escritura)*
 
 *Hallazgo del motor, encontrado al construir D2.0 y ya corregido:* el bucle del apply **no

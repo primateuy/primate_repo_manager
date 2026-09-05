@@ -51,6 +51,53 @@ rehacerlo. Estas cuatro reglas cuestan poco ahora y mucho después.
    fila compartida —la de una persona que colabora en varios repos— eso basta para matar
    al job de al lado.
 
+## Lo visual: tres reglas que no se negocian
+
+Decididas el 5-sep-2026, después del ensayo de D2. Valen para **toda** pantalla nueva y
+para toda migración: D2.3, B, C, E y lo que venga.
+
+### 1 · El entregable de diseño es la especificación, no una referencia
+
+`~/Downloads/Repo Manager-print.html` (24 páginas de mockups) y
+`Repo Manager Prototipo.dc.html` (el interactivo) mandan. **Exactos, no parecidos.** Los
+tokens ya están traducidos en `static/src/scss/tokens.scss` y se usan por variable, nunca
+por valor literal. Antes de dibujar una pantalla se lee su página del print; el prototipo
+manda en lo que se mueve (drag & drop, confirmación irreversible).
+
+### 2 · El producto completo siempre se ve; lo no implementado se muestra APAGADO
+
+La filosofía del menú —«lo futuro se ve, no se toca»— vale **dentro de cada pantalla**, no
+sólo en la navegación. Un botón, una pestaña, una columna o un bloque de una funcionalidad
+que todavía no existe va **visible y desactivado**, con dos cosas escritas: qué es, y con
+qué bloque llega.
+
+    Comparar con anterior — llega con E2
+    Pestaña Módulos — llega con D2
+    Meta configurable — llega con E4
+
+Por qué: un producto que se muestra a pedazos parece más chico de lo que es, y quien lo
+opera no puede planificar contra lo que no ve. Y al revés: un botón que existe y no hace
+nada es peor que uno apagado que explica. Ya lo hace el asistente de operaciones con los
+tipos sin manejador (`is_supported`), y ésa es la forma: **derivar el apagado de un hecho
+del código**, no de una lista que alguien mantiene a mano.
+
+Hay una sola implementación del patrón —la clase y la plantilla de «casillero apagado»—:
+cinco copias divergen y la que se mira menos envejece mal.
+
+### 3 · Cada pantalla nace visual y funcional a la vez
+
+Cuando arranca un bloque, su pantalla se construye **desde el día uno** contra el mockup
+exacto, con tokens y patrones.
+
+- **Nunca** funcionalidad sobre cara vieja «para migrar después». La deuda visual se paga
+  cara: ya pasó, y obligó a un tramo de migración entero.
+- **Nunca** maqueta detallada de algo que todavía no existe. Una pantalla linda sobre nada
+  es una promesa que alguien va a leer como un hecho — para eso está la regla 2, que
+  muestra el casillero apagado y no la maqueta.
+
+El precedente que la fija: D1.4 y el patrón irreversible salieron bien porque se
+construyeron así.
+
 ## Vistas y acciones: dos cosas que el servidor no valida
 
 1. **El `context` y el `domain` de una acción van en UNA SOLA LÍNEA.** El evaluador de
