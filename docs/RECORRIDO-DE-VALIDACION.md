@@ -5,7 +5,9 @@
 > el criterio de salida del flujo existente queda cerrado.
 
 **Para:** Daryl · **Con:** `desarrollo@primate.uy` · **Contra:** `prm-sandbox`
-**Escrito:** 4 de septiembre de 2026 · **Cubre:** A4 completo, y la deuda visual de A5+A6+A8.
+**Escrito:** 4 de septiembre de 2026 · **Actualizado:** 5 de septiembre
+**Cubre:** A4 completo, la deuda visual de A5+A6+A8, y lo que trajo el entregable de
+diseño: la cadena de la bitácora y los cuatro tipos de entrada.
 
 Cada paso tiene tres partes: **hago**, **tengo que ver**, **sería problema**. Si algo de
 la tercera columna aparece, anotalo y seguí — no hace falta cortar el recorrido salvo que
@@ -222,7 +224,66 @@ amarillo de la ficha **desaparece**.
 **Sería problema:** que el empleado venga elegido de antemano cuando hay varios candidatos.
 Un vínculo equivocado pone los permisos de una persona a nombre de otra.
 
-### 2.4 Las reglas de clasificación se entienden mirándolas
+### 2.4 La cadena de la bitácora *(nuevo)*
+
+**Hago:** *Configuración → Ajustes*, bloque **Estado de la instancia**.
+
+**Tengo que ver:** **Cadena de la bitácora: Íntegra** en verde, y debajo *«Íntegra desde el
+… · N entradas verificadas»*. La fecha es la del día en que la cadena arrancó, no la de la
+primera entrada de la bitácora — y eso es a propósito.
+
+**Sería problema:** que diga **ROTA**. Significa que alguien escribió en la base por fuera
+de Odoo, y no es un falso positivo: la cadena sólo se rompe si el contenido de una entrada
+cambió o si falta una del medio. **Si aparece, avisame y no sigas** — con la bitácora en
+duda, todo lo demás que el módulo afirma queda en duda.
+
+**Para entender qué garantiza:** abrí una entrada cualquiera de la *Bitácora* y mirá el
+bloque **Sello de integridad**. Cada entrada guarda el hash de la anterior. Buscá la
+entrada más vieja de todas, la de *«Inicio de la cadena de integridad»*: dice cuántas
+entradas quedaron **afuera** de la cadena. No se sembró hacia atrás a propósito — una
+cadena que «verificara» un pasado que nadie encadenó estaría fabricando confianza.
+
+### 2.5 La leyenda de cuatro tipos *(nuevo)*
+
+**Hago:** *Ver y entender → Bitácora*. Abrí el desplegable de filtros.
+
+**Tengo que ver:** cuatro filtros con el texto del diseño — *Escritura verificada, se puede
+revertir* · *Irreversible, o falló* · *Lectura (auditoría), no cambia nada* · *Cambio
+detectado fuera de la app*. Probá cada uno: la columna **Tipo** de la lista tiene que
+coincidir con el filtro, y el chip lleva **texto**, no sólo color.
+
+Agrupá por **Tipo de entrada** y mirá el reparto. Hoy casi todo va a caer en *Lectura* y
+*Escritura verificada*; **Cambio detectado fuera de la app** va a estar vacío, y eso es
+correcto: ese tipo se llena con el drift de política, que es B4.
+
+**Sería problema:** un chip que sólo se distinga por color, o una entrada de escritura
+aplicada que aparezca como lectura.
+
+### 2.6 El tipeo del nombre — POR QUÉ NO SE PUEDE VER TODAVÍA
+
+**No hay paso que hacer acá, y conviene decir por qué en vez de dejarlo sin mencionar.**
+
+El patrón está construido: una operación irreversible exige escribir el nombre del objeto
+en un campo mono con borde punteado, y no entra en el «aprobar todas las reversibles».
+Pero **hoy ninguna operación es irreversible**, y no por casualidad: ser irreversible se
+deriva de si el manejador declara cómo revertir, y los ocho tipos implementados lo
+declaran. Hay un test que lo comprueba y que va a fallar el día que eso cambie.
+
+**No hay forma de provocar una irreversible real en el sandbox sin tocar código**, y tocar
+código para una demo sería mostrarte una pantalla que no corresponde a lo que el sistema
+hace. Lo que se puede ver hoy, y vale la pena:
+
+- Armá un plan y agregale una operación de tipo **Quitar protección de rama** —desde la
+  lista de operaciones del plan, escribiendo el payload a mano, porque el asistente ya no
+  la ofrece—. La frase va a decir **«ESTE TIPO TODAVÍA NO ESTÁ IMPLEMENTADO»** y al
+  aprobar el plan se va a negar. Es el otro lado de la misma moneda: *no implementado* no
+  es *irreversible*, y el módulo no los confunde.
+
+**Lo irreversible de verdad llega con «borrar una rama», en E3.2**, y con la promoción de
+módulos de D2, que borra contenido. Ese día este paso deja de ser un párrafo y pasa a ser
+un recorrido.
+
+### 2.7 Las reglas de clasificación se entienden mirándolas
 
 **Hago:** *Configuración → Reglas de clasificación*.
 
