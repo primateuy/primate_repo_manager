@@ -410,14 +410,18 @@ sido un commit por archivo, y una interrupción dejaría un módulo a la mitad.
 nombra los árboles por su contenido, así que dos directorios idénticos tienen el mismo hash
 en cualquier repositorio. No hay que bajar nada ni confiar en que la API hizo lo que dijo.
 
-**El ensayo NO se corrió**, y es deliberado: la frontera es la sesión grande de validación.
-Nada de borrados, ni en sandbox, con la deuda visual pendiente.
+**El ensayo se corrió el 5-sep-2026**, en siete fases y contra el sandbox: sembrar en dos
+repos, leer el plan antes de aplicar, copiar y verificar, **matar el proceso entre la copia
+y el primer borrado**, completar, revertir, y el caso feo —alguien empuja al módulo después
+de aprobado el plan—. Está entero en `ENSAYO-D2.md`, con sus dos hallazgos: una escritura
+huérfana de una caída se cuela en el punto de retorno, y la pantalla del plan no cuenta que
+hubo una caída. Los dos abren el próximo tramo.
 
-**D2.2 · Limpiar los orígenes.** Son **commits de borrado en repositorios de clientes**, y
+**D2.3 · Limpiar los orígenes.** *(hecho)* Son **commits de borrado en repositorios de clientes**, y
 entran por el embudo como toda escritura: plan → aprobación → apply → bitácora → rollback.
 No hay excepción; si algo la merecía menos, es justamente esto.
 
-**D2.3 · El plan de promoción como una sola unidad.** Una promoción es una escritura al
+**D2.3b · El plan de promoción como una sola unidad.** Una promoción es una escritura al
 destino y N borrados en orígenes. Media promoción aplicada —copiado al general, borrado de
 dos de cuatro clientes— es un estado peor que no haber empezado. Hay que decidir si el
 plan se aplica todo-o-nada o si el rollback alcanza; ver «decisiones abiertas».
