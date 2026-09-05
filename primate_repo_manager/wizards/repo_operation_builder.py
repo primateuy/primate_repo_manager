@@ -53,9 +53,37 @@ class RepoOperationBuilder(models.TransientModel):
 	repository_id = fields.Many2one(
 		"repo.repository", string="Repositorio",
 		domain="[('backend_id', '=', backend_id)]")
-	branch = fields.Char(string="Rama")
+
+	# LA RAMA SE ELIGE, NO SE ESCRIBE, y esto vino de un hallazgo de uso.
+	#
+	# En la cuenta real conviven `Staging`, `staging` y `_staging` —lo sabemos desde F1— y
+	# un typo arma una operación contra una rama que no existe. Lo peor de ese error es que
+	# **se lee perfecta**: la frase en castellano dice «la rama 17.0.staging pasa a exigir
+	# una revisión», alguien la aprueba con toda la ceremonia de confirmación individual, y
+	# recién muere al aplicar. Toda la cadena de controles funcionando sobre un dato que
+	# nunca existió.
+	#
+	# El espejo tiene las ramas de cada repositorio desde F1. No usarlas era desperdiciar
+	# lo que la auditoría ya sabe y pedirle a una persona que no se equivoque escribiendo.
+	branch_id = fields.Many2one(
+		"repo.branch", string="Rama",
+		domain="[('repository_id', '=', repository_id)]",
+		help="Sólo las ramas que la auditoría vio en ese repositorio.")
+	branch = fields.Char(
+		string="Rama (nombre)", compute="_compute_branch", store=False,
+		help="El nombre de la rama elegida. Se deriva; no se escribe.")
+
 	member_id = fields.Many2one("repo.member", string="Persona")
-	team_slug = fields.Char(string="Team (slug)")
+
+	# EL TEAM SIGUE SIENDO TEXTO, y hay una razón concreta: **el espejo no tiene teams**.
+	# No hay modelo `repo.team` porque la cuenta de producción es una cuenta personal y sin
+	# organización no hay teams —está en §10.1.3 de la spec—. El día que la migración
+	# ocurra y el espejo los releve, este campo pasa a ser un selector como los demás.
+	# Hasta entonces, ofrecer un desplegable vacío sería peor que un campo de texto.
+	team_slug = fields.Char(
+		string="Team (slug)",
+		help="Se escribe a mano porque el espejo todavía no releva teams: la cuenta no "
+			 "es una organización. Ver §10.1.3 de la spec.")
 	permission = fields.Selection(
 		[("pull", "Lectura (pull)"), ("triage", "Triage"), ("push", "Escritura (push)"),
 		 ("maintain", "Mantenimiento"), ("admin", "Administrador")],
@@ -71,7 +99,23 @@ class RepoOperationBuilder(models.TransientModel):
 
 	preview = fields.Char(string="Va a decir", compute="_compute_preview")
 
-	@api.depends("kind", "repository_id", "branch", "member_id", "team_slug",
+	@api.depends("branch_id")
+	def _compute_branch(self):
+		for asistente in self:
+			asistente.branch = asistente.branch_id.name or False
+
+	@api.onchange("repository_id")
+	def _onchange_repository(self):
+		"""Cambiar de repositorio limpia la rama: la de antes no es de éste.
+
+		Dejarla pegada sería el mismo error que el typo, con otra cara — una rama que
+		existe, pero en otro repositorio.
+		"""
+		for asistente in self:
+			if asistente.branch_id.repository_id != asistente.repository_id:
+				asistente.branch_id = False
+
+	@api.depends("kind", "repository_id", "branch_id", "member_id", "team_slug",
 				 "permission", "require_pr", "required_approvals", "require_codeowner",
 				 "block_force_push", "block_deletion", "require_signed")
 	def _compute_preview(self):
@@ -103,8 +147,15 @@ class RepoOperationBuilder(models.TransientModel):
 					"operación pero el plan no se podría aplicar.") % self.kind)
 			if necesita_repo and not self.repository_id:
 				raise UserError(_("Elegí el repositorio."))
-			if self.kind.startswith("branch_protection") and not self.branch:
+			if self.kind.startswith("branch_protection") and not self.branch_id:
 				raise UserError(_("Elegí la rama."))
+			if (self.branch_id
+					and self.branch_id.repository_id != self.repository_id):
+				raise UserError(_(
+					"La rama «%(rama)s» es de %(suyo)s, no de %(elegido)s.")
+					% {"rama": self.branch_id.name,
+					   "suyo": self.branch_id.repository_id.full_name,
+					   "elegido": self.repository_id.full_name})
 			if self.kind.startswith("collaborator") and not self.member_id:
 				raise UserError(_("Elegí la persona."))
 			if self.kind.startswith("team_") and not self.team_slug:

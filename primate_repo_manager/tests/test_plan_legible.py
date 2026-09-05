@@ -346,8 +346,13 @@ class TestArmarOperacionSinJSON(BasePlan):
 	"""A4.3: el otro camino, el que no nace de un hallazgo."""
 
 	def _asistente(self, **valores):
+		rama = self.env["repo.branch"].search([
+			("repository_id", "=", self.repo.id), ("name", "=", "17.0")], limit=1)
+		if not rama:
+			rama = self.env["repo.branch"].create({
+				"repository_id": self.repo.id, "name": "17.0", "role": "base"})
 		base = {"plan_id": self.plan.id, "kind": "branch_protection_apply",
-				"repository_id": self.repo.id, "branch": "17.0"}
+				"repository_id": self.repo.id, "branch_id": rama.id}
 		base.update(valores)
 		return self.env["repo.operation.builder"].create(base)
 
@@ -373,9 +378,54 @@ class TestArmarOperacionSinJSON(BasePlan):
 		self.assertEqual(previa, self.plan.operation_ids[-1].description)
 
 	def test_no_deja_a_medias_lo_que_falta(self):
-		a = self._asistente(branch=False)
+		a = self._asistente(branch_id=False)
 		with self.assertRaises(UserError):
 			a.action_add()
+
+	def test_la_rama_SE_ELIGE_y_no_se_escribe(self):
+		"""Con Staging/staging/_staging conviviendo, un typo arma una operación contra una
+		rama inexistente que se lee perfecta y muere al aplicar. Toda la ceremonia de
+		aprobación funcionando sobre un dato que nunca existió.
+
+		MUTACIÓN: volver `branch` a un Char editable y este test se pone rojo.
+		"""
+		campos = self.env["repo.operation.builder"]._fields
+		self.assertEqual(campos["branch_id"].type, "many2one")
+		self.assertEqual(campos["branch_id"].comodel_name, "repo.branch")
+		self.assertFalse(campos["branch"].store,
+						 "el nombre se deriva de la rama elegida, no se escribe")
+
+	def test_la_rama_ofrecida_es_la_DEL_repositorio_elegido(self):
+		otro = self.env["repo.repository"].create({
+			"backend_id": self.backend.id, "name": "otro",
+			"full_name": "%s/otro" % self.backend.owner_login,
+			"github_id": uuid.uuid4().hex[:8]})
+		ajena = self.env["repo.branch"].create({
+			"repository_id": otro.id, "name": "17.0", "role": "base"})
+		a = self._asistente(branch_id=ajena.id)
+		with self.assertRaises(UserError) as ctx:
+			a.action_add()
+		self.assertIn("no de", str(ctx.exception))
+
+	def test_cambiar_de_repositorio_limpia_la_rama(self):
+		"""Dejarla pegada sería el mismo error con otra cara: una rama que existe, pero en
+		otro repositorio."""
+		a = self._asistente()
+		self.assertTrue(a.branch_id)
+		otro = self.env["repo.repository"].create({
+			"backend_id": self.backend.id, "name": "otro2",
+			"full_name": "%s/otro2" % self.backend.owner_login,
+			"github_id": uuid.uuid4().hex[:8]})
+		a.repository_id = otro
+		a._onchange_repository()
+		self.assertFalse(a.branch_id)
+
+	def test_el_team_sigue_siendo_texto_Y_SE_DICE_POR_QUE(self):
+		"""No es un descuido: el espejo no releva teams porque la cuenta no es una
+		organización. Un desplegable vacío sería peor que un campo de texto."""
+		ayuda = self.env["repo.operation.builder"]._fields["team_slug"].help or ""
+		self.assertIn("no es una organización", ayuda)
+		self.assertNotIn("repo.team", str(self.env.registry.models.keys()))
 
 	def test_un_plan_aprobado_no_recibe_operaciones(self):
 		self._op("branch_protection_apply", payload={"allow_force_pushes": False})

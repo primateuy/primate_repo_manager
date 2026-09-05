@@ -20,9 +20,14 @@
 					<field name="repository_id"
 						   invisible="kind in ('team_member_add', 'team_member_remove')"
 						   required="kind not in ('team_member_add', 'team_member_remove')"/>
-					<field name="branch"
+					<!-- Se elige de las ramas que la auditoría vio en ESE repositorio.
+						 Ver el comentario de `branch_id`: con Staging/staging/_staging
+						 conviviendo, un typo arma una operación que se lee perfecta y
+						 muere al aplicar. -->
+					<field name="branch_id"
 						   invisible="kind not in ('branch_protection_apply', 'branch_protection_remove')"
-						   required="kind in ('branch_protection_apply', 'branch_protection_remove')"/>
+						   required="kind in ('branch_protection_apply', 'branch_protection_remove')"
+						   options="{'no_create': True, 'no_open': True}"/>
 					<field name="member_id"
 						   invisible="kind not in ('collaborator_grant', 'collaborator_revoke', 'team_member_add', 'team_member_remove')"
 						   required="kind in ('collaborator_grant', 'collaborator_revoke', 'team_member_add', 'team_member_remove')"/>
