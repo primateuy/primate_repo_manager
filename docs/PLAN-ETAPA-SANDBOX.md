@@ -673,6 +673,38 @@ Es la misma razón por la que E2.2 va con B4: las tres cosas —delta, métricas
 lo mismo, y conviene recorrerlo una sola vez.
 
 
+---
+
+## El conflicto de fuentes, para decidir
+
+El sistema de diseño pide **IBM Plex Sans para leer e IBM Plex Mono para todo identificador
+de git**. Verificado contra Odoo 19 antes de tocar nada:
+
+- Odoo define `$o-font-family-sans-serif: $o-system-fonts` y
+  `$o-font-family-monospace: (SFMono-Regular, Menlo, Monaco, Consolas, …)` en
+  `web/static/src/scss/primary_variables.scss`, como variables `!default`.
+- Las fuentes que Odoo empaqueta son **lato**, **google** y **sign**. **IBM Plex no está.**
+
+**El conflicto concreto:** cambiar la sans exige sobrescribir `$o-font-family-sans-serif`
+en `web._assets_primary_variables`, y eso **cambia la tipografía de TODO el backend de
+Odoo** —Ventas, Contabilidad, Ajustes—, no sólo de Repo Manager. Un módulo que le cambia
+la fuente a la instancia entera es un módulo que se nota donde no debería.
+
+Tres caminos, con su precio:
+
+| | Qué pasa | Precio |
+|---|---|---|
+| **A. Global** | Plex Sans en todo Odoo | Un módulo de gobernanza cambia la cara de toda la instancia |
+| **B. Sólo Repo Manager** | Plex Sans en nuestras pantallas | Conviven dos tipografías: la app en Plex, el cromo de Odoo —migas, botones, chatter— en la del sistema |
+| **C. Sólo la mono** *(aplicado por ahora)* | Plex Mono en identificadores de git; la sans queda la del sistema | Es donde el diseño tiene su intención más fuerte —separar «lo que dice la app» de «lo que dice GitHub»— y donde Odoo no aporta nada que valga conservar. La sans del sistema es neutra y no pelea |
+
+**Aplicado: C**, que es lo reversible. A y B son decisiones tuyas y ninguna se toma sola.
+
+Falta además **empaquetar la fuente**: IBM Plex es OFL, así que los `.woff2` se pueden
+vendorizar en `static/src/fonts/`. Sin eso, en una máquina que no tenga Plex instalada la
+mono cae al stack de Odoo y el diseño no se ve. Son cuatro archivos y va con la decisión.
+
+
 ## Validación visual pendiente
 
 > **El guion está escrito:** [`RECORRIDO-DE-VALIDACION.md`](RECORRIDO-DE-VALIDACION.md).

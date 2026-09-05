@@ -1,0 +1,92 @@
+// Copyright 2026 - PrimateUY / License AGPL-3.0 or later
+//
+// TOKENS DEL SISTEMA DE DISEÑO — traducidos del entregable «Repo Manager · Sistema de
+// diseño» (4-sep-2026). Los valores salen de la tabla del documento, no de una
+// interpretación: si algo hay que cambiar, se cambia allá primero y se re-traduce acá.
+//
+// LA REGLA DE USO: en el módulo NO se escribe un color literal. Todo sale de un token. Un
+// `#A1201F` suelto en un SCSS es un color que el día que el diseño cambie va a quedar
+// atrás sin que nadie se entere, y son justamente los que después no coinciden.
+//
+// Fundamento del sistema, para no perderlo: la interfaz se lee como un informe bien
+// redactado —primero la severidad, después el hecho, después qué se propone hacer— y el
+// color está reservado a dos cosas: **qué tan grave es** y **en qué estado está**. Nada
+// más se colorea.
+
+:root {
+	// --- tinta y neutrales -------------------------------------------------
+	--rm-ink: #14181F;          // texto principal
+	--rm-ink-2: #4B5563;        // texto secundario
+	--rm-ink-3: #8A94A6;        // texto terciario, apagado
+	--rm-border: #DDE1E7;
+	--rm-bg: #F4F5F7;           // fondo de la página
+	--rm-surface: #FFFFFF;      // tarjetas, tablas
+
+	// --- acento: pizarra ---------------------------------------------------
+	--rm-accent: #2F4A6D;
+	--rm-accent-dark: #1E3552;
+	--rm-accent-tint: #E8EEF6;
+
+	// --- severidades, en par sólido/tenue ----------------------------------
+	// El sólido es el fondo del chip; el tenue, el fondo de la fila o del bloque.
+	// El chip SIEMPRE lleva texto: el color solo no es información accesible.
+	--rm-sev-critical: #A1201F;
+	--rm-sev-critical-tint: #FBE9E8;
+	--rm-sev-high: #C2410C;
+	--rm-sev-high-tint: #FDEDE4;
+	--rm-sev-medium: #B7791F;
+	--rm-sev-medium-tint: #FCF3DF;
+	--rm-sev-info: #4A6079;
+	--rm-sev-info-tint: #EAEEF3;
+
+	// --- estados -----------------------------------------------------------
+	--rm-live: #2563EB;         // corriendo
+	--rm-live-tint: #E6EEFC;
+	--rm-done: #1F7A4D;         // terminado bien
+	--rm-done-tint: #E3F3EA;
+	--rm-error: #A1201F;        // falló
+	--rm-error-tint: #FBE9E8;
+	--rm-unread: #6B7280;       // NO SE PUDO LEER — ver la regla de abajo
+
+	// --- forma y espacio ---------------------------------------------------
+	--rm-radius-sm: 4px;
+	--rm-radius: 6px;
+	--rm-radius-lg: 8px;
+	--rm-space-1: 4px;
+	--rm-space-2: 8px;
+	--rm-space-3: 12px;
+	--rm-space-4: 16px;
+	--rm-space-5: 24px;
+	--rm-space-6: 32px;
+}
+
+// «NO SE PUDO LEER» ES UN ESTADO PROPIO, Y ÉSTA ES SU TRAMA.
+//
+// Gris rayado, siempre con su causa al lado. Nunca vacío —que se lee como «no hay
+// problema»— y nunca verde —que se lee como «está bien»—. Es la regla que más veces
+// salvó al módulo de afirmar de más: en F1, «no pude ver la protección de esta rama» y
+// «esta rama no está protegida» llegan como el mismo 404 de GitHub, y confundirlos habría
+// hecho que el informe acusara a repositorios sanos.
+@mixin rm-no-legible {
+	background: repeating-linear-gradient(
+		135deg, var(--rm-unread) 0 2px, var(--rm-surface) 2px 4px);
+	color: var(--rm-ink-2);
+}
+
+// TIPOGRAFÍA. IBM Plex Sans para leer, IBM Plex Mono para identificar: todo lo que viene
+// de git —repositorio, rama, SHA, usuario— va en mono, para que el ojo separe «lo que
+// dice la app» de «lo que dice GitHub».
+//
+// OJO: la familia sans NO se impone globalmente desde acá. Ver el comentario del
+// conflicto de fuentes en el plan de la etapa; hasta que eso se decida, sólo se aplica la
+// mono, que es donde el sistema de diseño tiene su intención más fuerte y donde Odoo no
+// pone nada propio que valga la pena conservar.
+@mixin rm-mono {
+	font-family: "IBM Plex Mono", SFMono-Regular, Menlo, Monaco, Consolas,
+		"Liberation Mono", "Courier New", monospace;
+	font-variant-ligatures: none;
+}
+
+.rm-mono, .o_prm_mono {
+	@include rm-mono;
+}

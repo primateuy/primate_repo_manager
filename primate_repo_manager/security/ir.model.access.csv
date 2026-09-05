@@ -48,3 +48,7 @@ access_repo_plan_approve_line,repo.plan.approve.line,model_repo_plan_approve_lin
 access_repo_operation_builder,repo.operation.builder,model_repo_operation_builder,group_repo_lead,1,1,1,1
 access_repo_audit_run_line_reader,repo.audit.run.line.reader,model_repo_audit_run_line,group_repo_reader,1,0,0,0
 access_repo_audit_run_line_lead,repo.audit.run.line.lead,model_repo_audit_run_line,group_repo_lead,1,1,1,1
+access_repo_module_reader,repo.module.reader,model_repo_module,group_repo_reader,1,0,0,0
+access_repo_module_lead,repo.module.lead,model_repo_module,group_repo_lead,1,1,1,1
+access_repo_module_copy_reader,repo.module.copy.reader,model_repo_module_copy,group_repo_reader,1,0,0,0
+access_repo_module_copy_lead,repo.module.copy.lead,model_repo_module_copy,group_repo_lead,1,1,1,1

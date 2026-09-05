@@ -40,6 +40,8 @@
 	},
 	"assets": {
 		"web.assets_backend": [
+			# Los tokens van PRIMERO: todo lo demás los usa.
+			"primate_repo_manager/static/src/scss/tokens.scss",
 			"primate_repo_manager/static/src/live_progress/live_progress.js",
 			"primate_repo_manager/static/src/live_progress/live_progress.xml",
 			"primate_repo_manager/static/src/live_progress/live_progress.scss",

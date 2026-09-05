@@ -46,6 +46,12 @@ class RepoBranch(models.Model):
 	behind_upstream = fields.Integer(string="Commits detrás del upstream")
 	comparison_readable = fields.Boolean(string="Comparación legible", default=True)
 
+	# El árbol de git viene truncado en repositorios muy grandes. Se guarda como dato para
+	# que el inventario de módulos pueda decir «acá no pude ver todo» en vez de dejar que
+	# alguien lea el silencio como «no hay módulos».
+	module_scan_truncated = fields.Boolean(
+		string="Árbol truncado al escanear", copy=False)
+
 	_branch_uniq = models.Constraint(
 		"UNIQUE (repository_id, name)",
 		"Esa rama ya está registrada en el repositorio.")
