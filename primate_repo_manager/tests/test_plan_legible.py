@@ -277,6 +277,38 @@ class TestRemediarDesdeUnHallazgo(BasePlan):
 		hallazgo.action_remediate()
 		self.assertEqual(len(hallazgo.operation_ids), 2)
 
+	# --- EL INCIDENTE: `remediation_payload` IDENTIFICA, NO CONFIGURA -------
+	#
+	# Una rama sin proteger traía `{"repository": ..., "branch": ...}` — el objeto sobre
+	# el que hay que actuar—, y A4.1 lo copió como payload EJECUTABLE de una operación de
+	# protección. GitHub aceptó el PUT, ignoró las claves que no conoce y dejó puesta una
+	# protección con todo en default: sin PR, sin revisiones. Una protección que nadie
+	# diseñó, más floja que la política, y con nombre de protección.
+
+	def test_una_rama_sin_proteger_NO_se_remedia_desde_el_hallazgo(self):
+		hallazgo = self._hallazgo(
+			tipo="branch_unprotected",
+			payload={"repository": "org/repo", "branch": "17.0"})
+		self.assertFalse(hallazgo.can_be_planned)
+		with self.assertRaises(UserError):
+			hallazgo.action_remediate()
+
+	def test_y_dice_por_qué_y_de_dónde_va_a_salir(self):
+		"""Un «no se puede» sin causa manda a alguien a buscar el botón que falta."""
+		hallazgo = self._hallazgo(
+			tipo="branch_unprotected",
+			payload={"repository": "org/repo", "branch": "17.0"})
+		self.assertIn("plantilla de política", hallazgo.why_not_planned)
+		self.assertIn("B1", hallazgo.why_not_planned)
+
+	def test_los_hallazgos_de_permiso_SÍ_siguen_siendo_planificables(self):
+		"""La regla no es «nada se remedia»: el payload de un permiso sí es ejecutable
+		—dice qué permiso poner—, y ésos son los planificables de verdad."""
+		hallazgo = self._hallazgo()
+		self.assertTrue(hallazgo.can_be_planned)
+		hallazgo.action_remediate()
+		self.assertEqual(hallazgo.planned_operation_id.kind, "collaborator_revoke")
+
 	# --- acumular -----------------------------------------------------------
 
 	def test_dos_hallazgos_van_al_MISMO_borrador(self):

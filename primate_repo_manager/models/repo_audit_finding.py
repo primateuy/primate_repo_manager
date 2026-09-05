@@ -152,14 +152,30 @@ DESTRUCTIVE_ACTIONS = ("revoke_permission", "rename_default_branch")
 # La lista es explícita y no una heurística: agregar un tipo de operación nuevo obliga a
 # venir acá y decidir, en vez de que el botón aparezca solo el día que alguien amplíe
 # `OPERATION_KINDS` sin pensar en esto.
+# LA LECCIÓN QUE ESTE CATÁLOGO APRENDIÓ A LOS GOLPES:
+# **`remediation_payload` IDENTIFICA, NO CONFIGURA.**
+#
+# Lo generó F1 como «sobre qué hay que actuar»: para una rama sin proteger dice
+# `{"repository": "org/repo", "branch": "17.0"}`. A4.1 lo copió tal cual como payload
+# ejecutable de la operación, y el resultado fue que GitHub recibió eso como cuerpo de la
+# protección, ignoró las claves que no conoce y aplicó una protección con todo en default
+# —sin PR, sin revisiones— que nadie había diseñado. La verificación por relectura la
+# rechazó, con razón, pero la escritura ya había salido.
+#
+# Antes de agregar una acción acá hay que comprobar que su payload sea EJECUTABLE para el
+# tipo de operación de destino, no sólo que exista.
 PLANIFICABLES = {
 	"revoke_permission": "collaborator_revoke",
-	"apply_ruleset": "branch_protection_apply",
 }
 
 # Por qué NO se puede planificar cada una de las otras. Se muestra en pantalla: un botón
 # ausente sin explicación se lee como un olvido del producto.
 POR_QUE_NO_PLANIFICABLE = {
+	"apply_ruleset": (
+		"La configuración de protección sale de la plantilla de política del repositorio "
+		"—cuántas aprobaciones, si exige revisión de owner, si bloquea force-push—, no del "
+		"hallazgo. Llega con la aplicación de política por plantilla (B1). Hasta entonces "
+		"se arma a mano desde el asistente del plan, eligiendo la rama y las casillas."),
 	"set_classification": (
 		"Se resuelve en Odoo, en el propio repositorio: campo «Clasificación»."),
 	"link_employee": (
