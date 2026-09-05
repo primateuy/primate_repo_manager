@@ -1,0 +1,177 @@
+// Copyright 2026 - PrimateUY / License AGPL-3.0 or later
+//
+// El plan de escritura — página 2b. La fila es una grilla de cuatro columnas: número,
+// qué pasa, si tiene vuelta, y la decisión. La decisión es la más ancha porque es donde
+// se escribe el nombre de lo irreversible.
+
+.rm-plan {
+	color: var(--rm-ink);
+	display: flex;
+	flex-direction: column;
+	gap: var(--rm-space-4);
+
+	.rm-plan-resumen {
+		.rm-plan-resumen-frase { font-size: .9375rem; line-height: 1.6; }
+		.rm-plan-alerta {
+			margin-top: var(--rm-space-3);
+			padding: var(--rm-space-2) var(--rm-space-3);
+			border-radius: var(--rm-radius-sm);
+			background: var(--rm-sev-medium-tint);
+			color: var(--rm-ink);
+			font-size: .8125rem;
+		}
+	}
+
+	// --- el grupo por repositorio ------------------------------------------
+	.rm-plan-grupo-cabeza {
+		display: flex;
+		align-items: baseline;
+		gap: var(--rm-space-3);
+		padding: var(--rm-space-2) var(--rm-space-3);
+		background: var(--rm-accent-tint);
+		border-radius: var(--rm-radius-sm) var(--rm-radius-sm) 0 0;
+		cursor: pointer;
+
+		.rm-plan-repo { font-weight: 600; font-size: .8125rem; }
+		.rm-plan-grupo-cuenta { font-size: .75rem; color: var(--rm-ink-2); }
+		.rm-plan-plegar {
+			margin-left: auto;
+			font-size: .75rem;
+			font-weight: 600;
+			color: var(--rm-accent);
+		}
+	}
+
+	.rm-plan-filas {
+		border: 1px solid var(--rm-border);
+		border-top: 0;
+		border-radius: 0 0 var(--rm-radius) var(--rm-radius);
+		background: var(--rm-surface);
+	}
+
+	// --- la fila -----------------------------------------------------------
+	.rm-plan-fila {
+		display: grid;
+		grid-template-columns: 36px minmax(0, 1fr) 110px 260px;
+		gap: var(--rm-space-3);
+		align-items: start;
+		padding: var(--rm-space-3);
+		border-top: 1px solid var(--rm-border);
+		&:first-child { border-top: 0; }
+
+		// El borde izquierdo rojo es la marca de lo que no tiene vuelta. Es la misma
+		// señal que en la bitácora, a propósito: el mismo hecho se marca igual en las
+		// dos pantallas o deja de ser una señal.
+		&.rm-plan-irreversible {
+			border-left: 4px solid var(--rm-sev-critical);
+			background: var(--rm-sev-critical-tint);
+		}
+		&.rm-plan-confirmada { background: var(--rm-done-tint); }
+		&.rm-plan-irreversible.rm-plan-confirmada {
+			background: var(--rm-done-tint);
+			border-left-color: var(--rm-done);
+		}
+	}
+
+	.rm-plan-encabezado {
+		font-size: .6875rem;
+		font-weight: 600;
+		letter-spacing: .06em;
+		text-transform: uppercase;
+		color: var(--rm-ink-3);
+		background: var(--rm-bg);
+		padding-top: var(--rm-space-2);
+		padding-bottom: var(--rm-space-2);
+	}
+
+	.rm-plan-num { color: var(--rm-ink-3); font-size: .8125rem; padding-top: 2px; }
+
+	.rm-plan-que {
+		.rm-plan-frase { font-size: .875rem; font-weight: 600; line-height: 1.45; }
+		.rm-plan-tecnico {
+			font-size: .75rem;
+			color: var(--rm-ink-2);
+			margin-top: var(--rm-space-1);
+			word-break: break-word;
+		}
+		.rm-plan-error {
+			margin-top: var(--rm-space-2);
+			font-size: .75rem;
+			color: var(--rm-sev-critical);
+		}
+		.rm-plan-bloqueada {
+			margin-top: var(--rm-space-2);
+			font-size: .75rem;
+			color: var(--rm-ink-2);
+		}
+	}
+
+	.rm-plan-vuelta { font-size: .8125rem; color: var(--rm-ink-2); }
+
+	.rm-plan-decision {
+		display: flex;
+		flex-direction: column;
+		gap: var(--rm-space-1);
+		font-size: .8125rem;
+
+		.rm-plan-hecha { color: var(--rm-done); font-weight: 600; }
+		.rm-plan-deshacer { color: var(--rm-ink-2); font-size: .75rem; }
+		.rm-plan-nada { color: var(--rm-ink-3); }
+		.rm-plan-tipeo {
+			display: flex;
+			flex-direction: column;
+			gap: var(--rm-space-1);
+			label { font-size: .75rem; color: var(--rm-ink-2); margin: 0; }
+			.rm-plan-aviso { font-size: .6875rem; color: var(--rm-sev-critical); }
+		}
+	}
+
+	// --- el pie ------------------------------------------------------------
+	.rm-plan-pie {
+		display: flex;
+		flex-direction: column;
+		gap: var(--rm-space-3);
+
+		.rm-plan-barras { display: flex; gap: var(--rm-space-6); }
+		.rm-plan-barra {
+			display: flex;
+			flex-direction: column;
+			gap: 2px;
+			.rm-plan-barra-titulo {
+				font-size: .6875rem;
+				text-transform: uppercase;
+				letter-spacing: .06em;
+				color: var(--rm-ink-2);
+			}
+			.rm-plan-barra-num { font-size: 1.25rem; font-weight: 600; }
+			.rm-plan-barra-roja { color: var(--rm-sev-critical); }
+		}
+		.rm-plan-acciones {
+			display: flex;
+			align-items: center;
+			gap: var(--rm-space-3);
+			flex-wrap: wrap;
+			.rm-plan-nota { font-size: .75rem; color: var(--rm-ink-2); max-width: 34rem; }
+		}
+		.rm-plan-falta {
+			font-size: .8125rem;
+			color: var(--rm-sev-critical);
+			font-weight: 600;
+		}
+		.rm-plan-salidas {
+			display: flex;
+			align-items: center;
+			gap: var(--rm-space-3);
+			flex-wrap: wrap;
+			padding-top: var(--rm-space-3);
+			border-top: 1px solid var(--rm-border);
+			font-size: .8125rem;
+			.rm-plan-salidas-titulo {
+				text-transform: uppercase;
+				letter-spacing: .06em;
+				font-size: .6875rem;
+				color: var(--rm-ink-3);
+			}
+		}
+	}
+}

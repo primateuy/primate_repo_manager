@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+	<t t-name="primate_repo_manager.PlanOps">
+		<div class="rm-plan">
+
+			<!-- QUÉ VA A PASAR SI APROBÁS. Va arriba de todo y en castellano: es lo que
+				 alguien necesita saber antes de leer una sola fila. -->
+			<div class="rm-card rm-plan-resumen" t-if="operaciones.length">
+				<div class="rm-plan-resumen-frase">
+					Se van a hacer <strong><t t-esc="resumen.total"/> cambios</strong>
+					en <strong><t t-esc="resumen.repos"/></strong>
+					repositorio(s) de GitHub.
+					<t t-if="resumen.irreversibles">
+						<span class="rm-irreversible">
+							<t t-esc="resumen.irreversibles"/> no se puede(n) deshacer.
+						</span>
+						El resto se puede revertir desde la bitácora.
+					</t>
+					<t t-else="">Todos se pueden revertir desde la bitácora.</t>
+				</div>
+				<div t-if="sinSoporte.length" class="rm-plan-alerta">
+					<t t-esc="sinSoporte.length"/> operación(es) de un tipo que todavía no
+					está implementado. El plan no se puede aprobar así: aplicarlo fallaría
+					a mitad de camino, con parte ya escrita en GitHub.
+				</div>
+			</div>
+
+			<!-- LAS OPERACIONES, agrupadas por repositorio -->
+			<div t-foreach="grupos" t-as="grupo" t-key="grupo.repo" class="rm-plan-grupo">
+				<div class="rm-plan-grupo-cabeza"
+					 t-on-click="() => this.alternar(grupo.repo)">
+					<span class="rm-mono rm-plan-repo" t-esc="grupo.repo"/>
+					<span class="rm-plan-grupo-cuenta">
+						<t t-esc="grupo.ops.length"/> operación(es)<t
+							t-if="grupo.irreversibles">, <t t-esc="grupo.irreversibles"/>
+							irreversible(s)</t><t t-if="!grupo.sinConfirmar">, todas
+							confirmadas</t>
+					</span>
+					<span class="rm-plan-plegar">
+						<t t-if="plegado(grupo)">Desplegar</t>
+						<t t-else="">Plegar</t>
+					</span>
+				</div>
+
+				<div t-if="!plegado(grupo)" class="rm-plan-filas">
+					<!-- Los encabezados del diseño. «Se puede deshacer» y «Tu
+						 aprobación» son dos preguntas distintas y por eso son dos
+						 columnas: una es un hecho de la operación, la otra es lo que
+						 falta que haga la persona que mira. -->
+					<div class="rm-plan-fila rm-plan-encabezado">
+						<div class="rm-plan-num">#</div>
+						<div>Operación</div>
+						<div>Se puede deshacer</div>
+						<div t-if="enBorrador">Tu confirmación</div>
+						<div t-else="">Estado</div>
+					</div>
+					<div t-foreach="grupo.ops" t-as="op" t-key="op.id"
+						 t-attf-class="rm-plan-fila{{op.data.is_irreversible ? ' rm-plan-irreversible' : ''}}{{op.data.approval_ok ? ' rm-plan-confirmada' : ''}}">
+
+						<div class="rm-plan-num rm-mono" t-esc="numero(op)"/>
+
+						<div class="rm-plan-que">
+							<div class="rm-plan-frase">
+								<span t-if="op.data.is_irreversible"
+									  class="rm-irreversible">IRREVERSIBLE</span>
+								<t t-esc="op.data.description"/>
+							</div>
+							<div t-if="tecnico(op)" class="rm-mono rm-plan-tecnico"
+								 t-esc="tecnico(op)"/>
+							<div t-if="op.data.error" class="rm-plan-error"
+								 t-esc="op.data.error"/>
+							<div t-if="op.data.dependency_blocked_by"
+								 class="rm-plan-bloqueada">
+								No se ejecutó: depende de
+								<t t-esc="op.data.dependency_blocked_by"/>
+							</div>
+						</div>
+
+						<div class="rm-plan-vuelta">
+							<t t-if="!op.data.is_supported">
+								<span class="rm-no-legible">sin implementar</span>
+							</t>
+							<t t-elif="op.data.is_irreversible">No</t>
+							<t t-else="">Sí</t>
+						</div>
+
+						<!-- LA CONFIRMACIÓN, EN LA FILA. Mientras el plan está en
+							 borrador se decide; después, esta columna cuenta el
+							 progreso. -->
+						<div class="rm-plan-decision">
+							<t t-if="aplicandose or !enBorrador">
+								<span t-attf-class="rm-chip rm-chip-{{op.data.state === 'applied' ? 'done' : op.data.state === 'failed' ? 'error' : 'quiet'}}"
+									  t-esc="op.data.state"/>
+							</t>
+							<t t-elif="op.data.approval_ok">
+								<span class="rm-plan-hecha">✓ Confirmada</span>
+								<a href="#" class="rm-plan-deshacer"
+								   t-on-click.prevent="() => this.desconfirmar(op)">
+									deshacer
+								</a>
+							</t>
+							<t t-elif="!op.data.is_supported">
+								<span class="rm-plan-nada">no se puede confirmar</span>
+							</t>
+							<t t-elif="op.data.is_irreversible">
+								<div class="rm-plan-tipeo">
+									<label>
+										Escribí «<span class="rm-mono"
+													   t-esc="nombreEsperado(op)"/>»
+										para confirmar
+									</label>
+									<div class="rm-tipeo">
+										<input type="text"
+											   t-att-value="state.tipeo[op.resId] || ''"
+											   t-on-input="(ev) => this.alTipear(op, ev)"/>
+									</div>
+									<button class="btn btn-sm btn-danger"
+											t-att-disabled="!tipeoCorrecto(op)"
+											t-on-click="() => this.confirmarIrreversible(op)">
+										Confirmar
+									</button>
+									<div class="rm-plan-aviso">
+										Sin escribirlo, el plan no se puede aprobar.
+									</div>
+								</div>
+							</t>
+							<t t-else="">
+								<button class="btn btn-sm btn-secondary"
+										t-on-click="() => this.confirmar(op)">
+									Confirmar
+								</button>
+							</t>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<!-- EL PIE: dos barras separadas, nunca sumadas -->
+			<div class="rm-card rm-plan-pie" t-if="operaciones.length">
+				<div class="rm-plan-barras">
+					<div class="rm-plan-barra">
+						<span class="rm-plan-barra-titulo">Reversibles confirmadas</span>
+						<span class="rm-mono rm-plan-barra-num">
+							<t t-esc="reversibles.hechas"/> / <t t-esc="reversibles.total"/>
+						</span>
+					</div>
+					<div class="rm-plan-barra">
+						<span class="rm-plan-barra-titulo">Irreversibles confirmadas</span>
+						<span class="rm-mono rm-plan-barra-num rm-plan-barra-roja">
+							<t t-esc="irreversibles.hechas"/> / <t t-esc="irreversibles.total"/>
+						</span>
+					</div>
+				</div>
+
+				<div t-if="enBorrador" class="rm-plan-acciones">
+					<button class="btn btn-secondary"
+							t-att-disabled="reversibles.hechas === reversibles.total"
+							t-on-click="() => this.confirmarTodasLasReversibles()">
+						Confirmar las <t t-esc="reversibles.total - reversibles.hechas"/>
+						reversibles
+					</button>
+					<span class="rm-plan-nota">
+						Podés confirmar todas las reversibles de una vez; las
+						irreversibles, nunca — se escribe el nombre de cada una.
+					</span>
+				</div>
+
+				<div t-if="enBorrador and falta.length" class="rm-plan-falta">
+					Falta confirmar <t t-esc="falta.length"/> operación(es) que sacan algo.
+					Hasta entonces el plan no se puede aprobar.
+				</div>
+
+				<div class="rm-plan-salidas">
+					<span class="rm-plan-salidas-titulo">Otras salidas</span>
+					<a href="#" t-on-click.prevent="() => this.verHallazgos()">
+						Ver los hallazgos que originaron el plan
+					</a>
+					<!-- Regla 2: se ve, no se toca, y dice con qué bloque llega. -->
+					<Apagado que="'Detener después de esta operación'" bloque="'D2.6'"
+							 detalle="'Frenar un apply entre operaciones, sin deshacer lo hecho.'"/>
+				</div>
+			</div>
+		</div>
+	</t>
+
+</templates>

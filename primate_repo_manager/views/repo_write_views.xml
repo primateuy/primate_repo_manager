@@ -90,18 +90,30 @@
 
 					<notebook>
 						<page string="Operaciones" name="operaciones">
-							<field name="operation_ids">
+							<!-- LA CONFIRMACIÓN BAJA A LA FILA — página 2b del diseño.
+								 Se lee junto a la consecuencia, que es el punto: un
+								 asistente aparte muestra la lista y tapa justamente lo
+								 que la lista describe.
+
+								 La lista Odoo de antes queda accesible en la pestaña
+								 «Detalle», porque para editar un payload o mirar una
+								 columna puntual sigue siendo la mejor herramienta. Lo que
+								 cambia es cuál es la vista principal. -->
+							<field name="operation_ids" widget="repo_plan_ops"
+								   nolabel="1" readonly="1"/>
+						</page>
+						<page string="Detalle" name="detalle">
+							<field name="operation_ids" nolabel="1">
 								<list editable="bottom"
 									  decoration-muted="state == 'rolled_back'"
 									  decoration-danger="state == 'failed' or (is_destructive and state == 'pending')"
 									  decoration-warning="state == 'blocked'"
 									  decoration-success="state == 'applied'">
 									<field name="sequence" widget="handle"/>
-									<!-- La frase primero y el JSON después: es el orden
-										 en que se lee un plan. El payload sigue estando
-										 —es lo que se ejecuta— pero deja de ser lo único. -->
 									<field name="description" readonly="1"/>
 									<field name="is_destructive" string="Saca algo"
+										   readonly="1"/>
+									<field name="approval_ok" string="Confirmada"
 										   readonly="1"/>
 									<field name="kind" optional="show"/>
 									<field name="repository_id"/>
