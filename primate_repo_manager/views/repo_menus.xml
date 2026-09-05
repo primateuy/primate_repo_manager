@@ -1,46 +1,102 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Copyright 2026 - PrimateUY / License AGPL-3.0 or later -->
+<!--
+	SIETE SECCIONES, FIJAS DESDE HOY.
+
+	El menú no cambia cuando llega un bloque: se habilita lo que estaba gris. Las etapas
+	que faltan ya tienen su casillero con su letra, y al hacer clic abren una página que
+	dice qué van a hacer y en qué bloque llegan — un menú que no responde se lee como algo
+	roto; uno que explica se lee como un plan.
+
+	Del sistema de diseño, 4-sep-2026. No agregar secciones nuevas sin volver ahí.
+-->
 <odoo>
 
 	<menuitem id="menu_repo_root" name="Repo Manager" sequence="70"
 			  groups="group_repo_reader"/>
 
-	<menuitem id="menu_repo_repositories" name="Repositorios" sequence="10"
-			  parent="menu_repo_root" action="action_repo_repository"/>
+	<!-- ============ 1 · Ver y entender ============ -->
+	<menuitem id="menu_repo_ver" name="Ver y entender" sequence="10"
+			  parent="menu_repo_root"/>
 
-	<menuitem id="menu_repo_audit" name="Auditorías" sequence="20"
-			  parent="menu_repo_root" action="action_repo_audit_run"/>
+	<menuitem id="menu_repo_panel" name="Panel de salud" sequence="10"
+			  parent="menu_repo_ver" action="action_pendiente_panel"/>
+	<menuitem id="menu_repo_repositories" name="Repositorios" sequence="20"
+			  parent="menu_repo_ver" action="action_repo_repository"/>
+	<menuitem id="menu_repo_audit" name="Auditorías" sequence="30"
+			  parent="menu_repo_ver" action="action_repo_audit_run"/>
+	<menuitem id="menu_repo_findings" name="Hallazgos" sequence="40"
+			  parent="menu_repo_ver" action="action_repo_audit_finding"/>
+	<menuitem id="menu_repo_audit_log" name="Bitácora" sequence="50"
+			  parent="menu_repo_ver" action="action_repo_audit_log"/>
 
-	<menuitem id="menu_repo_findings" name="Hallazgos" sequence="25"
-			  parent="menu_repo_root" action="action_repo_audit_finding"/>
+	<!-- ============ 2 · Decidir y aplicar ============ -->
+	<menuitem id="menu_repo_decidir" name="Decidir y aplicar" sequence="20"
+			  parent="menu_repo_root" groups="group_repo_lead"/>
 
-	<menuitem id="menu_repo_write_plan" name="Planes de escritura" sequence="30"
-			  parent="menu_repo_root" action="action_repo_write_plan"
-			  groups="group_repo_lead"/>
+	<menuitem id="menu_repo_write_plan" name="Planes de escritura" sequence="10"
+			  parent="menu_repo_decidir" action="action_repo_write_plan"/>
+	<menuitem id="menu_repo_module_promotion" name="Promoción de módulos" sequence="20"
+			  parent="menu_repo_decidir" action="action_pendiente_promocion_modulos"/>
+	<menuitem id="menu_repo_branch_promotion" name="Promoción entre ramas" sequence="30"
+			  parent="menu_repo_decidir" action="action_pendiente_promocion_ramas"/>
+	<menuitem id="menu_repo_prs" name="Pull requests" sequence="40"
+			  parent="menu_repo_decidir" action="action_pendiente_prs"/>
+	<menuitem id="menu_repo_branch_from_task" name="Crear rama desde tarea" sequence="50"
+			  parent="menu_repo_decidir" action="action_pendiente_rama_tarea"/>
+	<menuitem id="menu_repo_create_repo" name="Crear repositorio" sequence="60"
+			  parent="menu_repo_decidir" action="action_pendiente_crear_repo"/>
 
-	<menuitem id="menu_repo_members" name="Personas" sequence="35"
-			  parent="menu_repo_root" action="action_repo_member"/>
+	<!-- ============ 3 · Política y personas ============ -->
+	<menuitem id="menu_repo_politica" name="Política y personas" sequence="30"
+			  parent="menu_repo_root"/>
 
-	<menuitem id="menu_repo_audit_log" name="Bitácora" sequence="40"
-			  parent="menu_repo_root" action="action_repo_audit_log"/>
+	<menuitem id="menu_repo_policy" name="Plantillas de política" sequence="10"
+			  parent="menu_repo_politica" action="action_repo_policy_template"/>
+	<menuitem id="menu_repo_classification_rules" name="Reglas de clasificación"
+			  sequence="20" parent="menu_repo_politica"
+			  action="action_repo_classification_rule"/>
+	<menuitem id="menu_repo_branch_role_rules" name="Reglas de rol de rama" sequence="30"
+			  parent="menu_repo_politica" action="action_repo_branch_role_rule"/>
+	<menuitem id="menu_repo_members" name="Personas" sequence="40"
+			  parent="menu_repo_politica" action="action_repo_member"/>
 
+	<!-- ============ 4 · Módulos ============ -->
+	<menuitem id="menu_repo_modulos" name="Módulos" sequence="40"
+			  parent="menu_repo_root"/>
+
+	<menuitem id="menu_repo_module_inventory" name="Inventario de módulos" sequence="10"
+			  parent="menu_repo_modulos" action="action_repo_module"/>
+	<menuitem id="menu_repo_module_promote_one" name="Promoción de un módulo" sequence="20"
+			  parent="menu_repo_modulos" action="action_pendiente_promocion_modulos"/>
+
+	<!-- ============ 5 · Seguridad e higiene ============ -->
+	<menuitem id="menu_repo_seguridad" name="Seguridad e higiene" sequence="50"
+			  parent="menu_repo_root"/>
+
+	<menuitem id="menu_repo_security_findings" name="Hallazgos de seguridad" sequence="10"
+			  parent="menu_repo_seguridad" action="action_pendiente_seguridad"/>
+	<menuitem id="menu_repo_hygiene" name="Higiene" sequence="20"
+			  parent="menu_repo_seguridad" action="action_pendiente_higiene"/>
+
+	<!-- ============ 6 · Forks ============ -->
+	<menuitem id="menu_repo_forks" name="Forks" sequence="60"
+			  parent="menu_repo_root"/>
+
+	<menuitem id="menu_repo_forks_upstream" name="Forks y su upstream" sequence="10"
+			  parent="menu_repo_forks" action="action_pendiente_forks"/>
+
+	<!-- ============ 7 · Configuración ============ -->
 	<menuitem id="menu_repo_config" name="Configuración" sequence="90"
 			  parent="menu_repo_root" groups="group_repo_admin"/>
 
 	<menuitem id="menu_repo_backend" name="Conexiones" sequence="10"
 			  parent="menu_repo_config" action="action_repo_backend"/>
-
-	<menuitem id="menu_repo_policy" name="Plantillas de política" sequence="20"
-			  parent="menu_repo_config" action="action_repo_policy_template"/>
-
-	<menuitem id="menu_repo_classification_rules" name="Reglas de clasificación"
-			  sequence="30" parent="menu_repo_config"
-			  action="action_repo_classification_rule"/>
-
-	<menuitem id="menu_repo_branch_role_rules" name="Roles de rama" sequence="40"
-			  parent="menu_repo_config" action="action_repo_branch_role_rule"/>
-
-	<menuitem id="menu_repo_settings" name="Ajustes" sequence="99"
+	<menuitem id="menu_repo_settings" name="Parámetros" sequence="20"
 			  parent="menu_repo_config" action="action_repo_config_settings"/>
+	<menuitem id="menu_repo_diagnostico" name="Diagnóstico" sequence="30"
+			  parent="menu_repo_config" action="action_repo_config_settings"/>
+	<menuitem id="menu_repo_notificaciones" name="Notificaciones" sequence="40"
+			  parent="menu_repo_config" action="action_pendiente_notificaciones"/>
 
 </odoo>

@@ -698,11 +698,44 @@ Tres caminos, con su precio:
 | **B. Sólo Repo Manager** | Plex Sans en nuestras pantallas | Conviven dos tipografías: la app en Plex, el cromo de Odoo —migas, botones, chatter— en la del sistema |
 | **C. Sólo la mono** *(aplicado por ahora)* | Plex Mono en identificadores de git; la sans queda la del sistema | Es donde el diseño tiene su intención más fuerte —separar «lo que dice la app» de «lo que dice GitHub»— y donde Odoo no aporta nada que valga conservar. La sans del sistema es neutra y no pelea |
 
-**Aplicado: C**, que es lo reversible. A y B son decisiones tuyas y ninguna se toma sola.
+**Decidido el 5-sep-2026: C, y es definitiva.** La sans de Odoo se hereda; Plex Sans no se
+impone. El porqué, en las palabras que lo cerraron: *Repo Manager vive adentro de Odoo y no
+tiene que sentirse extranjero; la identidad está en los tokens, los patrones y la mono.*
 
-Falta además **empaquetar la fuente**: IBM Plex es OFL, así que los `.woff2` se pueden
-vendorizar en `static/src/fonts/`. Sin eso, en una máquina que no tenga Plex instalada la
-mono cae al stack de Odoo y el diseño no se ve. Son cuatro archivos y va con la decisión.
+**Pendiente que va con el tramo de la pantalla:** vendorizar los `.woff2` de IBM Plex Mono
+(licencia OFL) en `static/src/fonts/`. Sin eso, en una máquina que no tenga Plex instalada
+la mono cae al stack de Odoo y la única fuente propia del módulo desaparece justo donde más
+importa.
+
+
+---
+
+## Hallazgo del entregable de diseño: la bitácora encadenada
+
+Leyendo el documento apareció un requisito que **no estaba en la spec ni en ningún bloque**,
+y que es de fondo:
+
+> *«Cada entrada guarda el hash de la anterior. Si alguien tocara la base, la cadena se
+> rompe y el diagnóstico lo avisa.»*
+
+Hoy `repo.audit.log` es inmutable **a nivel modelo** —`write` y `unlink` levantan excepción
+siempre, incluso con `sudo()`— y eso protege del código. **No protege de un `UPDATE`
+directo en Postgres**, que es justamente contra lo que sirve una cadena de hashes: no lo
+impide, pero lo hace **detectable**.
+
+Va junto con el otro pedido de la pausa de producto —**export firmado de bitácora, CSV +
+hash**— porque son la misma pieza: sin cadena, la firma del export sólo dice «esto es lo
+que la base tenía hoy», no «esto es lo que pasó».
+
+**Lo que hay que decidir, y no decido solo:**
+1. La cadena arranca desde cero, o se siembra sobre las entradas que ya existen. Sembrar
+   sobre lo viejo firma un pasado que nadie encadenó: es cómodo y es mentira. Mi
+   recomendación: **arrancar la cadena ahora**, con una entrada inicial que diga que lo
+   anterior no está encadenado.
+2. Dónde se verifica: el diagnóstico de Ajustes ya existe y es el lugar natural.
+
+*Dimensión:* chica —un campo, un cálculo al crear, una verificación— pero toca el modelo
+más delicado del módulo, así que va con su propio paso y su mutación.
 
 
 ## Validación visual pendiente

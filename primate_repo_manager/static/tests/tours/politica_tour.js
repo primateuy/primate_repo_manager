@@ -55,8 +55,16 @@ registry.category("web_tour.tours").add("prm_politica", {
 			run: "click",
 		},
 		{
-			content: "abrir la Bitácora desde el menú, como lo haría una persona",
-			trigger: ".o_main_navbar button:contains(Bitácora), .o_main_navbar a:contains(Bitácora)",
+			// Desde el sistema de diseño, el menú tiene SIETE SECCIONES FIJAS y la
+			// Bitácora vive dentro de «Ver y entender». Ya no está suelta en la barra:
+			// el camino de una persona es abrir la sección y después la entrada.
+			content: "abrir la sección «Ver y entender»",
+			trigger: ".o_main_navbar button:contains(Ver y entender), .o_main_navbar a:contains(Ver y entender)",
+			run: "click",
+		},
+		{
+			content: "y desde ahí, la Bitácora",
+			trigger: ".o-dropdown--menu .dropdown-item:contains(Bitácora), .o_menu_sections a:contains(Bitácora)",
 			run: "click",
 		},
 		{

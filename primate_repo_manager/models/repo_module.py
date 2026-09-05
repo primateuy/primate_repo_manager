@@ -52,11 +52,12 @@ class RepoModule(models.Model):
 	copy_ids = fields.One2many("repo.module.copy", "module_id", string="Copias")
 	copy_count = fields.Integer(string="Copias", compute="_compute_copias")
 	repository_count = fields.Integer(
-		string="Repositorios", compute="_compute_copias",
+		string="Repositorios", compute="_compute_copias", search="_search_repository_count",
 		help="En cuántos repositorios distintos aparece. Más de uno es candidato a "
 			 "promoción.")
 	divergent = fields.Boolean(
 		string="Las copias divergieron", compute="_compute_copias",
+		search="_search_divergent",
 		help="Verdadero cuando dos copias de la misma línea de versión tienen distinto "
 			 "SHA de subárbol, o sea distinto contenido.")
 	divergence_detail = fields.Char(
@@ -87,6 +88,64 @@ class RepoModule(models.Model):
 					lineas_rotas.append(linea or _("sin línea"))
 			modulo.divergent = bool(lineas_rotas)
 			modulo.divergence_detail = ", ".join(sorted(lineas_rotas)) or False
+
+
+	# POR QUÉ ESTOS CAMPOS TIENEN `search` Y NO `store=True`.
+	#
+	# Guardarlos parece más simple y es la trampa que ya pagamos en A10: un campo calculado
+	# y almacenado hace que Odoo ESCRIBA la fila cada vez que cambia una dependencia, y
+	# `repo.module` es una fila COMPARTIDA —el mismo módulo vive en varios repositorios—
+	# que varios jobs de escaneo tocan en paralelo. Almacenarlos sería volver a poner a los
+	# jobs a matarse entre sí, ahora en el inventario.
+	#
+	# Con `search` los filtros funcionan igual y no se escribe nada. El precio es que no se
+	# puede ORDENAR por estas columnas, que es exactamente el mismo precio que se aceptó
+	# para los contadores de la corrida.
+
+	# COMPARADORES ACEPTADOS. Odoo NORMALIZA el dominio antes de llamar al método de
+	# búsqueda: un `("divergent", "=", True)` escrito en una vista llega acá como
+	# `("divergent", "in", OrderedSet([True]))`. La primera versión de estos métodos sólo
+	# contemplaba `=` y `!=`, y con `in` caía en la rama del else: **devolvía el filtro
+	# INVERTIDO en silencio**. El filtro «con copias divergentes» mostraba los 192 módulos
+	# del sandbox, que son justamente los que NO divergen.
+	#
+	# De ahí la regla que queda: un método de búsqueda que no entiende el comparador
+	# **levanta excepción**, nunca adivina. Un filtro que devuelve lo contrario de lo que
+	# dice es peor que uno que no anda, porque el que no anda se nota.
+	COMPARADORES = ("=", "!=", "in", "not in")
+
+	@api.model
+	def _pedido_booleano(self, operador, valor):
+		"""Traduce el comparador normalizado a «se buscan los verdaderos, sí o no»."""
+		if operador not in self.COMPARADORES:
+			raise ValueError(
+				"Comparador no soportado en este filtro: %r. Agregarlo acá a propósito, "
+				"no dejar que caiga en un default." % operador)
+		if operador in ("in", "not in"):
+			buscado = True in set(valor)
+			negado = operador == "not in"
+		else:
+			buscado = bool(valor)
+			negado = operador == "!="
+		return buscado != negado
+
+	def _search_repository_count(self, operador, valor):
+		"""Filtra por en cuántos repositorios distintos aparece el módulo."""
+		if operador not in ("=", "!=", "<", "<=", ">", ">="):
+			raise ValueError(
+				"Comparador no soportado para «repositorios»: %r." % operador)
+		self.env.cr.execute("""
+			SELECT module_id FROM repo_module_copy
+			GROUP BY module_id HAVING COUNT(DISTINCT repository_id) %s %%s
+		""" % operador, (valor,))
+		return [("id", "in", [f[0] for f in self.env.cr.fetchall()])]
+
+	def _search_divergent(self, operador, valor):
+		"""Filtra por divergencia. Se calcula en Python porque la comparación es POR
+		LÍNEA de versión, y eso no se expresa en un GROUP BY simple."""
+		divergentes = self.search([]).filtered("divergent").ids
+		return [("id", "in" if self._pedido_booleano(operador, valor) else "not in",
+				 divergentes)]
 
 
 class RepoModuleCopy(models.Model):

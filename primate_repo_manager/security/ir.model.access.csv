@@ -52,3 +52,4 @@ access_repo_module_reader,repo.module.reader,model_repo_module,group_repo_reader
 access_repo_module_lead,repo.module.lead,model_repo_module,group_repo_lead,1,1,1,1
 access_repo_module_copy_reader,repo.module.copy.reader,model_repo_module_copy,group_repo_reader,1,0,0,0
 access_repo_module_copy_lead,repo.module.copy.lead,model_repo_module_copy,group_repo_lead,1,1,1,1
+access_repo_coming_soon,repo.coming.soon,model_repo_coming_soon,group_repo_reader,1,1,1,1

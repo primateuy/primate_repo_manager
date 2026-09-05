@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 - PrimateUY / License AGPL-3.0 or later -->
+<!--
+	Las entradas de menú de lo que todavía no llegó. Cada una abre la misma pantalla con
+	un texto distinto: qué va a hacer y en qué bloque llega.
+
+	El texto NO es de relleno. Es lo único que separa «el menú está roto» de «esto está
+	planificado», y quien lo lea seis meses después tiene que poder decidir si le sirve
+	esperar o si necesita otra cosa.
+-->
+<odoo>
+
+	<record id="action_pendiente_panel" model="ir.actions.act_window">
+		<field name="name">Panel de salud</field>
+		<field name="res_model">repo.coming.soon</field>
+		<field name="view_mode">form</field>
+		<field name="target">current</field>
+		<field name="context">{
+			'prm_titulo': 'Panel de salud',
+			'prm_bloque': 'Bloque E · última etapa del plan',
+			'prm_que': 'Tres números arriba: qué porcentaje de las ramas de entorno está '
+					   'protegido, cuántos hallazgos críticos y altos siguen abiertos con '
+					   'su tendencia, y cuántos repositorios están gobernados sobre el '
+					   'total. Debajo, el detalle plegado.\n\n'
+					   'La tendencia necesita historia, y la historia no se puede '
+					   'reconstruir hacia atrás: por eso las métricas se empiezan a '
+					   'guardar antes, con el drift de política, aunque el panel llegue '
+					   'al final.',
+		}</field>
+	</record>
+
+	<record id="action_pendiente_promocion_modulos" model="ir.actions.act_window">
+		<field name="name">Promoción de módulos</field>
+		<field name="res_model">repo.coming.soon</field>
+		<field name="view_mode">form</field>
+		<field name="target">current</field>
+		<field name="context">{
+			'prm_titulo': 'Promoción de un módulo entre repositorios',
+			'prm_bloque': 'Bloque D · después de armar planes sin JSON',
+			'prm_que': 'Mover un módulo al repositorio general que corresponda y sacarlo '
+					   'de los particulares donde estaba. La limpieza son commits de '
+					   'borrado en repositorios de clientes, así que entra por el mismo '
+					   'embudo que toda escritura: plan, aprobación, aplicación, bitácora '
+					   'y reversión.\n\n'
+					   'El inventario de módulos —que ya funciona— es lo que dice dónde '
+					   'está cada uno y si las copias divergieron. Con copias divergentes '
+					   'la promoción no se arma sola: alguien tiene que decidir qué '
+					   'versión gana.',
+		}</field>
+	</record>
+
+	<record id="action_pendiente_promocion_ramas" model="ir.actions.act_window">
+		<field name="name">Promoción entre ramas</field>
+		<field name="res_model">repo.coming.soon</field>
+		<field name="view_mode">form</field>
+		<field name="target">current</field>
+		<field name="context">{
+			'prm_titulo': 'Promoción entre ramas',
+			'prm_bloque': 'F4 · Operación',
+			'prm_que': 'Mover código de staging a support y de ahí a producción, con las '
+					   'validaciones previas y el merge por API.\n\n'
+					   'No confundir con la promoción de MÓDULOS, que es entre '
+					   'repositorios y está en la sección Módulos. Son cosas distintas y '
+					   'por eso tienen entradas distintas.',
+		}</field>
+	</record>
+
+	<record id="action_pendiente_prs" model="ir.actions.act_window">
+		<field name="name">Pull requests</field>
+		<field name="res_model">repo.coming.soon</field>
+		<field name="view_mode">form</field>
+		<field name="target">current</field>
+		<field name="context">{
+			'prm_titulo': 'Pull requests desde Odoo',
+			'prm_bloque': 'F4 · Operación',
+			'prm_que': 'Ver las PRs pendientes, vincularlas a proyectos y tareas, y '
+					   'aprobar, pedir cambios o mergear desde acá.\n\n'
+					   'Necesita una pieza que hoy no existe en el módulo: autenticación '
+					   'de USUARIO contra GitHub. Sin eso una aprobación saldría a nombre '
+					   'de la aplicación y no de la persona, y no contaría como revisión '
+					   'requerida.',
+		}</field>
+	</record>
+
+	<record id="action_pendiente_rama_tarea" model="ir.actions.act_window">
+		<field name="name">Crear rama desde tarea</field>
+		<field name="res_model">repo.coming.soon</field>
+		<field name="view_mode">form</field>
+		<field name="target">current</field>
+		<field name="context">{
+			'prm_titulo': 'Crear una rama desde una tarea',
+			'prm_bloque': 'F4 · Operación',
+			'prm_que': 'Desde una tarea de proyecto, crear la rama con el nombre que la '
+					   'convención pide y dejarla vinculada, para que después el mensaje '
+					   'de commit y la PR se puedan validar contra una tarea que existe '
+					   'de verdad.',
+		}</field>
+	</record>
+
+	<record id="action_pendiente_crear_repo" model="ir.actions.act_window">
+		<field name="name">Crear repositorio</field>
+		<field name="res_model">repo.coming.soon</field>
+		<field name="view_mode">form</field>
+		<field name="target">current</field>
+		<field name="context">{
+			'prm_titulo': 'Crear un repositorio ya gobernado',
+			'prm_bloque': 'Bloque B · cierre de la etapa de política',
+			'prm_que': 'Un repositorio nuevo que nace con su clasificación, su plantilla '
+					   'de política aplicada, sus ramas y sus permisos. Hoy un repositorio '
+					   'nuevo nace desnudo y alguien tiene que acordarse de gobernarlo '
+					   'después.',
+		}</field>
+	</record>
+
+	<record id="action_pendiente_seguridad" model="ir.actions.act_window">
+		<field name="name">Hallazgos de seguridad</field>
+		<field name="res_model">repo.coming.soon</field>
+		<field name="view_mode">form</field>
+		<field name="target">current</field>
+		<field name="context">{
+			'prm_titulo': 'Secretos filtrados y dependencias vulnerables',
+			'prm_bloque': 'Bloque E · junto a los checks requeridos',
+			'prm_que': 'Lo que GitHub encuentra por su cuenta, traído como hallazgos: '
+					   'secretos en el historial —siempre críticos, porque un secreto '
+					   'commiteado no prescribe— y alertas de Dependabot con la severidad '
+					   'que les da GitHub.\n\n'
+					   'Ninguno se remedia con un plan: un secreto se rota, una '
+					   'dependencia se actualiza con una PR. El módulo los muestra y dice '
+					   'dónde se resuelven.\n\n'
+					   'Necesita dos permisos nuevos en la App y volver a aceptar la '
+					   'instalación.',
+		}</field>
+	</record>
+
+	<record id="action_pendiente_higiene" model="ir.actions.act_window">
+		<field name="name">Higiene</field>
+		<field name="res_model">repo.coming.soon</field>
+		<field name="view_mode">form</field>
+		<field name="target">current</field>
+		<field name="context">{
+			'prm_titulo': 'Ramas muertas y repositorios a archivar',
+			'prm_bloque': 'Bloque E · la lectura va con el inventario de módulos',
+			'prm_que': 'Ramas que ya se integraron a su línea de producción y se pueden '
+					   'borrar, y repositorios sin movimiento que conviene archivar.\n\n'
+					   'La distinción que hace este trabajo útil: una rama vieja YA '
+					   'INTEGRADA es basura y se puede proponer borrar; una rama vieja '
+					   'CON TRABAJO QUE NUNCA LLEGÓ puede ser trabajo por rescatar, y de '
+					   'ésa el módulo nunca va a proponer nada — sólo listarla.',
+		}</field>
+	</record>
+
+	<record id="action_pendiente_forks" model="ir.actions.act_window">
+		<field name="name">Forks y su upstream</field>
+		<field name="res_model">repo.coming.soon</field>
+		<field name="view_mode">form</field>
+		<field name="target">current</field>
+		<field name="context">{
+			'prm_titulo': 'Forks, su atraso y sus parches',
+			'prm_bloque': 'Bloque C',
+			'prm_que': 'Cuánto atrás está cada fork de su upstream, qué parches propios '
+					   'tiene encima, y la sincronización que los reaplica sin forzar '
+					   'nada cuando hay conflicto.\n\n'
+					   'Hoy los forks se relevan y se clasifican, pero su atraso no se '
+					   'mide y sus parches no se siguen.',
+		}</field>
+	</record>
+
+	<record id="action_pendiente_notificaciones" model="ir.actions.act_window">
+		<field name="name">Notificaciones</field>
+		<field name="res_model">repo.coming.soon</field>
+		<field name="view_mode">form</field>
+		<field name="target">current</field>
+		<field name="context">{
+			'prm_titulo': 'Auditoría programada y aviso de novedades',
+			'prm_bloque': 'Bloque E · después del drift de política',
+			'prm_que': 'La auditoría corriendo sola los lunes por la mañana, y un aviso '
+					   'por Discuss y correo con lo que cambió: lo nuevo y lo RESUELTO.\n\n'
+					   'Lo resuelto importa tanto como lo nuevo: es la única evidencia de '
+					   'que el trabajo sirvió, y un informe que sólo lista incumplimientos '
+					   'nunca la muestra.',
+		}</field>
+	</record>
+
+</odoo>

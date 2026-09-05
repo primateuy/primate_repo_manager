@@ -27,6 +27,8 @@
 		"views/repo_policy_views.xml",
 		"views/repo_member_views.xml",
 		"views/repo_config_settings_views.xml",
+		"views/repo_module_views.xml",
+		"views/repo_pendientes_views.xml",
 		"views/repo_menus.xml",
 		"report/repo_audit_report.xml",
 		"wizards/repo_key_rotation_views.xml",

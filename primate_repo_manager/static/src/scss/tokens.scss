@@ -73,14 +73,22 @@
 	color: var(--rm-ink-2);
 }
 
-// TIPOGRAFÍA. IBM Plex Sans para leer, IBM Plex Mono para identificar: todo lo que viene
-// de git —repositorio, rama, SHA, usuario— va en mono, para que el ojo separe «lo que
-// dice la app» de «lo que dice GitHub».
+// TIPOGRAFÍA — DECIDIDO EL 5-SEP-2026, Y NO ES PROVISORIO.
 //
-// OJO: la familia sans NO se impone globalmente desde acá. Ver el comentario del
-// conflicto de fuentes en el plan de la etapa; hasta que eso se decida, sólo se aplica la
-// mono, que es donde el sistema de diseño tiene su intención más fuerte y donde Odoo no
-// pone nada propio que valga la pena conservar.
+// **La sans de Odoo se hereda. Plex Sans no se impone. La Mono es la única fuente propia
+// del módulo.**
+//
+// El sistema de diseño pide Plex Sans para leer y Plex Mono para identificar. Lo segundo
+// se aplica; lo primero no, y el motivo no es técnico sino de encaje: Odoo define la
+// familia sans como una variable global, así que imponerla le cambiaría la tipografía a
+// TODA la instancia —Ventas, Contabilidad, Ajustes—. **Repo Manager vive adentro de Odoo
+// y no tiene que sentirse extranjero:** un módulo de gobernanza que le cambia la cara al
+// ERP entero se nota donde no debería.
+//
+// La identidad del diseño no se pierde por eso, porque no estaba en la sans: vive en los
+// tokens, en los patrones obligatorios y en la mono. Y la mono es donde el sistema tiene
+// su intención más fuerte —que el ojo separe «lo que dice la app» de «lo que dice
+// GitHub»—, que es justo lo que la sans del sistema no puede arruinar por ser neutra.
 @mixin rm-mono {
 	font-family: "IBM Plex Mono", SFMono-Regular, Menlo, Monaco, Consolas,
 		"Liberation Mono", "Courier New", monospace;

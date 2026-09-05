@@ -12,6 +12,7 @@ from . import test_audit_log
 from . import test_write_plan
 from . import test_write_apply
 from . import test_clasificacion_manual
+from . import test_inventario_modulos
 from . import test_plan_legible
 from . import test_habilitacion_escritura
 from . import test_politica_visible
