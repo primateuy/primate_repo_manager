@@ -339,6 +339,11 @@ class RepoWritePlan(models.Model):
 				"escritas en GitHub. Sacalas del plan."
 			) % {"n": len(sin_soporte),
 				 "lista": "\n".join("• %s" % o.description for o in sin_soporte)})
+		# SI NO SE PASAN, SE LEEN. La pantalla nueva confirma fila por fila y deja la
+		# confirmación escrita; el asistente viejo las pasa en el momento. Las dos entran
+		# por acá y las dos chocan con la misma guarda.
+		if confirmadas is None:
+			confirmadas = self.operation_ids.filtered("approval_ok")
 		destructivas = self.operation_ids.filtered("is_destructive")
 		faltan = destructivas - (confirmadas or self.env["repo.write.operation"])
 		if faltan:
@@ -548,6 +553,36 @@ class RepoWriteOperation(models.Model):
 			 "verificadas. Si alguna no, ésta no se intenta.")
 	dependency_blocked_by = fields.Char(
 		string="Bloqueada por", readonly=True, copy=False)
+	# --- LA APROBACIÓN, EN LA FILA ----------------------------------------
+	#
+	# El diseño baja la confirmación a la fila, y el motivo está escrito en el entregable:
+	# **se lee junto a la consecuencia**. Un modal aparte muestra la lista y tapa lo que la
+	# lista describe; la fila tiene la frase, el detalle técnico y el control en la misma
+	# línea de lectura.
+	#
+	# Que ahora se guarde no cambia quién decide. La guarda sigue siendo
+	# `repo.write.plan._aprobar`, que se niega si falta una destructiva por confirmar venga
+	# de donde venga la llamada. Lo que cambia es que la confirmación ya no es un dato de
+	# paso del asistente: queda escrita, con quién y cuándo.
+	approved = fields.Boolean(
+		string="Confirmada", readonly=True, copy=False,
+		help="Alguien la leyó y la confirmó. Para las destructivas es obligatorio; para "
+			 "las demás también se pide, porque aprobar es leer.")
+	approved_by_id = fields.Many2one(
+		"res.users", string="Confirmada por", readonly=True, copy=False,
+		ondelete="set null")
+	approved_at = fields.Datetime(string="Confirmada el", readonly=True, copy=False)
+
+	# LA CONFIRMACIÓN SE ATA A LO QUE SE CONFIRMÓ. Es la misma doctrina que la huella del
+	# plan, una escala más abajo: sin esto, alguien confirma una fila, después le cambia el
+	# payload, y la confirmación queda en pie sobre una operación que hace otra cosa. El
+	# plan entero también se descongela —eso ya funcionaba—, pero la fila tiene que decir
+	# por su cuenta que su confirmación caducó.
+	approval_fingerprint = fields.Char(
+		string="Huella de la confirmación", readonly=True, copy=False)
+	approval_ok = fields.Boolean(
+		string="Confirmación vigente", compute="_compute_approval_ok")
+
 	result_json = fields.Text(string="Resultado", readonly=True, copy=False)
 	error = fields.Text(string="Error", readonly=True, copy=False)
 	audit_log_id = fields.Many2one(
@@ -616,6 +651,106 @@ class RepoWriteOperation(models.Model):
 			op.is_supported = bool(manejador)
 			op.is_irreversible = bool(manejador) and not manejador.get("revertir")
 			op.description = op._describir(datos)
+
+	@api.depends("approved", "approval_fingerprint", "kind", "target", "payload_json",
+				 "description")
+	def _compute_approval_ok(self):
+		for op in self:
+			op.approval_ok = bool(
+				op.approved and op.approval_fingerprint == op._huella_de_operacion())
+
+	def _huella_de_operacion(self):
+		"""Lo que la fila afirma, hasheado. Incluye la FRASE, por lo mismo que la del plan:
+		lo que alguien confirmó fue la frase, no el JSON."""
+		self.ensure_one()
+		cuerpo = json.dumps({
+			"kind": self.kind or "",
+			"repository": self.repository_id.id,
+			"target": self.target or "",
+			"payload": _normalizar(self.payload_json),
+			"description": self.description or "",
+		}, sort_keys=True, separators=(",", ":"))
+		return hashlib.sha256(cuerpo.encode()).hexdigest()
+
+	def _nombre_a_escribir(self):
+		"""Qué hay que escribir para confirmar una irreversible: el nombre del objeto.
+
+		Es `target` y no un texto genérico como «CONFIRMAR» a propósito. Escribir una
+		palabra fija se hace en piloto automático; escribir el nombre de la rama que se va
+		a borrar obliga a mirar cuál es.
+		"""
+		self.ensure_one()
+		return self.target or ""
+
+	def action_confirmar(self, nombre=None):
+		"""Confirma ESTA operación. Para las irreversibles, exige escribir su nombre."""
+		self.ensure_one()
+		self._exigir_borrador()
+		if not self.is_supported:
+			raise UserError(_(
+				"«%s» todavía no tiene implementación: confirmarla no la haría "
+				"aplicable, sólo escondería el problema hasta el apply.") % self.description)
+		if self.is_irreversible:
+			esperado = self._nombre_a_escribir()
+			if (nombre or "").strip() != esperado:
+				raise UserError(_(
+					"Para confirmar algo que no tiene vuelta atrás hay que escribir su "
+					"nombre exacto: «%(esperado)s». Escribiste: «%(escrito)s»."
+				) % {"esperado": esperado, "escrito": (nombre or "").strip()})
+		self.write({
+			"approved": True,
+			"approved_by_id": self.env.user.id,
+			"approved_at": fields.Datetime.now(),
+			"approval_fingerprint": self._huella_de_operacion(),
+		})
+		return True
+
+	def action_desconfirmar(self):
+		"""Y desconfirmar TAMBIÉN es sólo en borrador.
+
+		Lo encontró un test: sin esta guarda se podía sacar la confirmación de una fila
+		DESPUÉS de aprobado el plan, y como la confirmación de fila no entra en la huella
+		del plan —no describe lo que se va a ejecutar—, nada lo detectaba. El plan seguía
+		aplicándose con una destructiva que, según la pantalla, ya nadie había confirmado.
+		"""
+		self.ensure_one()
+		self._exigir_borrador()
+		self.write({"approved": False, "approved_by_id": False,
+					"approved_at": False, "approval_fingerprint": False})
+		return True
+
+	def _exigir_borrador(self):
+		"""Las confirmaciones se hacen antes de aprobar, y sólo ahí.
+
+		No se llama a `_verificar_congelado` y no es un olvido: esa guarda exige que el
+		plan YA tenga una aprobación con la que comparar, y las confirmaciones son
+		justamente lo que pasa antes de que exista. Lo que corresponde pedir acá es que el
+		plan todavía se pueda cambiar.
+		"""
+		self.ensure_one()
+		if self.plan_id.state != "draft":
+			raise UserError(_(
+				"El plan está en «%(estado)s»: las confirmaciones se hacen en borrador, "
+				"antes de aprobarlo. Para rehacerlas, volvelo a borrador — y eso invalida "
+				"la aprobación, que es lo correcto."
+			) % {"estado": dict(
+				self.plan_id._fields["state"].selection).get(self.plan_id.state)})
+
+	def action_confirmar_reversibles(self):
+		"""Confirma de una vez las reversibles del plan. LAS IRREVERSIBLES, NUNCA.
+
+		El entregable lo dice así y es la línea que separa las dos: lo reversible se puede
+		aprobar en lote porque tiene vuelta; lo que no la tiene se confirma de a una,
+		escribiendo su nombre.
+		"""
+		planes = self.mapped("plan_id")
+		if len(planes) > 1:
+			raise UserError(_("Son operaciones de planes distintos."))
+		candidatas = self.filtered(
+			lambda o: not o.is_irreversible and o.is_supported and not o.approval_ok)
+		for op in candidatas:
+			op.action_confirmar()
+		return len(candidatas)
 
 	def _describir(self, datos):
 		"""La frase de esta operación. Un método por si un tipo nuevo necesita más."""
