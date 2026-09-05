@@ -18,6 +18,7 @@ from odoo.exceptions import UserError
 from odoo.tests.common import TransactionCase
 
 from .test_backend import RespuestaFalsa, _clave_rsa_de_prueba
+from .test_write_apply import sin_cursor_aparte
 
 
 class TransporteGit:
@@ -99,6 +100,7 @@ class BaseD2(TransactionCase):
 			"name": "Promoción de mi_modulo", "backend_id": self.backend.id})
 		self.env.user.group_ids = [(4, self.env.ref(
 			"primate_repo_manager.group_repo_lead").id)]
+		sin_cursor_aparte(self)
 
 	def _repo(self, nombre):
 		repo = self.env["repo.repository"].create({

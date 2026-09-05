@@ -14,6 +14,32 @@ from odoo.tests.common import TransactionCase
 
 from .test_backend import _clave_rsa_de_prueba
 
+
+def sin_cursor_aparte(caso):
+	"""Reemplaza la conexión durable por la del test, mientras dure el test.
+
+	En un test nada está confirmado, así que una conexión nueva no vería los registros
+	—la escritura en la bitácora se caería con un «Record does not exist» que no dice
+	nada de lo que se está probando—. Con el reemplazo se verifica QUÉ se guarda y que el
+	rollback lo use; NO la durabilidad, que se prueba contra el sandbox en dos procesos.
+
+	Vive acá, a nivel de módulo, porque LO NECESITA CUALQUIER TEST QUE APLIQUE: desde que
+	toda escritura deja constancia antes de verificar, y no sólo las que crean identidad,
+	un test de apply sin este reemplazo falla por la costura y no por lo que prueba. Pasó
+	con los tests de la barrera de D2 en cuanto se agregó la constancia.
+	"""
+	import contextlib
+
+	def falso(self):
+		return contextlib.nullcontext(self.env.cr)
+
+	# Sólo la operación: el plan ya no usa conexión aparte —marcar su estado desde otra
+	# conexión colisionaba con la transacción principal— y no tiene el método.
+	clase = caso.env["repo.write.operation"].__class__
+	original = clase._cursor_durable
+	clase._cursor_durable = falso
+	caso.addCleanup(lambda: setattr(clase, "_cursor_durable", original))
+
 UPGRADE = {"message": "Upgrade to GitHub Pro or make this repository public to "
 					  "enable this feature."}
 NO_PROTEGIDA = {"message": "Branch not protected"}
@@ -150,19 +176,7 @@ class TestApply(TransactionCase):
 		return plan
 
 	def _sin_cursor_aparte(self):
-		"""En un test nada está confirmado, así que una conexión nueva no vería los
-		registros. Se reemplaza por la actual: con eso se prueba QUÉ se guarda y que el
-		rollback lo use, NO la durabilidad — eso va contra el sandbox, en dos procesos."""
-		import contextlib
-		def falso(self):
-			return contextlib.nullcontext(self.env.cr)
-
-		# Sólo la operación: el plan ya no usa conexión aparte —marcar su estado desde
-		# otra conexión colisionaba con la transacción principal— y no tiene el método.
-		clase = self.env["repo.write.operation"].__class__
-		original = clase._cursor_durable
-		clase._cursor_durable = falso
-		self.addCleanup(lambda: setattr(clase, "_cursor_durable", original))
+		sin_cursor_aparte(self)
 
 	def _correr(self, plan, transporte):
 		"""Inyecta el transporte en la única puerta y aplica."""
@@ -250,6 +264,69 @@ class TestApply(TransactionCase):
 		self.assertEqual(op.state, "failed")
 		self.assertIn("relectura no lo confirma", op.error)
 		self.assertEqual(plan.state, "failed")
+
+	# --- LA ADMISIBILIDAD SALE DE LOS HECHOS ------------------------------------
+	#
+	# El incidente que obligó a escribir esta sección: una operación de protección se
+	# aplicó con un payload que no era una configuración, GitHub la aceptó, la relectura
+	# la rechazó con razón — y la operación quedó en `failed`. Con la admisibilidad
+	# atada al estado, `failed` significaba «no hay nada que revertir» mientras allá
+	# afuera había una protección puesta que nadie había diseñado. Hubo que sacarla a
+	# mano por fuera del embudo, que es exactamente lo que el embudo existe para evitar.
+
+	def test_una_operacion_que_ESCRIBIO_y_despues_fallo_se_puede_revertir(self):
+		"""El caso del incidente: el PUT entra, la verificación no confirma."""
+		plan = self._plan()
+		self._correr(plan, Transporte(gets=[
+			Respuesta(404, NO_PROTEGIDA),      # previo: no había protección
+			Respuesta(404, NO_PROTEGIDA),      # verificación: dice que no quedó
+		]))
+		op = plan.operation_ids
+		self.assertEqual(op.state, "failed")
+		# El estado dice «fallida»; los hechos dicen que la escritura salió.
+		self.assertTrue(
+			op._tiene_efecto_en_github(),
+			"una operación fallida DESPUÉS de escribir tiene que ofrecer reversión: "
+			"si no, su efecto queda afuera del embudo")
+
+		# Y la reversión encuentra su punto de retorno: volver a no tener protección.
+		transporte = Transporte(gets=[Respuesta(404, NO_PROTEGIDA)])
+		Backend = type(self.backend)
+		original = Backend.write_client
+		Backend.write_client = lambda s, transport=None: original(s, transport=transporte)
+		try:
+			op.action_rollback_operation()
+		finally:
+			Backend.write_client = original
+		self.assertEqual(op.state, "rolled_back")
+		self.assertIn(("DELETE",
+					   "https://api.github.com/repos/org/sbx/branches/19.0/protection"),
+					  transporte.llamadas)
+
+	def test_la_constancia_de_la_escritura_se_deja_ANTES_de_verificar(self):
+		"""Y trae el estado previo consigo: es lo único que sobrevive a una caída."""
+		plan = self._plan()
+		self._correr(plan, Transporte(gets=[
+			Respuesta(404, NO_PROTEGIDA), Respuesta(404, NO_PROTEGIDA)]))
+		entrada = plan.operation_ids._entrada_de_emision()
+		self.assertTrue(entrada, "sin constancia de emisión no hay hecho que consultar")
+		self.assertEqual(entrada.event_type, "write_emitted")
+		self.assertTrue(entrada.previous_state_json)
+
+	def test_una_operacion_que_fallo_ANTES_de_escribir_NO_ofrece_reversion(self):
+		"""La otra mitad de la regla: sin escritura no hay nada que deshacer.
+
+		Si esto no se probara, «todo es reversible» pasaría el test de arriba y sería
+		igual de falso que «nada fallido es reversible», sólo que hacia el otro lado.
+		"""
+		plan = self._plan()
+		self._correr(plan, Transporte(gets=[Respuesta(500, {"message": "boom"})]))
+		op = plan.operation_ids
+		self.assertEqual(op.state, "failed")
+		self.assertFalse(op._entrada_de_emision())
+		self.assertFalse(op._tiene_efecto_en_github())
+		with self.assertRaises(UserError):
+			op.action_rollback_operation()
 
 	def test_si_falta_una_clave_pedida_la_verificacion_no_pasa(self):
 		plan = self._plan()

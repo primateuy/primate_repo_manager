@@ -47,6 +47,9 @@ EVENT_TYPES = [
 	# antes de verificar nada. Ver la taxonomía en repo_write_apply.
 	("write_identity", "Identidad creada, registrada antes de verificar"),
 	("write_rolled_back", "Escritura revertida"),
+	# La escritura SALIÓ y todavía no se verificó. Es el hecho que hace admisible una
+	# reversión aunque la operación termine marcada como fallida. Ver `_persistir_emision`.
+	("write_emitted", "Escritura emitida, sin verificar todavía"),
 	# Cambiar la política es la escritura más silenciosa de todas: no toca un solo
 	# repositorio y sin embargo redefine qué cuenta como incumplimiento para todos los de
 	# esa clasificación, en todas las auditorías que vengan. El chatter no alcanza —es
@@ -86,6 +89,7 @@ CLASE_POR_EVENTO = {
 	"write_failed": "irreversible",
 	"write_blocked": "irreversible",
 	"write_identity": "irreversible",
+	"write_emitted": "escritura",
 	# Lecturas y decisiones que no tocan GitHub.
 	"sync": "lectura",
 	"policy_changed": "lectura",

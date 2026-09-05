@@ -287,6 +287,25 @@ class RepoWriteOperationApply(models.Model):
 			self._registrar_falla(str(exc), previo=previo)
 			return False
 
+		# --- 2a. DEJAR CONSTANCIA DE QUE LA ESCRITURA SALIÓ ---------------
+		#
+		# Es el mismo argumento del paso 2b, aplicado a TODAS las operaciones y no sólo a
+		# las que crean identidad. Entre que GitHub acepta la escritura y que la
+		# verificación la confirma hay una ventana; si el ciclo termina ahí —porque la
+		# relectura no cuadra, o porque el proceso se cae— la operación queda marcada como
+		# fallida y allá afuera hay un cambio real.
+		#
+		# Sin esta constancia, la admisibilidad del rollback se decidía mirando el ESTADO
+		# de la operación, y «fallida» decía «no hay nada que revertir» cuando sí lo había.
+		# Pasó: un apply cuyo payload no era una configuración escribió una protección que
+		# nadie diseñó, la verificación la rechazó con razón, y el embudo se quedó sin
+		# camino de vuelta para su propio efecto.
+		#
+		# La admisibilidad sale de los HECHOS —¿salió una escritura?— y no de un campo que
+		# describe cómo terminó el intento. Es la doctrina del paso 3e, aplicada al lugar
+		# donde se había esquivado.
+		self._persistir_emision(previo)
+
 		# --- 2b. persistir la identidad creada, ANTES de verificar --------
 		# Ver la taxonomía en el docstring del módulo. Si el ciclo muere entre acá y el
 		# final, esto es lo único que le dice al rollback qué objeto borrar.
@@ -333,6 +352,12 @@ class RepoWriteOperationApply(models.Model):
 			# Se cayó antes de dejar la entrada final. El punto de retorno es el que se
 			# guardó en el paso 2b, que está en su propia entrada.
 			self.audit_log_id = self._entrada_de_identidad()
+		if not self.audit_log_id and self.state == "failed":
+			# Falló DESPUÉS de escribir: la constancia de emisión tiene el punto de
+			# retorno. Sin esto, el efecto de una operación fallida se quedaba afuera del
+			# embudo y había que deshacerlo a mano en GitHub.
+			self.audit_log_id = (
+				self._entrada_de_emision() or self._entrada_de_identidad())
 		if not self.audit_log_id or not self.audit_log_id.previous_state_json:
 			raise UserError(_(
 				"La operación «%s» no tiene estado previo registrado: no hay punto de "
@@ -416,6 +441,39 @@ class RepoWriteOperationApply(models.Model):
 		"""
 		return self.pool.cursor()
 
+	def _persistir_emision(self, previo):
+		"""Deja constancia, en su propia conexión, de que la escritura ya salió.
+
+		En conexión aparte por lo mismo que la identidad del paso 2b: si la transacción se
+		cae, esta constancia tiene que sobrevivir — es lo único que le va a decir al
+		rollback que hay algo que deshacer.
+		"""
+		self.ensure_one()
+		datos = {
+			"repo_id": self.repository_id.id,
+			"repo_name": self.repository_id.full_name,
+			"backend_id": self.plan_id.backend_id.id,
+			"kind": self.kind,
+			"target": self.target or "",
+		}
+		with self._cursor_durable() as cr:
+			self.env(cr=cr)["repo.audit.log"].sudo().registrar(
+				"write_emitted",
+				_("Escritura emitida sobre %(repo)s/%(destino)s, sin verificar todavía")
+				% {"repo": datos["repo_name"], "destino": datos["target"]},
+				backend=self.env(cr=cr)["repo.backend"].browse(datos["backend_id"]),
+				repository=self.env(cr=cr)["repo.repository"].browse(datos["repo_id"]),
+				payload=datos,
+				previous_state=previo,
+				extra={"operation_id": self.id})
+
+	def _entrada_de_emision(self):
+		"""La constancia de que la escritura de esta operación salió, si la hubo."""
+		self.ensure_one()
+		return self.env["repo.audit.log"].search([
+			("event_type", "=", "write_emitted"),
+			("operation_id", "=", self.id)], order="id desc", limit=1)
+
 	def _persistir_identidad(self, identidad, previo):
 		"""Guarda el id devuelto por GitHub, en una transacción que sobreviva a la caída.
 
@@ -464,7 +522,13 @@ class RepoWriteOperationApply(models.Model):
 		entrada dice lo que pasó.
 		"""
 		self.ensure_one()
-		return self.state in ("applied", "created") or bool(self._entrada_de_identidad())
+		# LOS HECHOS, no el estado. Una operación «fallida» puede haber escrito: si la
+		# relectura no confirmó, el intento fracasó pero el cambio existe. Preguntarle al
+		# campo `state` es preguntarle al sistema qué CREE; preguntarle a la bitácora es
+		# preguntarle qué PASÓ.
+		return (self.state in ("applied", "created")
+				or bool(self._entrada_de_identidad())
+				or bool(self._entrada_de_emision()))
 
 	def _entrada_de_identidad(self):
 		"""La entrada del paso 2b de esta operación, si la hubo."""
