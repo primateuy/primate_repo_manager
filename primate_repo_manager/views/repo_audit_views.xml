@@ -90,7 +90,12 @@
 		<field name="name">repo.audit.finding.list</field>
 		<field name="model">repo.audit.finding</field>
 		<field name="arch" type="xml">
-			<list string="Hallazgos" create="false"
+			<!-- `js_class` reemplaza el cuerpo por la lista agrupada con la bandeja del
+				 plan (página 2c) y deja el panel de control nativo. Los campos declarados
+				 son los que el componente lee; los que no se ven como columna van igual,
+				 porque uno que falte se dibuja vacío y no rompe nada visible — que es
+				 justo lo que no se detecta. -->
+			<list string="Hallazgos" create="false" js_class="repo_hallazgos"
 				  decoration-danger="severity == 'critical'"
 				  decoration-warning="severity == 'high'"
 				  decoration-muted="severity == 'info'">
@@ -113,6 +118,12 @@
 				<field name="severity_order" column_invisible="1"/>
 				<field name="severity_rank" column_invisible="1"/>
 				<field name="can_be_planned" column_invisible="1"/>
+				<field name="why_not_planned" column_invisible="1"/>
+				<field name="detail" column_invisible="1"/>
+				<field name="backend_id" column_invisible="1"/>
+				<field name="operations_preview" column_invisible="1"/>
+				<field name="preview_is_destructive" column_invisible="1"/>
+				<field name="planned_operation_id" column_invisible="1"/>
 				<field name="planned_plan_id" optional="hide" string="Ya en el plan"/>
 				<button name="action_remediate" type="object" icon="fa-wrench"
 						title="Remediar esto: arma la operación en un plan. No escribe nada."
@@ -239,7 +250,14 @@
 		<field name="name">Hallazgos</field>
 		<field name="res_model">repo.audit.finding</field>
 		<field name="view_mode">list,form</field>
-		<field name="context">{'search_default_g_sev': 1}</field>
+		<!-- SIN agrupado de fábrica. Lo tenía —`search_default_g_sev`— para que la lista
+			 vieja mostrara la estructura por severidad que el diseño pide; ahora esa
+			 estructura la da el propio componente, y dejarlo puesto era peor que inútil:
+			 una lista agrupada de Odoo carga sólo las cabeceras y los registros llegan al
+			 desplegar, así que la pantalla decía «no hay hallazgos que coincidan» con
+			 cuatro en el paginador. El filtro de severidad sigue disponible en el panel
+			 de búsqueda para quien lo quiera. -->
+		<field name="context">{}</field>
 	</record>
 
 	<record id="view_repo_repository_list" model="ir.ui.view">

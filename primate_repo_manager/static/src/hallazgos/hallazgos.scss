@@ -1,0 +1,260 @@
+// Copyright 2026 - PrimateUY / License AGPL-3.0 or later
+//
+// Hallazgos con la bandeja del plan — página 2c, y los cuatro estados del gesto según la
+// 6d. Las medidas de la grilla salen del prototipo.
+
+.rm-hallazgos {
+	color: var(--rm-ink);
+	background: var(--rm-bg);
+	min-height: 100%;
+
+	.rm-hallazgos-agrupado {
+		margin: var(--rm-space-3) var(--rm-space-4) 0;
+		padding: var(--rm-space-2) var(--rm-space-3);
+		border-radius: var(--rm-radius-sm);
+		background: var(--rm-sev-medium-tint);
+		font-size: .8125rem;
+	}
+
+	.rm-hallazgos-vacio {
+		padding: var(--rm-space-6);
+		max-width: 45rem;
+		h2 { font-size: 1.25rem; font-weight: 600; }
+		p { color: var(--rm-ink-2); line-height: 1.5; }
+	}
+
+	.rm-hallazgos-cuerpo {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) 340px;
+		align-items: start;
+		min-height: 100%;
+	}
+
+	.rm-hallazgos-lista {
+		background: var(--rm-surface);
+		border-right: 1px solid var(--rm-border);
+	}
+
+	// --- la fila -----------------------------------------------------------
+	.rm-hallazgos-fila {
+		display: grid;
+		grid-template-columns: 24px 110px minmax(0, 1fr) 190px 260px 170px;
+		gap: var(--rm-space-3);
+		padding: 11px 20px;
+		align-items: center;
+		font-size: .8125rem;
+		border-bottom: 1px solid var(--rm-border);
+		cursor: pointer;
+
+		&.rm-hallazgos-en-plan { background: var(--rm-accent-tint); }
+
+		// 1 · ARRASTRANDO. La fila de origen se queda en su lugar al 50 %: nunca
+		// desaparece, así se ve de dónde salió.
+		&.rm-hallazgos-en-mano { opacity: .5; }
+
+		// El mismo estado, alcanzado por teclado. Tiene que verse igual de claro: quien
+		// no arrastra necesita la misma señal de «esto está en la mano».
+		&.rm-hallazgos-levantado {
+			outline: 2px solid var(--rm-accent);
+			outline-offset: -2px;
+		}
+	}
+
+	.rm-hallazgos-encabezado {
+		font-size: .6875rem;
+		font-weight: 600;
+		letter-spacing: .06em;
+		text-transform: uppercase;
+		color: var(--rm-ink-2);
+		background: var(--rm-bg);
+		cursor: default;
+	}
+
+	// El mango. Lo que no se puede arrastrar no lo tiene — el hueco se conserva para que
+	// las columnas no bailen entre filas.
+	.rm-mango {
+		color: var(--rm-ink-3);
+		cursor: grab;
+		user-select: none;
+		&:active { cursor: grabbing; }
+		&:focus-visible { outline: 2px solid var(--rm-accent); border-radius: 2px; }
+		&.rm-mango-sin { cursor: default; }
+	}
+
+	.rm-hallazgos-titulo { font-weight: 600; }
+	.rm-hallazgos-repo { font-size: .75rem; }
+	.rm-hallazgos-propuesta {
+		color: var(--rm-ink-2);
+		font-size: .75rem;
+		line-height: 1.35;
+	}
+	.rm-hallazgos-sin-accion { color: var(--rm-ink-3); }
+	.rm-hallazgos-estado {
+		font-size: .75rem;
+		font-weight: 600;
+		.rm-hallazgos-ya { color: var(--rm-accent); }
+		.rm-hallazgos-no { color: var(--rm-ink-3); font-weight: 400; }
+		a { color: var(--rm-accent); text-decoration: underline; text-underline-offset: 3px; }
+	}
+
+	// --- el grupo ----------------------------------------------------------
+	.rm-hallazgos-grupo {
+		display: flex;
+		align-items: center;
+		gap: var(--rm-space-2);
+		padding: 9px 20px;
+		font-size: .8125rem;
+		border-bottom: 1px solid var(--rm-border);
+
+		.rm-hallazgos-grupo-n { font-weight: 600; }
+		.rm-hallazgos-grupo-plan { color: var(--rm-accent); font-weight: 600; }
+		.rm-hallazgos-grupo-ctx { color: var(--rm-ink-2); }
+
+		&.rm-grupo-critical { background: var(--rm-sev-critical-tint); }
+		&.rm-grupo-high     { background: var(--rm-sev-high-tint); }
+		&.rm-grupo-medium   { background: var(--rm-sev-medium-tint); }
+		&.rm-grupo-info     { background: var(--rm-sev-info-tint); }
+	}
+
+	// --- lo que se abre ----------------------------------------------------
+	.rm-hallazgos-detalle {
+		display: grid;
+		grid-template-columns: 1.4fr 1fr;
+		gap: var(--rm-space-5);
+		padding: 0 20px 14px 66px;
+		font-size: .75rem;
+		line-height: 1.5;
+		border-bottom: 1px solid var(--rm-border);
+		background: var(--rm-surface);
+
+		.rm-hallazgos-detalle-titulo {
+			font-size: .6875rem;
+			font-weight: 600;
+			letter-spacing: .06em;
+			text-transform: uppercase;
+			color: var(--rm-ink-2);
+			margin-bottom: var(--rm-space-1);
+		}
+		.rm-hallazgos-porque { margin-top: var(--rm-space-1); color: var(--rm-ink-2); }
+		.rm-hallazgos-abrir {
+			display: inline-block;
+			margin-top: var(--rm-space-2);
+			color: var(--rm-accent);
+			font-weight: 600;
+			text-decoration: underline;
+			text-underline-offset: 3px;
+		}
+	}
+
+	// --- la bandeja --------------------------------------------------------
+	.rm-hallazgos-bandeja {
+		padding: var(--rm-space-4);
+		display: flex;
+		flex-direction: column;
+		gap: var(--rm-space-3);
+		// Sticky para no tener que scrollear con la tarjeta en la mano.
+		position: sticky;
+		top: var(--rm-space-3);
+
+		.rm-bandeja-cabeza {
+			display: flex;
+			align-items: baseline;
+			gap: var(--rm-space-2);
+			.rm-bandeja-titulo { font-size: .875rem; font-weight: 600; }
+			.rm-bandeja-nombre { font-size: .75rem; color: var(--rm-ink-2); }
+			.rm-bandeja-abrir {
+				margin-left: auto;
+				font-size: .75rem;
+				font-weight: 600;
+				color: var(--rm-accent);
+				text-decoration: underline;
+				text-underline-offset: 3px;
+			}
+		}
+
+		// 2 · SOLTABLE, y 4 · INVÁLIDO. El mismo lugar dice las tres cosas: en reposo
+		// invita, sobrevolado confirma qué va a pasar, e inválido dice la causa concreta
+		// —nunca «acción no permitida»—.
+		.rm-bandeja-zona {
+			border: 2px dashed var(--rm-border);
+			background: var(--rm-surface);
+			border-radius: var(--rm-radius);
+			padding: var(--rm-space-3);
+			display: flex;
+			flex-direction: column;
+			gap: var(--rm-space-2);
+			min-height: 240px;
+			transition: background .12s ease, border-color .12s ease;
+
+			&.rm-bandeja-sobre {
+				border-color: var(--rm-accent);
+				background: var(--rm-accent-tint);
+			}
+			&.rm-bandeja-invalida {
+				border-color: var(--rm-sev-critical);
+				background: var(--rm-sev-critical-tint);
+				cursor: not-allowed;
+			}
+		}
+
+		// 3 · SOLTADO. La tarjeta entra en su lugar; sin toast, porque el resultado ya
+		// está visible en dos lugares —acá y en la fila de origen—.
+		.rm-bandeja-tarjeta {
+			background: var(--rm-surface);
+			border: 1px solid var(--rm-border);
+			border-radius: var(--rm-radius-sm);
+			padding: 10px 12px;
+			display: flex;
+			gap: var(--rm-space-2);
+			align-items: flex-start;
+			animation: rm-entrar 120ms ease-out;
+
+			.rm-bandeja-texto { min-width: 0; }
+			.rm-bandeja-que { font-size: .75rem; font-weight: 600; line-height: 1.4; }
+			.rm-bandeja-repo { font-size: .6875rem; color: var(--rm-ink-2); }
+			.rm-bandeja-quitar {
+				margin-left: auto;
+				color: var(--rm-ink-3);
+				cursor: pointer;
+				font-size: .875rem;
+				line-height: 1;
+			}
+		}
+
+		.rm-chip-chico { font-size: .625rem; padding: 2px 6px; }
+
+		.rm-bandeja-soltar {
+			border: 2px dashed var(--rm-accent);
+			border-radius: var(--rm-radius-sm);
+			min-height: 52px;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			text-align: center;
+			font-size: .75rem;
+			font-weight: 600;
+			color: var(--rm-accent);
+			padding: 8px 10px;
+		}
+
+		.rm-bandeja-pie { font-size: .75rem; color: var(--rm-ink-2); line-height: 1.5; }
+
+		// El anuncio del lector de pantalla. Visible además de anunciado: la señal del
+		// gesto por teclado tiene que verse, no sólo oírse.
+		.rm-bandeja-anuncio {
+			font-size: .6875rem;
+			color: var(--rm-accent-dark);
+			min-height: 1rem;
+		}
+	}
+}
+
+@keyframes rm-entrar {
+	from { opacity: 0; transform: translateY(-6px); }
+	to { opacity: 1; transform: none; }
+}
+
+// Sin rebotes y sin movimiento para quien lo pidió.
+@media (prefers-reduced-motion: reduce) {
+	.rm-hallazgos .rm-bandeja-tarjeta { animation: none; }
+}

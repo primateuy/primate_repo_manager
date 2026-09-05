@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+	<t t-name="primate_repo_manager.Hallazgos">
+		<div class="rm-hallazgos">
+
+			<!-- Agrupar desde el panel de control esconde los registros hasta que se
+				 despliega cada grupo. Esta pantalla ya agrupa por severidad, así que el
+				 agrupado sobra — pero si alguien lo pone, se lo DICE en vez de mostrar
+				 una lista vacía que parece «no hay nada». -->
+			<div t-if="props.list.isGrouped" class="rm-hallazgos-agrupado">
+				Esta pantalla ya agrupa por severidad. Con un agrupado puesto desde el
+				panel de búsqueda sólo se ven los hallazgos de los grupos que estén
+				desplegados: quitalo para verlos todos.
+			</div>
+
+			<div t-if="!registros.length" class="rm-hallazgos-vacio">
+				<h2>No hay hallazgos que coincidan</h2>
+				<p>Si acabás de filtrar, puede que no haya ninguno con esos criterios. Si
+					es una auditoría recién terminada y no encontró nada, es una buena
+					noticia — pero conviene mirar cuántos repositorios pudo leer.</p>
+			</div>
+
+			<div t-else="" class="rm-hallazgos-cuerpo">
+				<!-- LA LISTA -->
+				<div class="rm-hallazgos-lista">
+					<div class="rm-hallazgos-fila rm-hallazgos-encabezado">
+						<span/>
+						<span>Severidad</span>
+						<span>Hallazgo</span>
+						<span>Repositorio</span>
+						<span>Se propone</span>
+						<span>Estado</span>
+					</div>
+
+					<t t-foreach="grupos" t-as="grupo" t-key="grupo.clave">
+						<div t-attf-class="rm-hallazgos-grupo rm-grupo-{{grupo.clave}}">
+							<span t-attf-class="rm-chip rm-chip-{{grupo.clave}}"
+								  t-esc="grupo.etiqueta"/>
+							<span class="rm-hallazgos-grupo-n">
+								<t t-esc="grupo.items.length"/> hallazgo(s)
+							</span>
+							<span t-if="grupo.enPlan" class="rm-hallazgos-grupo-plan">
+								· <t t-esc="grupo.enPlan"/> en el plan borrador
+							</span>
+							<span class="rm-hallazgos-grupo-ctx" t-esc="grupo.contexto"/>
+						</div>
+
+						<t t-foreach="grupo.items" t-as="record" t-key="record.id">
+							<div t-attf-class="rm-hallazgos-fila{{record.data.planned_operation_id ? ' rm-hallazgos-en-plan' : ''}}{{state.arrastrando === record.resId ? ' rm-hallazgos-en-mano' : ''}}{{state.levantado === record.resId ? ' rm-hallazgos-levantado' : ''}}"
+								 t-att-draggable="arrastrable(record) ? 'true' : 'false'"
+								 t-on-dragstart="(ev) => this.alEmpezar(record, ev)"
+								 t-on-dragend="() => this.alTerminar()"
+								 t-on-click="() => this.alternar(record)">
+
+								<!-- El mango. Lo que no se puede arrastrar NO lo tiene:
+									 prevención antes que explicación. -->
+								<span t-if="arrastrable(record)" class="rm-mango"
+									  tabindex="0" role="button"
+									  t-att-aria-label="'Levantar: ' + record.data.summary"
+									  t-on-keydown="(ev) => this.alTeclado(record, ev)"
+									  t-on-click.stop="() => {}">⠿</span>
+								<span t-else="" class="rm-mango rm-mango-sin"/>
+
+								<span t-attf-class="rm-chip rm-chip-{{record.data.severity}}"
+									  t-esc="etiquetaSeveridad(record)"/>
+
+								<span class="rm-hallazgos-titulo"
+									  t-esc="record.data.summary"/>
+
+								<span class="rm-mono rm-hallazgos-repo"
+									  t-esc="repo(record)"/>
+
+								<span class="rm-hallazgos-propuesta">
+									<t t-if="record.data.operations_preview">
+										<t t-esc="record.data.operations_preview"/>
+									</t>
+									<t t-else="">
+										<span class="rm-hallazgos-sin-accion">
+											Sin acción propuesta
+										</span>
+									</t>
+								</span>
+
+								<span class="rm-hallazgos-estado">
+									<t t-if="record.data.planned_operation_id">
+										<span class="rm-hallazgos-ya">En el plan borrador</span>
+									</t>
+									<t t-elif="arrastrable(record)">
+										<a href="#" t-on-click.stop.prevent="() => this.agregar([record.resId])">
+											Agregar al plan
+										</a>
+									</t>
+									<t t-else="">
+										<span class="rm-hallazgos-no">No se puede remediar</span>
+									</t>
+								</span>
+							</div>
+
+							<!-- lo que se abre al hacer clic en la fila -->
+							<div t-if="abierto(record)" class="rm-hallazgos-detalle">
+								<div>
+									<div class="rm-hallazgos-detalle-titulo">En castellano</div>
+									<div t-esc="record.data.detail or record.data.summary"/>
+									<!-- El clic en la fila despliega, así que la ficha
+										 necesita su propia puerta: sin esto, desde acá no
+										 se llega al hallazgo ni, por él, al repositorio. -->
+									<a class="rm-hallazgos-abrir" href="#"
+									   t-on-click.stop.prevent="() => this.abrirFicha(record)">
+										Abrir el hallazgo
+									</a>
+								</div>
+								<div>
+									<div class="rm-hallazgos-detalle-titulo">
+										Operaciones que generaría
+									</div>
+									<div t-if="record.data.operations_preview"
+										 t-attf-class="{{record.data.preview_is_destructive ? 'rm-irreversible' : ''}}"
+										 t-esc="record.data.operations_preview"/>
+									<div t-else="">
+										Ninguna: este hallazgo sólo informa.
+										<t t-if="record.data.why_not_planned">
+											<div class="rm-hallazgos-porque"
+												 t-esc="record.data.why_not_planned"/>
+										</t>
+									</div>
+								</div>
+							</div>
+						</t>
+					</t>
+				</div>
+
+				<!-- LA BANDEJA -->
+				<aside class="rm-hallazgos-bandeja">
+					<div class="rm-bandeja-cabeza">
+						<span class="rm-bandeja-titulo">Plan en borrador</span>
+						<span t-if="state.plan" class="rm-mono rm-bandeja-nombre"
+							  t-esc="state.plan.nombre"/>
+						<a t-if="state.plan" href="#" class="rm-bandeja-abrir"
+						   t-on-click.prevent="() => this.abrirPlan()">Abrir</a>
+					</div>
+
+					<div t-attf-class="rm-bandeja-zona{{state.sobreBandeja ? ' rm-bandeja-sobre' : ''}}{{state.invalido ? ' rm-bandeja-invalida' : ''}}"
+						 t-on-dragover="(ev) => this.alSobrevolar(ev)"
+						 t-on-dragleave="() => this.alSalir()"
+						 t-on-drop="(ev) => this.alSoltar(ev)">
+
+						<div t-foreach="state.enPlan" t-as="op" t-key="op.id"
+							 class="rm-bandeja-tarjeta">
+							<span t-if="op.severidad"
+								  t-attf-class="rm-chip rm-chip-{{op.severidad}} rm-chip-chico"
+								  t-esc="op.severidad_label"/>
+							<div class="rm-bandeja-texto">
+								<div t-attf-class="rm-bandeja-que{{op.destructiva ? ' rm-irreversible' : ''}}"
+									 t-esc="op.descripcion"/>
+								<div class="rm-mono rm-bandeja-repo" t-esc="op.repositorio"/>
+							</div>
+							<span class="rm-bandeja-quitar" role="button" tabindex="0"
+								  title="Sacar del plan"
+								  t-on-click="() => this.quitar(op.id)">×</span>
+						</div>
+
+						<div class="rm-bandeja-soltar">
+							<t t-if="state.invalido">
+								Este hallazgo no propone ninguna acción: no se puede remediar
+							</t>
+							<t t-elif="state.sobreBandeja">Soltá acá · se agrega al plan</t>
+							<t t-else="">Arrastrá un hallazgo acá</t>
+						</div>
+					</div>
+
+					<div class="rm-bandeja-pie" t-esc="resumenBandeja"/>
+
+					<!-- Lo que el lector de pantalla anuncia del gesto por teclado. -->
+					<div class="rm-bandeja-anuncio" aria-live="polite"
+						 t-esc="state.anuncio"/>
+
+					<button t-if="state.plan" class="btn btn-primary"
+							t-on-click="() => this.abrirPlan()">
+						Leer el plan
+					</button>
+
+					<!-- Regla 2. -->
+					<Apagado que="'Historia del hallazgo'" bloque="'E2'" forma="'bloque'"
+							 detalle="'En qué auditoría apareció y en cuál no estaba.'"/>
+				</aside>
+			</div>
+		</div>
+	</t>
+
+</templates>
