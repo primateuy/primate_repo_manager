@@ -69,8 +69,20 @@ registry.category("web_tour.tours").add("prm_repositorio", {
 			run: "click",
 		},
 		{
+			// La lista de hallazgos dejó de ser una tabla el día que se migró a la
+			// pantalla del diseño, y este paso buscaba un `td`. Se apunta al título de
+			// la fila, que es lo que el paso siempre quiso comprobar: que se lea el
+			// hallazgo y no una columna de ids.
 			content: "y la lista muestra el hallazgo, no una columna de ids",
-			trigger: ".o_list_view td:contains(rama sin protección)",
+			trigger: ".rm-hallazgos-titulo:contains(rama sin protección)",
+			run: "click",
+		},
+		{
+			// El clic en la fila despliega el detalle; la ficha se abre desde ahí. Este
+			// paso existe porque la migración a la pantalla nueva se llevó puesta la
+			// única puerta a la ficha y dejó el camino cortado justo acá.
+			content: "y desde el detalle se abre la ficha del hallazgo",
+			trigger: ".rm-hallazgos-abrir",
 			run: "click",
 		},
 		{
