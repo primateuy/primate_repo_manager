@@ -26,8 +26,12 @@ from ..models.repo_write_plan import OPERATION_KINDS
 # Los tipos que este asistente sabe armar, y qué campos necesita cada uno. La lista es
 # explícita por la misma razón que la de A4.1: agregar un tipo de operación obliga a venir
 # acá y decidir si tiene formulario, en vez de que aparezca a medias.
+# OJO: sólo tipos que además tengan MANEJADOR. Un formulario que arma una operación que
+# después no se puede aplicar es peor que no tener el formulario: el plan se arma, se lee
+# bien y muere al aplicar. `branch_protection_remove` estaba en esta lista por un descuido
+# mío y no tiene implementación; lo destapó el test que recorre los diez tipos del selector.
 TIPOS_CON_FORMULARIO = (
-	"branch_protection_apply", "branch_protection_remove",
+	"branch_protection_apply",
 	"collaborator_grant", "collaborator_revoke",
 	"team_repo_grant", "team_repo_revoke",
 	"team_member_add", "team_member_remove",
@@ -93,6 +97,10 @@ class RepoOperationBuilder(models.TransientModel):
 		self.ensure_one()
 		necesita_repo = self.kind not in ("team_member_add", "team_member_remove")
 		if validar:
+			if self.kind not in self.env["repo.write.operation"]._manejadores():
+				raise UserError(_(
+					"El tipo «%s» todavía no tiene implementación: se podría armar la "
+					"operación pero el plan no se podría aplicar.") % self.kind)
 			if necesita_repo and not self.repository_id:
 				raise UserError(_("Elegí el repositorio."))
 			if self.kind.startswith("branch_protection") and not self.branch:

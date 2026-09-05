@@ -19,19 +19,59 @@
 					borran algo que otro puede estar usando</b>. Cada una lleva su propia
 					confirmación: no hay un tilde que las apruebe a todas.
 				</div>
+				<div class="alert alert-danger" role="alert"
+					 invisible="not irreversible_count">
+					<b>Hay operaciones irreversibles.</b> No entran en el rollback: una vez
+					aplicadas, deshacerlas no es apretar un botón. Para aprobar cada una
+					hay que <b>escribir el nombre del objeto</b> que se va a tocar.
+				</div>
 				<field name="plan_id" invisible="1"/>
 				<field name="pending_count" invisible="1"/>
+
+				<!-- DOS BARRAS SEPARADAS, del prototipo. Mezclarlas diría «vas por el
+					 80%» cuando lo que falta es justamente lo que no tiene vuelta atrás. -->
+				<group class="rm-progreso">
+					<label for="reversible_done" string="Reversibles aprobadas"
+						   invisible="not reversible_count"/>
+					<div invisible="not reversible_count">
+						<field name="reversible_done" readonly="1" class="oe_inline rm-mono"/>
+						/ <field name="reversible_count" readonly="1"
+								 class="oe_inline rm-mono"/>
+						<button name="action_approve_reversibles" type="object"
+								string="Aprobar todas las reversibles"
+								class="btn-link btn-sm"
+								invisible="reversible_done >= reversible_count"/>
+					</div>
+					<label for="irreversible_done" string="Irreversibles confirmadas"
+						   invisible="not irreversible_count"/>
+					<div class="rm-irreversible" invisible="not irreversible_count">
+						<field name="irreversible_done" readonly="1"
+							   class="oe_inline rm-mono"/>
+						/ <field name="irreversible_count" readonly="1"
+								 class="oe_inline rm-mono"/>
+					</div>
+				</group>
+
 				<field name="line_ids" nolabel="1">
 					<list create="false" delete="false" editable="bottom"
-						  decoration-danger="is_destructive">
+						  decoration-danger="is_irreversible"
+						  decoration-warning="is_destructive and not is_irreversible">
 						<field name="sequence" column_invisible="1"/>
 						<field name="is_destructive" string="Saca algo" readonly="1"/>
+						<field name="is_irreversible" string="Sin vuelta atrás"
+							   readonly="1"/>
 						<field name="description" string="Qué va a pasar" readonly="1"/>
-						<!-- El tilde sólo se puede tocar en las destructivas: en las
-							 demás no significa nada y prenderlo daría la falsa idea de
-							 que hacía falta. -->
+						<!-- Para lo irreversible no alcanza un tilde: hay que escribir el
+							 nombre. Un tilde se marca sin leer —la mano va antes que el
+							 ojo—; escribir el nombre obliga a mirar QUÉ se va a perder. -->
+						<field name="target_name" column_invisible="1"/>
+						<field name="typed_name" string="Escribí el nombre"
+							   class="rm-mono rm-tipeo"
+							   placeholder="nombre exacto"
+							   readonly="not is_irreversible"
+							   invisible="not is_irreversible"/>
 						<field name="confirmed" string="Confirmo"
-							   readonly="not is_destructive"/>
+							   readonly="not is_destructive or is_irreversible"/>
 						<field name="operation_id" column_invisible="1"/>
 					</list>
 				</field>

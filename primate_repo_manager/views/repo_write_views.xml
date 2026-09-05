@@ -149,15 +149,26 @@
 		<field name="arch" type="xml">
 			<!-- Sin `editable`: el modelo no acepta write, y una lista editable ofrecería
 				 algo que siempre va a fallar. -->
+			<!-- LOS CUATRO TIPOS DE ENTRADA, del sistema de diseño. No es una
+				 clasificación decorativa: cada uno se lee distinto, y por eso el tipo va
+				 primero y con su chip. La leyenda está en el buscador, agrupando. -->
 			<list create="false" delete="false"
-				  decoration-danger="event_type == 'write_failed'"
-				  decoration-warning="event_type == 'write_blocked'">
+				  decoration-danger="entry_class == 'irreversible'"
+				  decoration-info="entry_class == 'externo'"
+				  decoration-muted="entry_class == 'lectura'">
 				<field name="timestamp"/>
-				<field name="event_type" widget="badge"/>
+				<field name="entry_class" widget="badge" string="Tipo"
+					   decoration-success="entry_class == 'escritura'"
+					   decoration-danger="entry_class == 'irreversible'"
+					   decoration-info="entry_class == 'externo'"/>
+				<field name="event_type" optional="show"/>
 				<field name="summary"/>
-				<field name="repository_name"/>
-				<field name="member_login" optional="show"/>
+				<field name="repository_name" class="rm-mono"/>
+				<field name="member_login" class="rm-mono" optional="show"/>
 				<field name="user_id"/>
+				<!-- El sello, para poder mirarlo cuando algo huele mal. Apagado por
+					 defecto: es evidencia, no información de todos los días. -->
+				<field name="entry_hash" class="rm-mono" string="Sello" optional="hide"/>
 			</list>
 		</field>
 	</record>
@@ -171,10 +182,13 @@
 					<div class="alert alert-info" role="alert">
 						Las entradas de la bitácora no se modifican ni se borran. Si algo
 						quedó mal registrado, la corrección es una entrada nueva.
+						<b>Cada entrada guarda el hash de la anterior</b>: si alguien
+						tocara la base, la cadena se rompe y el diagnóstico lo avisa.
 					</div>
 					<group>
 						<group>
 							<field name="timestamp"/>
+							<field name="entry_class"/>
 							<field name="event_type"/>
 							<field name="user_id"/>
 						</group>
@@ -191,8 +205,47 @@
 					<group string="Estado previo (punto de retorno)">
 						<field name="previous_state_json" nolabel="1" widget="text"/>
 					</group>
+					<group string="Sello de integridad">
+						<div colspan="2" class="text-muted mb-2">
+							El sello se calcula sobre lo que esta entrada afirma y sobre el
+							sello de la anterior. Tocar cualquiera de las dos cosas lo
+							invalida, y con él, el de todas las que siguen.
+						</div>
+						<field name="previous_hash" class="rm-mono" readonly="1"/>
+						<field name="entry_hash" class="rm-mono" readonly="1"/>
+					</group>
 				</sheet>
 			</form>
+		</field>
+	</record>
+
+	<record id="view_repo_audit_log_search" model="ir.ui.view">
+		<field name="name">repo.audit.log.search</field>
+		<field name="model">repo.audit.log</field>
+		<field name="arch" type="xml">
+			<search string="Bitácora">
+				<field name="summary"/>
+				<field name="repository_name"/>
+				<field name="member_login"/>
+				<field name="user_id"/>
+				<!-- LA LEYENDA, como filtros: los cuatro tipos con el texto del diseño. -->
+				<filter name="c_escritura" string="Escritura verificada, se puede revertir"
+						domain="[('entry_class', '=', 'escritura')]"/>
+				<filter name="c_irreversible" string="Irreversible, o falló"
+						domain="[('entry_class', '=', 'irreversible')]"/>
+				<filter name="c_lectura" string="Lectura (auditoría), no cambia nada"
+						domain="[('entry_class', '=', 'lectura')]"/>
+				<filter name="c_externo" string="Cambio detectado fuera de la app"
+						domain="[('entry_class', '=', 'externo')]"/>
+				<group>
+					<filter name="g_clase" string="Tipo de entrada" domain="[]"
+							context="{'group_by': 'entry_class'}"/>
+					<filter name="g_evento" string="Evento" domain="[]"
+							context="{'group_by': 'event_type'}"/>
+					<filter name="g_repo" string="Repositorio" domain="[]"
+							context="{'group_by': 'repository_id'}"/>
+				</group>
+			</search>
 		</field>
 	</record>
 
@@ -206,6 +259,7 @@
 		<field name="name">Bitácora</field>
 		<field name="res_model">repo.audit.log</field>
 		<field name="view_mode">list,form</field>
+		<field name="search_view_id" ref="view_repo_audit_log_search"/>
 	</record>
 
 </odoo>

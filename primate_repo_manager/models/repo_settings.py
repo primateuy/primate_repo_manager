@@ -70,6 +70,11 @@ class RepoSettings(models.TransientModel):
 	key_loaded = fields.Boolean(
 		string="Clave de cifrado cargada", compute="_compute_diagnostico")
 	key_detail = fields.Char(string="Detalle de la clave", compute="_compute_diagnostico")
+	chain_state = fields.Selection(
+		[("ok", "Íntegra"), ("rota", "ROTA"), ("vacia", "Sin entradas todavía")],
+		string="Cadena de la bitácora", compute="_compute_diagnostico")
+	chain_detail = fields.Char(
+		string="Detalle de la cadena", compute="_compute_diagnostico")
 
 	@api.model
 	def default_get(self, campos):
@@ -128,6 +133,24 @@ class RepoSettings(models.TransientModel):
 				ajustes.runner_detail = _(
 					"Todavía no se procesó ninguna tarea, así que no hay con qué afirmar "
 					"que funciona. Lanzá una auditoría y volvé a mirar.")
+
+			# La cadena de la bitácora. Es lo único del diagnóstico que puede acusar a
+			# alguien: si está rota, alguien escribió en la base por fuera de Odoo.
+			cadena = self.env["repo.audit.log"].verificar_cadena()
+			ajustes.chain_state = cadena["estado"]
+			if cadena["estado"] == "ok":
+				ajustes.chain_detail = _(
+					"Íntegra desde el %(desde)s · %(n)s entradas verificadas."
+				) % {"desde": cadena["desde"], "n": cadena["entradas"]}
+			elif cadena["estado"] == "rota":
+				ajustes.chain_detail = _(
+					"ROTA en la entrada %(id)s (%(momento)s): %(motivo)s. Alguien escribió "
+					"en la base por fuera de la aplicación."
+				) % {"id": cadena["entrada"], "momento": cadena["momento"],
+					 "motivo": cadena["motivo"]}
+			else:
+				ajustes.chain_detail = _(
+					"Todavía no hay entradas encadenadas que verificar.")
 
 			# La clave NO se lee ni se muestra: sólo se responde si está.
 			try:

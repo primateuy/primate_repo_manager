@@ -66,12 +66,47 @@ class RepoPlanApproveWizard(models.TransientModel):
 				]
 		return asistentes
 
-	@api.depends("line_ids.is_destructive", "line_ids.confirmed")
+	# DOS BARRAS SEPARADAS, como en el prototipo: las reversibles y las irreversibles no
+	# se mezclan en un solo progreso. Mezclarlas diría «vas por el 80%» cuando lo que
+	# falta es justamente lo único que no tiene vuelta atrás.
+	reversible_count = fields.Integer(
+		string="Reversibles", compute="_compute_conteos")
+	reversible_done = fields.Integer(
+		string="Reversibles aprobadas", compute="_compute_conteos")
+	irreversible_count = fields.Integer(
+		string="Irreversibles", compute="_compute_conteos")
+	irreversible_done = fields.Integer(
+		string="Irreversibles confirmadas", compute="_compute_conteos")
+
+	@api.depends("line_ids.is_destructive", "line_ids.is_irreversible",
+				 "line_ids.confirmed")
 	def _compute_conteos(self):
 		for asistente in self:
 			destructivas = asistente.line_ids.filtered("is_destructive")
 			asistente.destructive_count = len(destructivas)
 			asistente.pending_count = len(destructivas.filtered(lambda l: not l.confirmed))
+			irreversibles = asistente.line_ids.filtered("is_irreversible")
+			reversibles = asistente.line_ids - irreversibles
+			asistente.irreversible_count = len(irreversibles)
+			asistente.irreversible_done = len(irreversibles.filtered("confirmed"))
+			asistente.reversible_count = len(reversibles)
+			asistente.reversible_done = len(reversibles.filtered("confirmed"))
+
+	def action_approve_reversibles(self):
+		"""Aprobar en bloque TODO lo que se puede revertir.
+
+		Del triage de producto. No contradice el «nunca en lote»: eso es sobre lo que
+		puede sacarle el acceso a alguien o borrar algo, y esas siguen una por una. Pedir
+		veinte tildes para veinte protecciones de rama que se deshacen con un click no
+		agrega criterio, agrega fatiga — y la fatiga es lo que hace que después se tilde
+		sin leer también lo que sí importa.
+		"""
+		self.ensure_one()
+		(self.line_ids - self.line_ids.filtered("is_irreversible")).confirmed = True
+		return {
+			"type": "ir.actions.act_window", "res_model": self._name,
+			"res_id": self.id, "view_mode": "form", "target": "new",
+		}
 
 	def action_confirm(self):
 		self.ensure_one()
@@ -94,6 +129,28 @@ class RepoPlanApproveLine(models.TransientModel):
 	description = fields.Char(related="operation_id.description", readonly=True)
 	is_destructive = fields.Boolean(
 		related="operation_id.is_destructive", readonly=True)
+	is_irreversible = fields.Boolean(
+		related="operation_id.is_irreversible", readonly=True)
 	confirmed = fields.Boolean(
 		string="Confirmo",
 		help="Sólo hace falta en las destructivas, y hace falta en cada una.")
+
+	# EL TIPEO DEL NOMBRE, exacto al prototipo. Para lo irreversible no alcanza un tilde:
+	# hay que escribir el nombre del objeto que se va a tocar.
+	#
+	# La diferencia entre las dos fricciones no es de grado sino de naturaleza. Un tilde se
+	# marca sin leer —la mano va antes que el ojo—; escribir «hotfix-viejo» obliga a mirar
+	# QUÉ se está por perder, que es lo único que puede hacer que alguien se detenga.
+	target_name = fields.Char(
+		related="operation_id.target", string="Nombre del objeto", readonly=True)
+	typed_name = fields.Char(
+		string="Escribí el nombre para aprobar",
+		help="Tal cual figura. Es lo que separa apretar un botón de tomar una decisión.")
+
+	@api.onchange("typed_name")
+	def _onchange_typed_name(self):
+		"""El tilde se prende solo cuando el nombre coincide, y se apaga si deja de hacerlo."""
+		for linea in self:
+			if linea.is_irreversible:
+				linea.confirmed = (
+					(linea.typed_name or "").strip() == (linea.target_name or ""))

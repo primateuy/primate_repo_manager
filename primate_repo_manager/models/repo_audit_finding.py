@@ -46,6 +46,7 @@ RANK_BY_SEVERITY = {
 # Severidad BASE por tipo. Los moduladores la ajustan según plantilla y magnitud; sus
 # umbrales son configurables (ver res.config.settings), la lógica vive acá y está testeada.
 FINDING_TYPES = [
+	("audit_log_chain_broken", "La cadena de la bitácora está rota"),
 	("mirror_branch_drift", "Push en rama espejo"),
 	("permission_admin_exceeded", "Permiso de administrador excedido"),
 	("permission_exceeded", "Permiso excedido"),
@@ -70,6 +71,7 @@ FINDING_TYPES = [
 ]
 
 BASE_SEVERITY = {
+	"audit_log_chain_broken": "critical",
 	"mirror_branch_drift": "critical",
 	"permission_admin_exceeded": "critical",
 	"permission_exceeded": "high",
@@ -130,6 +132,10 @@ REMEDIATION_BY_TYPE = {
 	"convention_adoption": "review_manually",
 	"owner_account_admin": "no_action_owner",
 	"institutional_account": "no_action_owner",
+	# El módulo auditándose a sí mismo: si la cadena de la bitácora está rota, alguien
+	# escribió en la base por fuera de la aplicación. No hay hallazgo más grave que ése,
+	# porque pone en duda todo lo demás que la bitácora afirma.
+	"audit_log_chain_broken": "review_manually",
 }
 
 # Las que quitan acceso o cambian algo que puede romper el trabajo de otro.

@@ -702,10 +702,9 @@ Tres caminos, con su precio:
 impone. El porqué, en las palabras que lo cerraron: *Repo Manager vive adentro de Odoo y no
 tiene que sentirse extranjero; la identidad está en los tokens, los patrones y la mono.*
 
-**Pendiente que va con el tramo de la pantalla:** vendorizar los `.woff2` de IBM Plex Mono
-(licencia OFL) en `static/src/fonts/`. Sin eso, en una máquina que no tenga Plex instalada
-la mono cae al stack de Odoo y la única fuente propia del módulo desaparece justo donde más
-importa.
+**Hecho (5-sep-2026):** los `.woff2` de IBM Plex Mono viajan con el módulo, en
+`static/src/fonts/`, con su licencia OFL al lado. Verificado en el navegador: sobre el
+inventario de módulos, 80 celdas en mono y el peso 400 cargado desde el módulo.
 
 
 ---
@@ -727,15 +726,16 @@ Va junto con el otro pedido de la pausa de producto —**export firmado de bitá
 hash**— porque son la misma pieza: sin cadena, la firma del export sólo dice «esto es lo
 que la base tenía hoy», no «esto es lo que pasó».
 
-**Lo que hay que decidir, y no decido solo:**
-1. La cadena arranca desde cero, o se siembra sobre las entradas que ya existen. Sembrar
-   sobre lo viejo firma un pasado que nadie encadenó: es cómodo y es mentira. Mi
-   recomendación: **arrancar la cadena ahora**, con una entrada inicial que diga que lo
-   anterior no está encadenado.
-2. Dónde se verifica: el diagnóstico de Ajustes ya existe y es el lugar natural.
+**Decidido e implementado el 5-sep-2026.** La cadena arranca ahora, sin sembrar sobre lo
+viejo: una cadena que «verificara» un pasado que nadie encadenó estaría fabricando
+confianza, que es lo contrario de su propósito. La entrada de génesis declara cuántas
+entradas quedaron afuera. La verificación vive en el diagnóstico de Ajustes —«Íntegra desde
+el …» / «ROTA en la entrada N»— y una cadena rota es hallazgo crítico del propio módulo.
 
-*Dimensión:* chica —un campo, un cálculo al crear, una verificación— pero toca el modelo
-más delicado del módulo, así que va con su propio paso y su mutación.
+*Consecuencia que quedó escrita en el código:* cambiar la lista de campos sellados
+invalida todas las cadenas existentes. Si alguna vez hay que cambiarla, el camino honesto
+es el mismo que se eligió para arrancar: una génesis nueva que declare desde cuándo vale el
+sello nuevo. Recalcular los viejos en silencio sería, otra vez, fabricar confianza.
 
 
 ## Validación visual pendiente

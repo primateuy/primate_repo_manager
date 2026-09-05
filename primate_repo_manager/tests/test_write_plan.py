@@ -93,8 +93,9 @@ class TestPlanCongelado(TransactionCase):
 		"""El orden importa: aplicar y después revertir no es lo mismo que al revés."""
 		otra = self.env["repo.write.operation"].create({
 			"plan_id": self.plan.id, "sequence": 20,
-			"kind": "branch_protection_remove", "repository_id": self.repo.id,
-			"target": "17.0",
+			# Un tipo IMPLEMENTADO: lo que se prueba acá es el orden, no el soporte.
+			"kind": "collaborator_revoke", "repository_id": self.repo.id,
+			"target": "alguien",
 		})
 		self._aprobar()
 		huella = self.plan.approval_fingerprint

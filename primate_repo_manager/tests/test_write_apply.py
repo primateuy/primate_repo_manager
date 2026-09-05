@@ -856,8 +856,25 @@ class TestApply(TransactionCase):
 			self._revertir(plan, transporte)
 		self.assertIn("no abarca", str(ctx.exception))
 
-	def test_un_tipo_no_implementado_falla_diciendolo(self):
-		plan = self._plan(kind="ruleset_delete", payload={"name": "x"})
+	def test_un_tipo_no_implementado_se_frena_AL_APROBAR(self):
+		"""La guarda se movió: antes fallaba al aplicar, ahora al aprobar.
+
+		Fallar a mitad del apply dejaría parte del plan escrito en GitHub y parte no, que
+		es exactamente el estado que este embudo existe para evitar. Frenar en la
+		aprobación no cuesta nada y evita el estado partido.
+		"""
+		plan = self.env["repo.write.plan"].create({
+			"name": "Con un tipo sin implementar", "backend_id": self.backend.id})
+		self.env["repo.write.operation"].create({
+			"plan_id": plan.id, "kind": "ruleset_delete",
+			"repository_id": self.repo.id, "target": "x",
+			"payload_json": json.dumps({"name": "x"}),
+		})
 		with self.assertRaises(UserError) as ctx:
-			self._correr(plan, Transporte(gets=[]))
-		self.assertIn("todavía no está implementado", str(ctx.exception))
+			_aprobar_plan(plan)
+		self.assertIn("no está implementado", str(ctx.exception))
+		self.assertEqual(plan.state, "draft")
+
+		# Y si alguien lo aplicara igual, salteando la aprobación, el manejador también
+		# se niega: la defensa de abajo sigue en pie.
+		self.assertFalse(plan.operation_ids.is_supported)

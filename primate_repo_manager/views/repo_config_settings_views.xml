@@ -43,6 +43,17 @@
 							   decoration-danger="runner_state == 'atascado'"
 							   decoration-warning="runner_state == 'sin_datos'"/>
 						<field name="runner_detail" readonly="1"/>
+						<field name="chain_state" widget="badge" readonly="1"
+							   decoration-success="chain_state == 'ok'"
+							   decoration-danger="chain_state == 'rota'"
+							   decoration-warning="chain_state == 'vacia'"/>
+						<field name="chain_detail" readonly="1"/>
+						<div colspan="2" class="text-muted mb-2">
+							La cadena de la bitácora no impide que alguien escriba en la
+							base por fuera de Odoo —nada dentro de la aplicación puede
+							impedirlo— pero lo <b>hace detectable</b>, que es lo que una
+							bitácora necesita para valer como prueba.
+						</div>
 						<field name="key_loaded" readonly="1"/>
 						<field name="key_detail" readonly="1"/>
 						<div colspan="2" class="text-muted">

@@ -67,11 +67,11 @@ class TestDescripcionLegible(BasePlan):
 						 "la frase es para leer, no el JSON con otro formato")
 
 	def test_lo_destructivo_dice_QUÉ_se_pierde(self):
-		"""«Quitar protección» no alcanza: hay que decir qué pasa a estar permitido."""
-		op = self._op("branch_protection_remove")
+		"""«Quitar el acceso» no alcanza: hay que decir qué deja de poder hacer quién."""
+		op = self._op("team_repo_revoke", target="equipo-x")
 		self.assertTrue(op.is_destructive)
-		self.assertIn("SIN PROTECCIÓN", op.description)
-		self.assertIn("force-push", op.description)
+		self.assertIn("SE LE QUITA", op.description)
+		self.assertIn("todos sus integrantes", op.description)
 
 	def test_revocar_un_permiso_directo_aclara_lo_del_team(self):
 		"""Es el matiz que ya nos mordió en F2: revertir un grant directo no deja a alguien
@@ -447,3 +447,127 @@ class TestAvanceDelPlan(BasePlan):
 		canales = self.env["ir.websocket"]._traducir_corridas(["res.users_1"])
 		self.assertEqual(canales, ["res.users_1"],
 						 "un modelo fuera de la lista pasa como texto y no se resuelve")
+
+
+class TestReversibleVsIrreversible(BasePlan):
+	"""El patrón del prototipo: lo que se puede deshacer y lo que no se leen distinto."""
+
+	def test_irreversible_SE_DERIVA_de_si_el_manejador_sabe_revertir(self):
+		"""No es una lista que alguien mantiene: se le pregunta al manejador. Así, el día
+		que se agregue «borrar una rama», la pantalla se entera sola.
+
+		MUTACIÓN: cablear `is_irreversible = False` y este test se pone rojo.
+		"""
+		import inspect
+
+		from ..models import repo_write_plan
+
+		fuente = inspect.getsource(
+			repo_write_plan.RepoWriteOperation._compute_description)
+		self.assertIn("_manejadores", fuente)
+		self.assertIn("revertir", fuente)
+
+	def test_ningun_tipo_IMPLEMENTADO_es_irreversible_todavia(self):
+		"""El patrón de lo irreversible existe, pero todavía no hay tipo que lo dispare.
+		El primero va a ser borrar una rama, en el bloque de higiene."""
+		from ..models.repo_write_plan import OPERATION_KINDS
+
+		for kind, _etiqueta in OPERATION_KINDS:
+			op = self._op(kind, target="x")
+			if not op.is_supported:
+				continue
+			self.assertFalse(
+				op.is_irreversible,
+				"«%s» quedó marcada como irreversible; si es a propósito, este test "
+				"tiene que actualizarse a propósito también" % kind)
+
+	def test_los_tipos_SIN_manejador_se_dicen_como_lo_que_son(self):
+		"""«No implementado» NO es «irreversible». Confundirlos mentiría en la dirección
+		tranquilizadora: diría «esto no tiene vuelta atrás» cuando la verdad es «esto ni
+		siquiera se puede hacer»."""
+		op = self._op("branch_protection_remove", target="17.0")
+		self.assertFalse(op.is_supported)
+		self.assertFalse(op.is_irreversible)
+		self.assertIn("NO ESTÁ IMPLEMENTADO", op.description)
+
+	def test_un_plan_con_un_tipo_sin_implementar_NO_se_aprueba(self):
+		"""Se corta al aprobar y no al aplicar: fallar a mitad del apply dejaría parte del
+		plan escrito en GitHub, que es el estado que todo el embudo existe para evitar."""
+		self._op("branch_protection_remove", target="17.0")
+		with self.assertRaises(UserError) as ctx:
+			self.plan._aprobar()
+		self.assertIn("no está implementado", str(ctx.exception))
+
+	def test_el_asistente_no_ofrece_tipos_que_no_se_pueden_aplicar(self):
+		"""Un formulario que arma algo que después no se puede aplicar es peor que no
+		tenerlo: el plan se arma, se lee bien y muere al aplicar."""
+		from ..wizards.repo_operation_builder import TIPOS_CON_FORMULARIO
+
+		manejados = set(self.env["repo.write.operation"]._manejadores())
+		for kind in TIPOS_CON_FORMULARIO:
+			self.assertIn(kind, manejados,
+						  "el asistente ofrece «%s», que no tiene manejador" % kind)
+
+	def test_una_operacion_sin_reversion_pide_escribir_el_nombre(self):
+		"""Se simula un tipo sin `revertir` en su manejador, que es el caso que viene."""
+		op = self._op("collaborator_revoke", target="alguien")
+		Operacion = type(op)
+		original = Operacion._manejadores
+		Operacion._manejadores = lambda s: {
+			"collaborator_revoke": {"leer": "x", "ejecutar": "y", "verificar": "z"}}
+		self.addCleanup(lambda: setattr(Operacion, "_manejadores", original))
+		op.invalidate_recordset()
+		op._compute_description()
+		self.assertTrue(op.is_irreversible)
+
+		asistente = self.env["repo.plan.approve.wizard"].create({
+			"plan_id": self.plan.id})
+		linea = asistente.line_ids[0]
+		self.assertTrue(linea.is_irreversible)
+		self.assertEqual(linea.target_name, "alguien")
+
+		# Un nombre equivocado NO confirma.
+		linea.typed_name = "otro"
+		linea._onchange_typed_name()
+		self.assertFalse(linea.confirmed)
+		# El exacto, sí.
+		linea.typed_name = "alguien"
+		linea._onchange_typed_name()
+		self.assertTrue(linea.confirmed)
+
+	def test_aprobar_las_reversibles_en_bloque_NO_toca_las_irreversibles(self):
+		"""«Nunca en lote» es sobre lo que puede sacarle el acceso a alguien. Pedir veinte
+		tildes para veinte protecciones que se deshacen con un click no agrega criterio:
+		agrega fatiga, y la fatiga es lo que hace que después se tilde sin leer."""
+		self._op("branch_protection_apply", payload={"allow_force_pushes": False})
+		irreversible = self._op("collaborator_revoke", target="alguien", sequence=20)
+		Operacion = type(irreversible)
+		original = Operacion._manejadores
+		def sin_revertir(s):
+			m = dict(original(s))
+			m["collaborator_revoke"] = {
+				k: v for k, v in m["collaborator_revoke"].items() if k != "revertir"}
+			return m
+		Operacion._manejadores = sin_revertir
+		self.addCleanup(lambda: setattr(Operacion, "_manejadores", original))
+		self.plan.operation_ids.invalidate_recordset()
+		self.plan.operation_ids._compute_description()
+
+		asistente = self.env["repo.plan.approve.wizard"].create({
+			"plan_id": self.plan.id})
+		asistente.action_approve_reversibles()
+		asistente.invalidate_recordset()
+		irrev = asistente.line_ids.filtered("is_irreversible")
+		self.assertTrue(irrev)
+		self.assertFalse(irrev.confirmed,
+						 "el bloque no puede haber confirmado lo que no tiene vuelta atrás")
+
+	def test_las_dos_barras_cuentan_por_separado(self):
+		"""Mezclarlas diría «vas por el 80%» cuando lo que falta es justo lo irreversible."""
+		self._op("branch_protection_apply", payload={"allow_force_pushes": False})
+		self._op("branch_protection_apply", sequence=20,
+				 payload={"allow_deletions": False})
+		asistente = self.env["repo.plan.approve.wizard"].create({
+			"plan_id": self.plan.id})
+		self.assertEqual(asistente.reversible_count, 2)
+		self.assertEqual(asistente.irreversible_count, 0)

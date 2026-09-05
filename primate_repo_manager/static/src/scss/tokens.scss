@@ -89,6 +89,30 @@
 // tokens, en los patrones obligatorios y en la mono. Y la mono es donde el sistema tiene
 // su intención más fuerte —que el ojo separe «lo que dice la app» de «lo que dice
 // GitHub»—, que es justo lo que la sans del sistema no puede arruinar por ser neutra.
+// LA FUENTE VIAJA CON EL MÓDULO. Sin esto, en una máquina que no tenga IBM Plex Mono
+// instalada la mono cae al stack del sistema y la única fuente propia del módulo
+// desaparece justo donde más importa — en los identificadores de git, que es donde el
+// diseño separa «lo que dice la app» de «lo que dice GitHub».
+//
+// IBM Plex es OFL: se puede redistribuir. La licencia va al lado de los archivos.
+@font-face {
+	font-family: "IBM Plex Mono";
+	font-style: normal;
+	font-weight: 400;
+	font-display: swap;
+	src: url("/primate_repo_manager/static/src/fonts/ibm-plex-mono-400.woff2")
+		 format("woff2");
+}
+
+@font-face {
+	font-family: "IBM Plex Mono";
+	font-style: normal;
+	font-weight: 600;
+	font-display: swap;
+	src: url("/primate_repo_manager/static/src/fonts/ibm-plex-mono-600.woff2")
+		 format("woff2");
+}
+
 @mixin rm-mono {
 	font-family: "IBM Plex Mono", SFMono-Regular, Menlo, Monaco, Consolas,
 		"Liberation Mono", "Courier New", monospace;
@@ -98,3 +122,46 @@
 .rm-mono, .o_prm_mono {
 	@include rm-mono;
 }
+
+// El campo donde se escribe el nombre de un objeto irreversible. Borde punteado en el
+// rojo de crítico, tal como el prototipo: la forma dice «esto todavía no está confirmado»
+// antes de que nadie lea la etiqueta.
+.rm-tipeo input {
+	@include rm-mono;
+	border: 1px dashed var(--rm-sev-critical) !important;
+	border-radius: var(--rm-radius-sm);
+	padding: 7px 10px;
+}
+
+.rm-irreversible {
+	color: var(--rm-sev-critical);
+	font-weight: 600;
+}
+
+// La página honesta de lo que todavía no llegó.
+.rm-pendiente {
+	max-width: 46rem;
+	padding: var(--rm-space-5) 0;
+
+	.rm-pendiente-etapa {
+		display: inline-block;
+		padding: var(--rm-space-1) var(--rm-space-3);
+		border-radius: var(--rm-radius-sm);
+		background: var(--rm-accent-tint);
+		color: var(--rm-accent-dark);
+		font-size: .85rem;
+		font-weight: 600;
+	}
+	h1 { margin: var(--rm-space-3) 0; }
+	.rm-pendiente-que { white-space: pre-line; color: var(--rm-ink-2); line-height: 1.6; }
+	.rm-pendiente-pie {
+		margin-top: var(--rm-space-5);
+		padding-top: var(--rm-space-3);
+		border-top: 1px solid var(--rm-border);
+		color: var(--rm-ink-3);
+		font-size: .9rem;
+	}
+}
+
+.rm-alert-ok { background: var(--rm-done-tint); border-color: var(--rm-done); }
+.rm-alert-warn { background: var(--rm-sev-medium-tint); border-color: var(--rm-sev-medium); }

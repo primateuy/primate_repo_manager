@@ -258,6 +258,18 @@ class RepoWritePlan(models.Model):
 		"""
 		self.ensure_one()
 		self._verificar_aprobable()
+		sin_soporte = self.operation_ids.filtered(lambda o: not o.is_supported)
+		if sin_soporte:
+			# Se corta ACÁ y no al aplicar. Fallar a mitad del apply dejaría parte del plan
+			# escrito en GitHub y parte no, que es el estado que todo este embudo existe
+			# para evitar.
+			raise UserError(_(
+				"Este plan tiene %(n)s operación(es) de un tipo que todavía no está "
+				"implementado:\n\n%(lista)s\n\n"
+				"Aplicarlo fallaría a mitad de camino, con parte de las operaciones ya "
+				"escritas en GitHub. Sacalas del plan."
+			) % {"n": len(sin_soporte),
+				 "lista": "\n".join("• %s" % o.description for o in sin_soporte)})
 		destructivas = self.operation_ids.filtered("is_destructive")
 		faltan = destructivas - (confirmadas or self.env["repo.write.operation"])
 		if faltan:
@@ -418,6 +430,14 @@ class RepoWriteOperation(models.Model):
 		string="Destructiva", compute="_compute_description", store=True,
 		help="Quita acceso o borra algo que otro puede estar usando. Cada una exige su "
 			 "confirmación propia al aprobar el plan.")
+	is_irreversible = fields.Boolean(
+		string="Irreversible", compute="_compute_description", store=True,
+		help="No tiene vuelta atrás por el mismo camino: NO entra en el rollback. Exige "
+			 "escribir el nombre del objeto para aprobarla.")
+	is_supported = fields.Boolean(
+		string="Se puede aplicar", compute="_compute_description", store=True,
+		help="Falso cuando el tipo existe en el selector pero todavía no tiene "
+			 "implementación. Un plan con una de éstas no se puede aprobar.")
 
 	# Las que sacan algo que ya está funcionando. Quitar una protección no borra código,
 	# pero deja pasar lo que antes se frenaba: es destructiva en el sentido que importa,
@@ -482,6 +502,19 @@ class RepoWriteOperation(models.Model):
 				except (TypeError, ValueError):
 					datos = {}
 			op.is_destructive = op.kind in self.KINDS_DESTRUCTIVOS
+			# IRREVERSIBLE SE DERIVA DE LOS HECHOS, no de una lista que alguien mantiene.
+			# Una operación es irreversible cuando su manejador está implementado pero NO
+			# declara cómo revertirla. Preguntárselo al manejador es lo que hace que el día
+			# que se agregue «borrar una rama» la pantalla se entere sola.
+			#
+			# «No implementado» NO es lo mismo que «irreversible», y confundirlos sería
+			# mentir en la dirección tranquilizadora: le diría a alguien «esto no tiene
+			# vuelta atrás» cuando la verdad es «esto ni siquiera se puede hacer». Lo
+			# encontró un test que recorría los diez tipos del selector y descubrió que dos
+			# no tienen manejador.
+			manejador = (op._manejadores() or {}).get(op.kind) if op.kind else {}
+			op.is_supported = bool(manejador)
+			op.is_irreversible = bool(manejador) and not manejador.get("revertir")
 			op.description = op._describir(datos)
 
 	def _describir(self, datos):
@@ -489,6 +522,16 @@ class RepoWriteOperation(models.Model):
 		self.ensure_one()
 		repo = self.repository_id.full_name or _("(sin repositorio)")
 		destino = self.target or "—"
+		# PRIMERO lo que no se puede aplicar. Si esta comprobación fuera al final, un tipo
+		# sin manejador saldría con su frase normal y bien redactada, y nadie sospecharía
+		# nada hasta el apply. Una frase que suena bien sobre algo que no funciona es peor
+		# que no tener frase.
+		if not self.is_supported:
+			return _(
+				"%(tipo)s sobre %(repo)s / %(destino)s — ESTE TIPO TODAVÍA NO ESTÁ "
+				"IMPLEMENTADO: el plan no se va a poder aplicar mientras esté."
+			) % {"tipo": dict(OPERATION_KINDS).get(self.kind, self.kind),
+				 "repo": repo, "destino": destino}
 		if self.kind == "branch_protection_apply":
 			return _("En %(repo)s, la rama %(rama)s pasa a %(reglas)s.") % {
 				"repo": repo, "rama": destino,
