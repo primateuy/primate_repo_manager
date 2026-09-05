@@ -16,6 +16,16 @@ class RespuestaFalsa:
 		self.headers = headers or {}
 		self.text = text
 
+	@property
+	def content(self):
+		"""El cliente de ESCRITURA lo usa para saber si hay cuerpo; el de lectura no.
+
+		Faltaba, y por eso este falso servía para probar lecturas y no escrituras. Se
+		agrega acá —en el falso compartido— y no en cada test: un doble que sólo imita la
+		mitad de la interfaz es un doble que va a fallar la próxima vez, en otro lado.
+		"""
+		return b"" if self._payload is None else b"{}"
+
 	def json(self):
 		if self._payload is None:
 			raise ValueError("sin cuerpo JSON")

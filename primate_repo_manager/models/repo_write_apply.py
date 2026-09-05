@@ -126,6 +126,17 @@ class RepoWritePlanApply(models.Model):
 		for operacion in self.operation_ids.sorted(lambda o: (o.sequence, o.id)):
 			if operacion.state in ("applied", "blocked"):
 				continue
+			# LA BARRERA. Se pregunta ANTES de leer nada de GitHub: una operación
+			# bloqueada por dependencia no tiene que gastar ni una llamada, y sobre todo
+			# no tiene que empezar. Ver `depends_on_ids`.
+			faltan = operacion._dependencias_incumplidas()
+			if faltan:
+				operacion.write({
+					"state": "blocked_by_dependency",
+					"dependency_blocked_by": ", ".join(faltan)[:255],
+				})
+				self._emitir_avance(actual=operacion.description, inmediato=True)
+				continue
 			# El aviso de apertura sale fuera de la transacción por el mismo motivo que en
 			# la auditoría: el apply entero corre en UNA transacción, así que un aviso
 			# emitido por el camino normal llegaría recién al final —todos juntos— y la
@@ -137,7 +148,9 @@ class RepoWritePlanApply(models.Model):
 		# `blocked` NO cuenta como fracaso: es un techo conocido y reportado, no algo
 		# que el sistema hizo mal. Sólo `failed` deja el plan en fallido.
 		estados = set(self.operation_ids.mapped("state"))
-		if "failed" in estados:
+		# Una operación bloqueada por dependencia cuenta como plan FALLIDO: algo que se
+		# aprobó no se hizo. Que no se haya intentado es la razón, no una atenuante.
+		if "failed" in estados or "blocked_by_dependency" in estados:
 			self.state = "failed"
 		else:
 			self.state = "applied"
@@ -231,6 +244,20 @@ class RepoWriteOperationApply(models.Model):
 	# ------------------------------------------------------------------
 	# Ciclo
 	# ------------------------------------------------------------------
+
+	def _dependencias_incumplidas(self):
+		"""Las dependencias que NO quedaron aplicadas. Vacío significa vía libre.
+
+		«Aplicada» y nada más: una dependencia bloqueada por techo de plan tampoco
+		habilita. Que GitHub no nos haya dejado hacer algo por una razón entendible no
+		cambia el hecho de que no se hizo, y lo que viene después contaba con que sí.
+		"""
+		self.ensure_one()
+		return [
+			d.description or d.display_name
+			for d in self.depends_on_ids
+			if d.state != "applied"
+		]
 
 	def _aplicar(self, cliente):
 		self.ensure_one()

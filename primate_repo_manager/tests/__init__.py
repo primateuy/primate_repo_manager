@@ -16,6 +16,7 @@ from . import test_acciones_abren
 from . import test_cadena_bitacora
 from . import test_inventario_modulos
 from . import test_plan_legible
+from . import test_promocion_modulos
 from . import test_habilitacion_escritura
 from . import test_politica_visible
 from . import test_tour_avance_vivo

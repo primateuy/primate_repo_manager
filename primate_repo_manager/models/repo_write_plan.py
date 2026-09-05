@@ -49,6 +49,9 @@ OPERATION_KINDS = [
 	("team_repo_revoke", "Quitar permiso por team"),
 	("team_member_remove", "Sacar a una persona de un team"),
 	("team_member_add", "Poner a una persona en un team"),
+	# D2 · promoción de módulos. `module_copy` escribe CONTENIDO, que es lo que ninguna
+	# operación hacía hasta ahora.
+	("module_copy", "Copiar un módulo a otro repositorio"),
 ]
 
 
@@ -166,7 +169,8 @@ class RepoWritePlan(models.Model):
 	@api.depends("backend_id", "operation_ids", "operation_ids.sequence",
 				 "operation_ids.kind", "operation_ids.repository_id",
 				 "operation_ids.target", "operation_ids.payload_json",
-				 "operation_ids.description", "operation_ids.is_destructive")
+				 "operation_ids.description", "operation_ids.is_destructive",
+				 "operation_ids.depends_on_ids")
 	def _compute_current_fingerprint(self):
 		for plan in self:
 			plan.current_fingerprint = plan._huella()
@@ -207,6 +211,7 @@ class RepoWritePlan(models.Model):
 					"payload": _normalizar(op.payload_json),
 					"descripcion": op.description or "",
 					"destructiva": op.is_destructive,
+					"depende_de": sorted(op.depends_on_ids.mapped("sequence")),
 				}
 				for op in self.operation_ids.sorted(lambda o: (o.sequence, o.id))
 			],
@@ -237,6 +242,64 @@ class RepoWritePlan(models.Model):
 			"context": {"default_plan_id": self.id},
 		}
 
+	def _verificar_destino_escribible(self):
+		"""Si la rama de destino exige PR, el plan NO se arma. Nunca falla a mitad del apply.
+
+		POR QUÉ ACÁ Y NO AL APLICAR. Una rama protegida que exige pull request rechaza el
+		push, y descubrirlo en el apply significa haber subido los blobs, creado el árbol y
+		el commit, y recién ahí chocar contra la referencia. No es un desastre —el commit
+		queda huérfano y GitHub lo recoge solo— pero es un fallo evitable, y el embudo
+		existe para que las cosas se sepan ANTES.
+
+		LA SALIDA DURABLE ES OTRA, y va en B1: los rulesets que el propio módulo aplique
+		tienen que incluir a `prm-writer` como bypass actor. El embudo
+		plan → aprobación individual → bitácora → reversión es una revisión MÁS estricta
+		que una pull request, no menos; sin esa exención, la gobernanza que B viene a
+		instalar estrangularía a D2 — el módulo se prohibiría a sí mismo hacer lo que el
+		mismo módulo aprobó.
+		"""
+		self.ensure_one()
+		copias = self.operation_ids.filtered(lambda o: o.kind == "module_copy")
+		if not copias:
+			return True
+		cliente = self.backend_id.client()
+		for op in copias:
+			datos = op._datos_modulo()
+			rama = op.repository_id.branch_ids.filtered(
+				lambda b, r=datos["destino_rama"]: b.name == r)[:1]
+			if not rama:
+				continue
+			if not rama.protected:
+				continue
+			# LA CLAVE PRESENTE YA SIGNIFICA «EXIGE PR», aunque venga vacía. En la API de
+			# GitHub, `required_pull_request_reviews: {}` es una rama que pide pull
+			# request con cero aprobaciones obligatorias — sigue rechazando el push
+			# directo. Preguntar por el valor con `bool()` dejaba pasar ese caso, y el
+			# plan habría fallado recién al aplicar. Lo encontró un test.
+			exige_pr = False
+			try:
+				proteccion = json.loads(rama.protection_json or "{}")
+				exige_pr = "required_pull_request_reviews" in proteccion
+			except (TypeError, ValueError):
+				# Una protección que no se puede leer NO se interpreta como «no exige
+				# nada»: se avisa y se deja pasar, porque negarse sobre un dato ilegible
+				# bloquearía el trabajo por una sospecha. El apply, si falla, lo va a decir.
+				_logger.warning(
+					"Repo Manager: la protección de %s@%s no se pudo leer al armar el "
+					"plan", op.repository_id.full_name, datos["destino_rama"])
+			if exige_pr:
+				raise UserError(_(
+					"La rama «%(rama)s» de %(repo)s exige pull request, así que un commit "
+					"directo va a ser rechazado por GitHub.\n\n"
+					"El plan no se arma para no fallar a mitad de camino. La salida "
+					"definitiva es que los rulesets que aplique este módulo incluyan a la "
+					"App de escritura como excepción — el embudo de aprobación es una "
+					"revisión más estricta que una PR—, y eso llega con la aplicación de "
+					"política por plantilla."
+				) % {"rama": datos["destino_rama"],
+					 "repo": op.repository_id.full_name})
+		return True
+
 	def _verificar_aprobable(self):
 		"""Las condiciones de siempre, sin las cuales ni se abre la aprobación."""
 		self.ensure_one()
@@ -258,6 +321,7 @@ class RepoWritePlan(models.Model):
 		"""
 		self.ensure_one()
 		self._verificar_aprobable()
+		self._verificar_destino_escribible()
 		sin_soporte = self.operation_ids.filtered(lambda o: not o.is_supported)
 		if sin_soporte:
 			# Se corta ACÁ y no al aplicar. Fallar a mitad del apply dejaría parte del plan
@@ -449,8 +513,34 @@ class RepoWriteOperation(models.Model):
 
 	state = fields.Selection(
 		[("pending", "Pendiente"), ("applied", "Aplicada"), ("failed", "Fallida"),
-		 ("rolled_back", "Revertida")],
+		 ("rolled_back", "Revertida"),
+		 # NO es «fallida», y la diferencia importa: esta operación nunca se intentó.
+		 # Marcarla como fallida diría que se probó y salió mal, y mandaría a alguien a
+		 # buscar un error de GitHub que no existe. Lo que pasó es que la que la habilitaba
+		 # no llegó a buen puerto, así que ésta ni se tocó — que es exactamente lo que se
+		 # quería.
+		 ("blocked_by_dependency", "No ejecutada por dependencia")],
 		string="Estado", default="pending", required=True, copy=False)
+
+	# --- D2.0 · LA BARRERA -------------------------------------------------
+	#
+	# POR QUÉ NO EXISTÍA ANTES, Y POR QUÉ AHORA SÍ. En F2 las operaciones de un plan son
+	# INDEPENDIENTES: proteger una rama y bajarle el permiso a alguien no tienen nada que
+	# ver entre sí, así que si una falla lo correcto es que las demás sigan. El bucle del
+	# apply está escrito así a propósito y estaba bien.
+	#
+	# La promoción de módulos rompe ese supuesto. «Copiar al destino» y «borrar del origen»
+	# son la misma operación partida en dos, y ejecutar la segunda cuando la primera falló
+	# es el peor resultado posible: contenido borrado que no está en ninguna otra parte.
+	# El peor caso PERMITIDO es duplicación benigna; borrado sin copia no es un caso, es un
+	# desastre.
+	depends_on_ids = fields.Many2many(
+		"repo.write.operation", "repo_write_op_dep_rel", "op_id", "depende_de_id",
+		string="Depende de",
+		help="Esta operación sólo se ejecuta si TODAS éstas quedaron aplicadas y "
+			 "verificadas. Si alguna no, ésta no se intenta.")
+	dependency_blocked_by = fields.Char(
+		string="Bloqueada por", readonly=True, copy=False)
 	result_json = fields.Text(string="Resultado", readonly=True, copy=False)
 	error = fields.Text(string="Error", readonly=True, copy=False)
 	audit_log_id = fields.Many2one(
@@ -459,8 +549,11 @@ class RepoWriteOperation(models.Model):
 
 	# Campos que entran en la huella del plan. `description` está incluida a propósito:
 	# ver el docstring de `repo.write.plan._huella`.
+	# `depends_on_ids` entra: cambiar de qué depende una operación cambia EN QUÉ
+	# CONDICIONES se va a ejecutar, que es tan parte de lo aprobado como el payload.
 	CAMPOS_EJECUTABLES = (
-		"sequence", "kind", "repository_id", "target", "payload_json", "description")
+		"sequence", "kind", "repository_id", "target", "payload_json", "description",
+		"depends_on_ids")
 
 	def init(self):
 		"""Un hallazgo no puede tener DOS operaciones vivas al mismo tiempo.
@@ -568,6 +661,16 @@ class RepoWriteOperation(models.Model):
 		if self.kind == "team_member_add":
 			return _("%(quien)s entra al team «%(team)s».") % {
 				"quien": datos.get("username") or "—", "team": destino}
+		if self.kind == "module_copy":
+			return _(
+				"Se copia el módulo «%(modulo)s» a %(destino)s, rama %(rama)s, desde "
+				"%(origen)s. Es un solo commit: o entra completo o no entra."
+			) % {
+				"modulo": datos.get("modulo") or (datos.get("ruta") or "").split("/")[-1],
+				"destino": repo, "rama": datos.get("destino_rama") or "—",
+				"origen": "%s@%s" % (datos.get("origen_repo") or "—",
+									 datos.get("origen_rama") or "—"),
+			}
 		if self.kind == "team_member_remove":
 			return _(
 				"%(quien)s SALE del team «%(team)s» y pierde todo lo que ese team le daba."

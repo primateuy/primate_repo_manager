@@ -259,6 +259,18 @@ El arreglo de fondo tiene dos formas, y la elección no es obvia:
 **B1 · Aplicación de rulesets por plantilla**, no operación por operación: «aplicar la
 política de esta plantilla a este repositorio» como una acción.
 
+**Requisito que viene de D2 y no se puede olvidar:** los rulesets que el propio módulo
+aplique tienen que incluir a **`prm-writer` como bypass actor**. El embudo
+plan → aprobación con confirmación individual → bitácora encadenada → reversión es una
+revisión **más estricta** que una pull request, no menos. Sin esa exención, la gobernanza
+que B viene a instalar estrangularía a D2: el módulo se prohibiría a sí mismo hacer lo que
+el mismo módulo aprobó, y la promoción de un módulo a un repositorio bien gobernado sería
+imposible justamente por estar bien gobernado.
+
+Mientras B no exista, D2 se protege por el otro lado: al armar el plan se lee la protección
+de la rama de destino y, si exige PR, **el plan se niega a armarse con el motivo** — nunca
+falla a mitad del apply. Abrir pull requests desde el módulo es F4, no un atajo para acá.
+
 **B2 · CODEOWNERS generado** desde la política, con su operación de escritura y su
 reversión. Requiere permiso `contents`.
 
@@ -376,8 +388,30 @@ verificado contra GitHub el 3-sep-2026. Es el bloque de lectura más grande que 
 
 ### D2 · La promoción *(escritura)*
 
-**D2.1 · Copiar al destino.** Crear los archivos del módulo en el repositorio general, en
-la rama que corresponda. Necesita `contents:write`.
+*Hallazgo del motor, encontrado al construir D2.0 y ya corregido:* el bucle del apply **no
+se detenía ante un fallo**. En F2 eso era correcto —proteger una rama y bajar un permiso
+son independientes, y que una falle no debe frenar la otra— pero la promoción rompe ese
+supuesto: «copiar» y «borrar» son la misma operación partida en dos. Ahora una operación
+puede declarar de cuáles depende, y si alguna no quedó aplicada, la que sigue queda en
+**«no ejecutada por dependencia»** — un estado propio, distinto de «fallida», porque no se
+intentó: marcarla como fallida mandaría a alguien a buscar un error de GitHub que no
+existe.
+
+**D2.0 · La barrera.** *(hecho)* Una operación declara de cuáles depende; si alguna no
+quedó aplicada, la que sigue no se intenta y queda en **«no ejecutada por dependencia»**.
+Sin esto nada de lo demás es seguro.
+
+**D2.1 · Copiar al destino.** *(hecho, sin ejecutar contra GitHub)* **Un solo commit** por
+la API de datos de git: leer el árbol del origen, subir los blobs al destino, construir el
+árbol, crear el commit y mover la referencia **sin `force`**. La API de contenidos habría
+sido un commit por archivo, y una interrupción dejaría un módulo a la mitad.
+
+**D2.2 · Verificar por relectura.** *(hecho)* Se compara el **SHA del subárbol**: git
+nombra los árboles por su contenido, así que dos directorios idénticos tienen el mismo hash
+en cualquier repositorio. No hay que bajar nada ni confiar en que la API hizo lo que dijo.
+
+**El ensayo NO se corrió**, y es deliberado: la frontera es la sesión grande de validación.
+Nada de borrados, ni en sandbox, con la deuda visual pendiente.
 
 **D2.2 · Limpiar los orígenes.** Son **commits de borrado en repositorios de clientes**, y
 entran por el embudo como toda escritura: plan → aprobación → apply → bitácora → rollback.
