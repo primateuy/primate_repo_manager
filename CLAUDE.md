@@ -54,7 +54,8 @@ rehacerlo. Estas cuatro reglas cuestan poco ahora y mucho después.
 ## Lo visual: tres reglas que no se negocian
 
 Decididas el 5-sep-2026, después del ensayo de D2. Valen para **toda** pantalla nueva y
-para toda migración: D2.3, B, C, E y lo que venga.
+para toda migración: lo que queda de D2 (D2.4 en adelante), B, C, E y lo
+que venga.
 
 ### 1 · El entregable de diseño es la especificación, no una referencia
 

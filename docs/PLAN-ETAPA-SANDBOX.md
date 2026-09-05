@@ -409,12 +409,12 @@ existe.
 quedó aplicada, la que sigue no se intenta y queda en **«no ejecutada por dependencia»**.
 Sin esto nada de lo demás es seguro.
 
-**D2.1 · Copiar al destino.** *(hecho, sin ejecutar contra GitHub)* **Un solo commit** por
+**D2.1 · Copiar al destino.** *(hecho, y ejecutado contra el sandbox)* **Un solo commit** por
 la API de datos de git: leer el árbol del origen, subir los blobs al destino, construir el
 árbol, crear el commit y mover la referencia **sin `force`**. La API de contenidos habría
 sido un commit por archivo, y una interrupción dejaría un módulo a la mitad.
 
-**D2.2 · Verificar por relectura.** *(hecho)* Se compara el **SHA del subárbol**: git
+**D2.2 · Verificar por relectura.** *(hecho, y ejecutado contra el sandbox)* Se compara el **SHA del subárbol**: git
 nombra los árboles por su contenido, así que dos directorios idénticos tienen el mismo hash
 en cualquier repositorio. No hay que bajar nada ni confiar en que la API hizo lo que dijo.
 
@@ -425,19 +425,33 @@ de aprobado el plan—. Está entero en `ENSAYO-D2.md`, con sus dos hallazgos: u
 huérfana de una caída se cuela en el punto de retorno, y la pantalla del plan no cuenta que
 hubo una caída. Los dos abren el próximo tramo.
 
-**D2.3 · Limpiar los orígenes.** *(hecho)* Son **commits de borrado en repositorios de clientes**, y
+**D2.3 · Limpiar los orígenes.** *(hecho, y ejecutado contra el sandbox)* Son **commits de borrado en repositorios de clientes**, y
 entran por el embudo como toda escritura: plan → aprobación → apply → bitácora → rollback.
 No hay excepción; si algo la merecía menos, es justamente esto.
-
-**D2.3b · El plan de promoción como una sola unidad.** Una promoción es una escritura al
-destino y N borrados en orígenes. Media promoción aplicada —copiado al general, borrado de
-dos de cuatro clientes— es un estado peor que no haber empezado. Hay que decidir si el
-plan se aplica todo-o-nada o si el rollback alcanza; ver «decisiones abiertas».
 
 **D2.4 · Con copias divergentes, primero se decide.** Si D1.3 dice que las copias no son
 idénticas, la promoción **no puede armarse sola**: alguien tiene que elegir qué versión
 gana y qué se hace con lo que se pierde. La pantalla tiene que forzar esa elección, no
 resolverla por antigüedad ni por tamaño.
+
+**D2.5 · El plan de promoción como una sola unidad.** Una promoción es una escritura al
+destino y N borrados en orígenes. Media promoción aplicada —copiado al general, borrado de
+dos de cuatro clientes— es un estado peor que no haber empezado. Hay que decidir si el
+plan se aplica todo-o-nada o si el rollback alcanza; ver «decisiones abiertas».
+
+**D2.6 · Conciliar las escrituras huérfanas.** *(lo primero del próximo tramo)* Lo que
+encontró el ensayo: si el proceso muere entre la escritura y su verificación, la operación
+vuelve a «pendiente» y el efecto queda en GitHub, registrado sólo como constancia de
+emisión en la bitácora. Al reaplicar, la operación lee un estado previo que **ya incluye su
+propia escritura huérfana**, y el rollback vuelve a ése. Ningún paso miente y el resultado
+igual tiene un objeto que ningún plan aplicado explica. Antes de aplicar, una operación
+tiene que preguntarse si ya tiene escrituras emitidas sin desenlace y pedir conciliación —y
+la pantalla del plan tiene que contar que hubo una caída, que hoy no lo hace—. Todo en
+`ENSAYO-D2.md`.
+
+*Numeración:* el retiro de módulos salió como **D2.3** —así quedó en el código y en el
+commit— y por eso la divergencia es D2.4 y el plan como unidad, D2.5. El mapa dice lo mismo
+que el código, que es la única forma de que sirva.
 
 *Dimensión de D2:* comparable a A4 — reusa todo el motor de escritura de F2, que ya está
 probado; lo nuevo es el tipo de operación y su reversión.
