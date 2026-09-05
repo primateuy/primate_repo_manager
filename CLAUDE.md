@@ -65,6 +65,24 @@ tokens ya están traducidos en `static/src/scss/tokens.scss` y se usan por varia
 por valor literal. Antes de dibujar una pantalla se lee su página del print; el prototipo
 manda en lo que se mueve (drag & drop, confirmación irreversible).
 
+### 1b · Modo oscuro: NO se improvisa — decidido el 5-sep-2026
+
+Odoo 19 resuelve el tema por preferencia del navegador o del usuario, así que la app
+puede estar en oscuro. El entregable de diseño es un sistema **claro** y no trae variante
+oscura.
+
+**La variante se le pide al diseño; el módulo no la inventa.** El sistema tiene dueño, y
+los pares sólido/tenue de severidad en oscuro son exactamente la clase de decisión que no
+se improvisa desde el código: un rojo que funciona sobre blanco no funciona sobre #1B1D26,
+y elegirlo a ojo rompe la única cosa que el color tiene asignada en este sistema —qué tan
+grave es algo—.
+
+Mientras llega la respuesta: **las pantallas quedan claras y NO se tocan los tokens.**
+Cada componente pinta su propio fondo, así que se leen bien sobre cualquier tema; se ven
+como una isla clara dentro de una app oscura, y eso es aceptado a sabiendas. Un `@media
+(prefers-color-scheme: dark)` puesto por las nuestras sería inventar el sistema que
+estamos esperando.
+
 ### 2 · El producto completo siempre se ve; lo no implementado se muestra APAGADO
 
 La filosofía del menú —«lo futuro se ve, no se toca»— vale **dentro de cada pantalla**, no
