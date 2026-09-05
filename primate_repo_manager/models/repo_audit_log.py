@@ -159,6 +159,18 @@ class RepoAuditLog(models.Model):
 		string="Hash de la anterior", readonly=True, copy=False, index=True)
 	entry_hash = fields.Char(
 		string="Hash de esta entrada", readonly=True, copy=False, index=True)
+	# EL ORDEN DE LA CADENA ES EL ORDEN EN QUE SE SELLÓ, NO EL DE LOS IDS.
+	#
+	# Parece un detalle y es la corrección entera. Los ids salen de una secuencia, que los
+	# entrega cuando la fila se INSERTA; el sello, en cambio, se pone después de que la
+	# transacción confirma. Dos transacciones que empiezan en distinto orden y terminan al
+	# revés producirían ids en un orden y sellos en el otro, y una cadena verificada por id
+	# diría «rota» sin que nadie tocara nada.
+	#
+	# Con un contador propio, la cadena se lee en el orden en que realmente se encadenó,
+	# que es el único que el hash respeta.
+	chain_seq = fields.Integer(
+		string="Posición en la cadena", readonly=True, copy=False, index=True)
 
 	# ------------------------------------------------------------------
 	# Inmutabilidad
@@ -193,40 +205,107 @@ class RepoAuditLog(models.Model):
 
 	@api.model_create_multi
 	def create(self, vals_list):
-		"""Cada entrada se sella con el hash de la anterior, en orden y una por una.
+		"""Crea las entradas SIN sello y pide que se sellen apenas la transacción confirme.
 
-		POR QUÉ DE A UNA Y NO EN LOTE. La cadena es, literalmente, una cadena: el eslabón
-		N necesita el hash del N-1 ya calculado. Crearlas juntas y sellarlas después
-		dejaría una ventana en la que existen entradas sin sello, y una entrada sin sello
-		es un agujero por donde se puede insertar otra sin que se note.
+		POR QUÉ NO SE SELLA ACÁ, QUE ES LO QUE HACÍA ANTES. Sellar al crear supone que hay
+		un solo escritor. Dejó de haberlo el día que la constancia de escritura pasó a
+		escribirse en una conexión aparte —para que sobreviva a una caída, que es
+		correcto—: esa conexión confirma su entrada mientras la transacción principal
+		mantiene una foto anterior de la base, en la que esa entrada NO EXISTE. Las dos
+		sellan contra la misma punta y la cadena se bifurca.
+
+		No es hipotético: pasó en la corrida del 5 de septiembre de 2026 y dejó tres
+		bifurcaciones. El diagnóstico dijo «rota», y tenía razón — sólo que el culpable
+		era el propio módulo, no un `UPDATE` de nadie.
+
+		La confirmación es el único momento en que existe un orden total sobre el que todos
+		los escritores están de acuerdo. Ahí se sella, de a una, y serializado por un
+		candado de Postgres.
 		"""
-		entradas = self.browse()
-		for valores in vals_list:
-			entrada = super().create([valores])
-			entrada._sellar()
-			entradas |= entrada
+		entradas = super().create(vals_list)
+		self._pedir_sellado()
 		return entradas
 
+	@api.model
+	def _pedir_sellado(self):
+		"""Engancha el sellado al commit. Idempotente: `Callbacks` no repite la función."""
+		self.env.cr.postcommit.add(self._sellar_pendientes_en_su_conexion)
+
+	@api.model
+	def _sellar_pendientes_en_su_conexion(self):
+		"""El sellador, después del commit y en su propia conexión.
+
+		Cualquier error acá NO puede tumbar la petición que ya confirmó: la escritura pasó
+		y el usuario tiene que verla. Se registra y se sigue — y las entradas quedan sin
+		sellar, que es un estado previsto y que la verificación sabe nombrar. El sellado
+		siguiente las levanta, porque sella TODAS las pendientes, no sólo las suyas.
+		"""
+		try:
+			with self._cursor_de_sellado() as cr:
+				self.with_env(self.env(cr=cr)).sudo().sellar_pendientes()
+		except Exception:
+			_logger.exception(
+				"No se pudieron sellar las entradas nuevas de la bitácora. Quedan sin "
+				"sello y el próximo sellado las toma.")
+
+	def _cursor_de_sellado(self):
+		"""Conexión propia para sellar. Costura de test, igual que la del apply.
+
+		En un test nada confirma —y `postcommit` ni siquiera corre—, así que los tests
+		llaman a `sellar_pendientes()` a mano sobre el cursor de la transacción. Con eso
+		se prueba QUÉ sella y en qué orden; que sobreviva a una caída se prueba contra el
+		sandbox, en dos procesos.
+		"""
+		return self.pool.cursor()
+
+	# Un número cualquiera pero FIJO: es la identidad del candado. Dos procesos que usen
+	# números distintos no se serializan entre sí, que es justo lo que hay que evitar.
+	CANDADO_DE_CADENA = 0x52504D31   # "RPM1"
+
+	@api.model
+	def sellar_pendientes(self):
+		"""Sella, en orden y de a una, todas las entradas que todavía no tienen sello.
+
+		SERIALIZADO POR UN CANDADO DE POSTGRES. Dos selladores simultáneos volverían a
+		bifurcar la cadena, que es exactamente el defecto que esto viene a arreglar. El
+		candado es de transacción: se suelta solo al confirmar, pase lo que pase.
+
+		Sella TODAS las pendientes, no sólo las de quien lo llama. Así, si un proceso se
+		cayó entre el commit y su sellado, el siguiente las recoge en vez de dejar un
+		agujero permanente.
+		"""
+		self.env.cr.execute("SELECT pg_advisory_xact_lock(%s)", (self.CANDADO_DE_CADENA,))
+		self.env.cr.execute(
+			"SELECT id FROM repo_audit_log WHERE entry_hash IS NULL ORDER BY id")
+		pendientes = [fila[0] for fila in self.env.cr.fetchall()]
+		for entrada in self.browse(pendientes):
+			entrada._sellar()
+		return len(pendientes)
+
 	def _sellar(self):
-		"""Calcula y guarda el hash de esta entrada, encadenado con el de la anterior.
+		"""Calcula y guarda el sello de esta entrada, encadenado con el de la anterior.
 
 		Escribe por SQL directo y no con `write`, y no es una trampa: `write` está
 		prohibido a propósito en este modelo y esta es la única excepción, acotada a los
-		dos campos del sello y en el momento del alta. Hacerlo por el ORM obligaría a
-		abrirle una puerta a `write`, y esa puerta después la usa cualquiera.
+		campos del sello. Hacerlo por el ORM obligaría a abrirle una puerta a `write`, y
+		esa puerta después la usa cualquiera.
 		"""
 		self.ensure_one()
-		anterior = self.search([("id", "<", self.id)], order="id desc", limit=1)
-		previo = anterior.entry_hash or ""
+		self.env.cr.execute(
+			"SELECT entry_hash, chain_seq FROM repo_audit_log "
+			"WHERE chain_seq IS NOT NULL ORDER BY chain_seq DESC LIMIT 1")
+		fila = self.env.cr.fetchone()
+		previo, posicion = (fila[0] or "", (fila[1] or 0) + 1) if fila else ("", 1)
 		cuerpo = json.dumps(
 			{c: str(self[c].id if c == "user_id" else self[c] or "")
 			 for c in self.CAMPOS_SELLADOS},
 			sort_keys=True, separators=(",", ":"))
 		sello = hashlib.sha256(("%s|%s" % (previo, cuerpo)).encode()).hexdigest()
 		self.env.cr.execute(
-			"UPDATE repo_audit_log SET previous_hash = %s, entry_hash = %s WHERE id = %s",
-			(previo or None, sello, self.id))
-		self.invalidate_recordset(["previous_hash", "entry_hash"])
+			"UPDATE repo_audit_log SET previous_hash = %s, entry_hash = %s, "
+			"chain_seq = %s WHERE id = %s",
+			(previo or None, sello, posicion, self.id))
+		self.invalidate_recordset(["previous_hash", "entry_hash", "chain_seq"])
 		return sello
 
 	def _recalcular_sello(self):
@@ -243,30 +322,49 @@ class RepoAuditLog(models.Model):
 	def verificar_cadena(self):
 		"""Recorre la cadena y devuelve dónde se rompe, si se rompe.
 
-		Devuelve `{"estado": ok|rota|vacia, "desde": fecha, "entrada": id, "motivo": ...}`.
+		Devuelve `{"estado": ok|rota|vacia|pendiente, ...}`.
 
 		Dos formas de romperse, y se distinguen porque significan cosas distintas:
 		· **contenido**: la entrada dice algo distinto de lo que decía cuando se selló.
 		· **eslabón**: el `previous_hash` no coincide con el sello de la anterior, o sea
 		  que alguien borró o insertó una entrada en el medio.
+
+		SE RECORRE POR `chain_seq`, no por id: el orden de la cadena es el orden en que se
+		selló. Y se recorre DESDE EL ÚLTIMO GÉNESIS, porque un génesis es exactamente eso
+		— la declaración de que desde ahí hay garantía y de que lo anterior es otra cosa.
+		Los segmentos cerrados se cuentan y se informan: que aparezca uno nuevo es visible,
+		y tiene que serlo.
+
+		Las entradas sin sellar NO son una rotura: son entradas que confirmaron y todavía
+		no pasaron por el sellador. Se cuentan aparte y se dicen.
 		"""
-		entradas = self.search([("entry_hash", "!=", False)], order="id")
-		if not entradas:
-			return {"estado": "vacia"}
+		selladas = self.search([("chain_seq", "!=", False)], order="chain_seq")
+		pendientes = self.search_count([("entry_hash", "=", False)])
+		if not selladas:
+			return {"estado": "pendiente" if pendientes else "vacia",
+					"pendientes": pendientes}
+
+		genesis = [e for e in selladas if e.event_type == "chain_genesis"]
+		desde = genesis[-1] if genesis else selladas[0]
+		tramo = [e for e in selladas if e.chain_seq >= desde.chain_seq]
+
 		anterior = None
-		for entrada in entradas:
+		for entrada in tramo:
 			if entrada._recalcular_sello() != entrada.entry_hash:
 				return {"estado": "rota", "entrada": entrada.id,
-						"momento": entrada.timestamp,
+						"momento": entrada.timestamp, "pendientes": pendientes,
 						"motivo": _("el contenido de la entrada cambió desde que se selló")}
-			esperado = anterior.entry_hash if anterior else ""
-			if (entrada.previous_hash or "") != esperado:
-				return {"estado": "rota", "entrada": entrada.id,
-						"momento": entrada.timestamp,
-						"motivo": _("falta una entrada anterior, o se insertó una")}
+			# El primero del tramo encadena con lo de antes, que puede no estar verificado:
+			# su eslabón hacia atrás no se exige, el resto sí.
+			if anterior is not None:
+				if (entrada.previous_hash or "") != (anterior.entry_hash or ""):
+					return {"estado": "rota", "entrada": entrada.id,
+							"momento": entrada.timestamp, "pendientes": pendientes,
+							"motivo": _("falta una entrada anterior, o se insertó una")}
 			anterior = entrada
-		return {"estado": "ok", "desde": entradas[0].timestamp,
-				"entradas": len(entradas)}
+		return {"estado": "ok", "desde": desde.timestamp, "entradas": len(tramo),
+				"pendientes": pendientes,
+				"segmentos_cerrados": max(len(genesis) - 1, 0)}
 
 	def init(self):
 		"""La entrada cero se asegura en cada actualización del módulo, no sólo al instalar.
@@ -277,7 +375,16 @@ class RepoAuditLog(models.Model):
 		`init()` corre en cada `-u`, que es cuando la cadena empieza a existir de verdad.
 		"""
 		super().init()
+		# Lo que ya estaba sellado no tiene posición: se le pone la del id, que es el
+		# orden en que se selló en aquel esquema —uno solo escribía—. Recalcular sus
+		# hashes sería reescribir el pasado; acá sólo se les da un número para poder
+		# recorrerlos.
+		self.env.cr.execute(
+			"UPDATE repo_audit_log SET chain_seq = id "
+			"WHERE entry_hash IS NOT NULL AND chain_seq IS NULL")
 		self.asegurar_genesis()
+		# Y si quedó algo sin sellar de una caída anterior, se sella ahora.
+		self.env["repo.audit.log"].sellar_pendientes()
 
 	@api.model
 	def asegurar_genesis(self):
@@ -299,6 +406,41 @@ class RepoAuditLog(models.Model):
 				"pero su integridad no se puede verificar hacia atrás.") % viejas,
 			"payload_json": json.dumps({"entradas_previas": viejas}),
 		})
+
+	@api.model
+	def cerrar_tramo_y_reabrir(self, motivo):
+		"""Cierra el tramo actual de la cadena y abre uno nuevo, DICIENDO POR QUÉ.
+
+		CUÁNDO SE USA, Y CUÁNDO NO. Se usa cuando la cadena quedó rota por una causa
+		conocida y explicable —un defecto del propio módulo, una migración que cambió los
+		campos sellados—: el tramo viejo no se puede reparar sin reescribir sellos, y
+		reescribirlos sería fabricar la confianza que la cadena existe para no fabricar.
+		Lo honesto es cerrar, declarar la causa, y volver a empezar desde una punta limpia.
+
+		NO ES AUTOMÁTICO, Y ESO ES LO IMPORTANTE. Si el módulo cerrara el tramo solo cada
+		vez que encuentra la cadena rota, cualquier manipulación quedaría tapada por el
+		siguiente arranque: el diagnóstico diría «ok» sobre una base editada. Tiene que
+		haber una persona, con un motivo escrito, que quede en la entrada.
+
+		El motivo va en el resumen y se sella con la entrada: no se puede cambiar después.
+		"""
+		if not motivo or not motivo.strip():
+			raise UserError(_(
+				"Cerrar un tramo de la cadena exige un motivo. Sin él, la entrada diría "
+				"que hubo un corte y no diría por qué, que es la única parte que sirve."))
+		antes = self.verificar_cadena()
+		entrada = self.sudo().create({
+			"event_type": "chain_genesis",
+			"summary": _("Tramo nuevo de la cadena de integridad. %s") % motivo.strip(),
+			"payload_json": json.dumps({
+				"motivo": motivo.strip(),
+				"estado_al_cerrar": antes.get("estado"),
+				"entrada_donde_se_rompia": antes.get("entrada"),
+				"cerrado_por": self.env.user.login,
+			}, default=str),
+		})
+		self.sellar_pendientes()
+		return entrada
 
 	def write(self, vals):
 		raise UserError(_(
