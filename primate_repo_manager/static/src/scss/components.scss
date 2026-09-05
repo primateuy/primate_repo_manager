@@ -1,0 +1,148 @@
+// Copyright 2026 - PrimateUY / License AGPL-3.0 or later
+//
+// EL VOCABULARIO COMPARTIDO DE LAS PANTALLAS. Sale del entregable de diseño y lo usan
+// todas: si una pantalla necesita una pieza nueva, se agrega acá y no en su propio SCSS.
+// Cinco copias de un chip divergen, y la que se mira menos envejece mal.
+//
+// Todo color sale de un token. Un literal suelto acá es un color que el día que el diseño
+// cambie va a quedar atrás sin que nadie se entere.
+
+// --- chip de severidad ------------------------------------------------------
+//
+// SÓLIDO Y SIEMPRE CON TEXTO. El color solo no es información accesible: quien no
+// distingue rojo de naranja tiene que poder leer «CRÍTICO». Es el patrón obligatorio del
+// entregable y no se negocia por espacio.
+.rm-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--rm-space-1);
+	padding: 3px 10px;
+	border-radius: var(--rm-radius-sm);
+	font-size: .6875rem;
+	font-weight: 700;
+	letter-spacing: .06em;
+	text-transform: uppercase;
+	white-space: nowrap;
+	color: var(--rm-surface);
+	background: var(--rm-ink-2);
+
+	&.rm-chip-critical { background: var(--rm-sev-critical); }
+	&.rm-chip-high     { background: var(--rm-sev-high); }
+	&.rm-chip-medium   { background: var(--rm-sev-medium); }
+	&.rm-chip-info     { background: var(--rm-sev-info); }
+
+	// Los de estado, en tinte: no compiten con la severidad, que es lo que se lee primero.
+	&.rm-chip-done  { background: var(--rm-done-tint);  color: var(--rm-done); }
+	&.rm-chip-live  { background: var(--rm-live-tint);  color: var(--rm-live); }
+	&.rm-chip-error { background: var(--rm-error-tint); color: var(--rm-error); }
+	&.rm-chip-quiet { background: var(--rm-accent-tint); color: var(--rm-accent-dark); }
+}
+
+// --- tarjeta ----------------------------------------------------------------
+.rm-card {
+	background: var(--rm-surface);
+	border: 1px solid var(--rm-border);
+	border-radius: var(--rm-radius);
+	padding: 14px 18px;
+}
+
+// --- antes / después --------------------------------------------------------
+//
+// Siempre en mono, izquierda gris, derecha del color del RESULTADO: verde si mejoró, rojo
+// si se destruyó. La frase de arriba lo cuenta en castellano para quien no lee el mono.
+.rm-antes-despues {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: var(--rm-space-3);
+
+	> div {
+		border-radius: var(--rm-radius-sm);
+		padding: 10px 12px;
+	}
+	.rm-ad-titulo {
+		font-size: .6875rem;
+		font-weight: 600;
+		letter-spacing: .06em;
+		text-transform: uppercase;
+		margin-bottom: var(--rm-space-1);
+	}
+	.rm-ad-cuerpo {
+		@include rm-mono;
+		font-size: .75rem;
+		line-height: 1.6;
+		word-break: break-word;
+		white-space: pre-wrap;
+	}
+	.rm-ad-antes {
+		background: var(--rm-bg);
+		.rm-ad-titulo { color: var(--rm-ink-2); }
+	}
+	.rm-ad-despues {
+		background: var(--rm-done-tint);
+		.rm-ad-titulo { color: var(--rm-done); }
+	}
+	&.rm-ad-destructiva .rm-ad-despues {
+		background: var(--rm-sev-critical-tint);
+		.rm-ad-titulo { color: var(--rm-sev-critical); }
+	}
+}
+
+// --- «no se pudo leer» ------------------------------------------------------
+.rm-no-legible {
+	@include rm-no-legible;
+	border-radius: var(--rm-radius-sm);
+	padding: 2px 8px;
+}
+
+// --- EL PATRÓN DE LO QUE TODAVÍA NO LLEGÓ ----------------------------------
+//
+// Regla 2 del proceso visual: el producto completo siempre se ve, y lo no implementado se
+// muestra apagado con dos cosas escritas —qué es y con qué bloque llega—. Hay UNA sola
+// implementación, ésta, y la usan la navegación, los botones, las pestañas y los bloques.
+//
+// Por qué apagado y no ausente: un producto que se muestra a pedazos parece más chico de
+// lo que es, y quien lo opera no puede planificar contra lo que no ve. Y por qué apagado y
+// no vivo: un botón que existe y no hace nada es peor que uno que explica por qué no.
+.rm-apagado {
+	position: relative;
+	color: var(--rm-ink-3) !important;
+	cursor: not-allowed;
+	user-select: none;
+
+	// No se puede apretar ni con teclado: el `disabled` del control es lo que manda, esto
+	// es la red por si el control no lo soporta.
+	pointer-events: none;
+
+	&.rm-apagado-boton {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--rm-space-2);
+		padding: 5px 12px;
+		border: 1px dashed var(--rm-border);
+		border-radius: var(--rm-radius-sm);
+		background: var(--rm-bg);
+		font-size: .8125rem;
+	}
+	&.rm-apagado-bloque {
+		display: flex;
+		flex-direction: column;
+		gap: var(--rm-space-1);
+		border: 1px dashed var(--rm-border);
+		border-radius: var(--rm-radius);
+		background: var(--rm-bg);
+		padding: var(--rm-space-3) var(--rm-space-4);
+	}
+	.rm-apagado-etiqueta {
+		font-size: .6875rem;
+		font-weight: 600;
+		letter-spacing: .06em;
+		text-transform: uppercase;
+		color: var(--rm-ink-3);
+	}
+	// El cartel NO es un tooltip: un tooltip es información que hay que descubrir, y esto
+	// tiene que leerse sin buscar. El tooltip queda como refuerzo, no como único lugar.
+	.rm-apagado-cartel {
+		font-size: .75rem;
+		color: var(--rm-ink-2);
+	}
+}

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+	<t t-name="primate_repo_manager.Apagado">
+		<div t-att-class="clase" t-att-title="cartel" aria-disabled="true">
+			<span class="rm-apagado-etiqueta" t-esc="props.que"/>
+			<span class="rm-apagado-cartel">llega con <t t-esc="props.bloque"/></span>
+			<div t-if="props.detalle" class="rm-apagado-cartel" t-esc="props.detalle"/>
+		</div>
+	</t>
+
+</templates>
