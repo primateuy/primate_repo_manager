@@ -9,6 +9,12 @@
 **Cubre:** A4 completo, la deuda visual de A5+A6+A8, y lo que trajo el entregable de
 diseño: la cadena de la bitácora y los cuatro tipos de entrada.
 
+> **Qué hay que repetir de la corrida del 5 de septiembre.** La Parte 1 entera, con una
+> diferencia: la remediación va ahora por los **hallazgos de permisos**, que son los
+> planificables de verdad. Los de rama sin protección quedaron fuera —el paso 1.3 explica
+> por qué y comprueba que lo diga—. Además, el **Paso 0** tiene que verse sin el botón
+> *Habilitar escritura*. Las Partes 2 y 3 no cambiaron: ya salieron bien.
+
 Cada paso tiene tres partes: **hago**, **tengo que ver**, **sería problema**. Si algo de
 la tercera columna aparece, anotalo y seguí — no hace falta cortar el recorrido salvo que
 diga lo contrario.
@@ -31,9 +37,12 @@ Guardar.
 **Tengo que ver:** *Clave de escritura cargada* tildado. El campo del PEM vuelve a estar
 vacío — no se muestra nunca más.
 
-**Sería problema:** que aparezca el botón **Habilitar escritura**. No debería: esa
-habilitación es sólo para conexiones de **producción**, y ésta es de sandbox. Si aparece,
-revisá que el campo *Entorno* diga *Sandbox*.
+**Tampoco tiene que aparecer** el botón **Habilitar escritura**: esa habilitación es sólo
+para conexiones de **producción**, y ésta es de sandbox. En la corrida anterior aparecía
+—la condición miraba las credenciales y se olvidaba del entorno—; está arreglado y hay un
+test que lee la vista para que no vuelva.
+
+**Sería problema:** que aparezca igual.
 
 > **Verificación de que el módulo también levantó:** *Auditorías* tiene que mostrar
 > corridas anteriores, y la última en *Terminada*.
@@ -56,28 +65,48 @@ repositorio, el cronómetro corriendo. **Debería terminar en unos 25–30 segun
   cierre; si vuelve, es que el job de cierre no corrió.
 - Que la pantalla no se mueva sola.
 
-### 1.2 Remediar un hallazgo — el que NO es destructivo
+### 1.2 Remediar un hallazgo
 
-**Hago:** *Hallazgos*, quitar el agrupado si molesta, buscar uno de tipo **«Rama sin
-protección»** en `sbx-localizacion` (hay tres: `17.0`, `17.0.Staging`, `19.0`). Abrirlo y
-apretar **Remediar esto**.
+> **Cambió respecto de la corrida anterior, y por qué.** Antes este paso remediaba una
+> **rama sin protección**, y eso salió mal: el hallazgo trae la *identificación* del
+> objeto (`repositorio`, `rama`) y no una *configuración* de protección, así que la
+> operación viajaba a GitHub con un cuerpo que no configuraba nada. GitHub la aceptó,
+> ignoró lo que no entendía y dejó puesta una protección con todo en default. Se limpió y
+> se verificó por relectura. Ahora las ramas sin protección **no se remedian desde el
+> hallazgo**: su configuración sale de la plantilla de política y llega con B1. Los
+> planificables de verdad son los de **permisos**, cuyo payload sí dice qué hacer.
+
+**Hago:** *Hallazgos*, buscar uno de tipo **«Permiso de administrador excedido»** (hay
+cuatro). Abrirlo y apretar **Remediar esto**.
 
 **Tengo que ver:** te lleva a un plan **en borrador** llamado *Remediaciones de GitHub —
-prm-sandbox*, con **una** operación. En la columna *Qué va a pasar*, una frase en
-castellano — algo como «En prm-sandbox/sbx-localizacion, la rama 17.0 pasa a exigir 1
-aprobación(es) y bloquear force-push». La columna *Saca algo* en blanco.
+prm-sandbox*, con **una** operación, y su frase en castellano diciendo qué se pierde:
+«…SE LE QUITA el permiso directo. Si además está en un team con acceso, va a conservar el
+del team». La columna *Saca algo* **tildada**, la fila en rojo.
 
 **Sería problema:**
 - Que la frase no esté, o que muestre JSON.
 - Que el plan salga en cualquier estado que no sea borrador.
+- Que *Saca algo* no esté tildada: sin eso, la aprobación no pediría confirmarla.
 - **Que algo haya cambiado en GitHub.** Este botón no escribe nada. Si mirás el repo en
-  GitHub y la rama quedó protegida, eso es grave y hay que cortar.
+  GitHub y el permiso ya cambió, eso es grave y hay que cortar.
 
-### 1.3 El segundo clic no duplica
+### 1.3 Lo que NO se puede remediar lo dice, y dice por qué
 
-**Hago:** volvé al mismo hallazgo (*Hallazgos*, el que acabás de remediar) y apretá
-**Remediar esto** otra vez. Y si podés, abrí el mismo hallazgo en dos pestañas y apretá en
-las dos.
+**Hago:** en *Hallazgos*, abrí uno de **«Rama sin protección»** en `sbx-localizacion` (hay
+tres: `17.0`, `17.0.Staging`, `19.0`) y apretá **Remediar esto**.
+
+**Tengo que ver:** se niega, con un mensaje que explica que la configuración de protección
+sale de la **plantilla de política** y llega con **B1**, y que mientras tanto se arma a
+mano desde el asistente del plan.
+
+**Sería problema:** que lo arme igual. O que se niegue **sin decir por qué**: un «no se
+puede» mudo manda a buscar un botón que no existe.
+
+### 1.4 El segundo clic no duplica
+
+**Hago:** volvé al hallazgo de permisos de 1.2 y apretá **Remediar esto** otra vez. Y si
+podés, abrí el mismo hallazgo en dos pestañas y apretá en las dos.
 
 **Tengo que ver:** el botón ahora dice **«Ver el plan donde ya está»**, y arriba un aviso
 *«Ya está en el plan …»*. Te lleva al mismo plan. **Sigue habiendo una sola operación.**
@@ -85,45 +114,43 @@ las dos.
 **Sería problema:** dos operaciones iguales en el plan. Hay dos capas para impedirlo —la
 comprobación y un índice en la base—; si aparecen dos, fallaron las dos.
 
-### 1.4 Sumar por lote, incluyendo destructivos
+### 1.5 Sumar por lote, con dos que no aplican
 
-**Hago:** *Hallazgos*. Seleccioná con los tildes de la izquierda: las otras dos ramas sin
-protección de `sbx-localizacion`, **dos hallazgos de «Permiso de administrador excedido»**
-(hay cuatro), y **uno de «Cuenta sin persona asociada»** — este último a propósito, porque
-no se remedia con un plan. Menú de acciones (el engranaje) → **Remediar: armar plan con
-estos**.
+**Hago:** *Hallazgos*. Seleccioná con los tildes de la izquierda: **dos hallazgos más de
+«Permiso de administrador excedido»**, **uno de «Rama sin protección»** y **uno de «Cuenta
+sin persona asociada»** — los dos últimos a propósito, porque no se remedian con un plan.
+Menú de acciones (el engranaje) → **Remediar: armar plan con estos**.
 
-**Tengo que ver:** te lleva al **mismo** plan en borrador, que ahora tiene **cinco**
-operaciones: las tres de protección más las dos de permisos. La de «cuenta sin persona» no
-está, y el lote no se cayó por eso.
+**Tengo que ver:** te lleva al **mismo** plan en borrador, que ahora tiene **tres**
+operaciones: la de 1.2 más las dos de permisos. Las otras dos no están, y el lote no se
+cayó por eso.
 
 **Sería problema:**
 - Que se abra un plan nuevo en vez de acumular en el borrador.
-- Que el lote falle entero por el hallazgo que no aplicaba.
-- Que la de «cuenta sin persona» sí haya entrado.
+- Que el lote falle entero por los hallazgos que no aplicaban.
+- Que la de «rama sin protección» o la de «cuenta sin persona» sí hayan entrado.
 
-### 1.5 Leer el plan antes de aprobarlo
+### 1.6 Leer el plan antes de aprobarlo
 
 **Hago:** quedate en el plan y leé la lista de operaciones.
 
 **Tengo que ver:**
-- Las cinco frases en castellano, legibles sin abrir nada.
-- Las dos de permisos **en rojo**, con *Saca algo* tildado, y su frase diciendo qué se
-  pierde: «…SE LE QUITA el permiso directo. Si además está en un team con acceso, va a
-  conservar el del team».
+- Las tres frases en castellano, legibles sin abrir nada.
+- **Las tres en rojo**, con *Saca algo* tildado —todas sacan acceso— y cada una nombrando
+  a su persona y su repositorio.
 - El payload JSON escondido (se puede prender desde el botón de columnas).
 
 **Sería problema:** que una operación que saca acceso no esté marcada, o que su frase diga
 sólo «quitar permiso» sin explicar la consecuencia.
 
-### 1.6 Aprobar, con confirmación individual
+### 1.7 Aprobar, con confirmación individual
 
 **Hago:** botón **Aprobar**. Se abre el asistente. **Primero probá apretar *Aprobar* sin
 tildar nada.**
 
-**Tengo que ver:** se niega, y el mensaje **enumera las dos operaciones destructivas por su
-descripción**. Después tildá **una sola** y volvé a intentar: se sigue negando, ahora por
-una. Tildá la segunda y aprobá.
+**Tengo que ver:** se niega, y el mensaje **enumera las tres operaciones destructivas por
+su descripción**. Después tildá **una sola** y volvé a intentar: se sigue negando, ahora
+por dos. Tildá las que faltan y aprobá.
 
 **Tengo que ver al cerrar:** el plan en *Aprobado*, con *Intacto desde la aprobación*
 tildado, y un mensaje en el chatter que dice cuántas operaciones y cuántas destructivas se
@@ -132,17 +159,17 @@ confirmaron una por una.
 **Sería problema:** que apruebe sin tildar nada. Es el control central de F2 y si falla,
 **cortá el recorrido y avisame**.
 
-### 1.7 La huella congela lo que leíste
+### 1.8 La huella congela lo que leíste
 
 **Hago:** con el plan ya aprobado, apretá **Volver a borrador** y después cambiá algo — por
-ejemplo, borrá una de las operaciones de protección. Volvé a mirar el estado.
+ejemplo, borrá una de las tres operaciones. Volvé a mirar el estado.
 
 **Tengo que ver:** el plan en *Borrador*, la aprobación borrada, y *Intacto desde la
 aprobación* **sin** tildar. Volvé a aprobarlo (con sus tildes) para seguir.
 
 **Sería problema:** que siga diciendo *Aprobado* después de cambiarle una operación.
 
-### 1.8 Aplicar, mirando la barra
+### 1.9 Aplicar, mirando la barra
 
 **Hago:** botón **Aplicar**.
 
@@ -155,10 +182,11 @@ el plan en *Aplicado* y cada operación en *Aplicada*.
 - Que alguna operación quede en *Fallida* — leé el error y anotalo.
 - *Bloqueada* **no** es un fallo: es un techo del plan de GitHub, y está bien que aparezca.
 
-**Comprobación fuera de Odoo:** entrá a `github.com/prm-sandbox/sbx-localizacion/settings/branches`
-y mirá que la rama `17.0` esté protegida de verdad.
+**Comprobación fuera de Odoo:** entrá a
+`github.com/prm-sandbox/<el repo de una de las operaciones>/settings/access` y mirá que la
+persona ya **no** tenga el permiso directo de admin.
 
-### 1.9 La bitácora, con antes y después
+### 1.10 La bitácora, con antes y después
 
 **Hago:** *Bitácora*.
 
@@ -167,7 +195,7 @@ Abrí una de las de permisos: tiene que decir qué permiso tenía esa persona **
 
 **Sería problema:** entradas sin estado previo. Sin eso el rollback no tiene a qué volver.
 
-### 1.10 Revertir
+### 1.11 Revertir
 
 **Hago:** volvé al plan y usá **Revertir** sobre **una** operación de permisos — la de
 `primateuy`, no la tuya, para no sacarte el acceso a vos mismo.
@@ -177,6 +205,23 @@ GitHub el permiso **de vuelta como estaba** — no borrado, sino en el valor pre
 
 **Sería problema:** que el permiso quede en algo distinto del original, o que el rollback
 pida confirmaciones que la operación original no pidió.
+
+### 1.12 Una operación que falla DESPUÉS de escribir también se revierte *(nuevo)*
+
+No hay forma de provocarlo a mano sin romper algo, así que **esto es sólo para leer**: es
+el agujero que el incidente de más arriba dejó a la vista y que ya está tapado.
+
+Cuando GitHub acepta la escritura pero la relectura no la confirma, la operación queda en
+*Fallida* — y sin embargo allá afuera hay un cambio. Antes, la admisibilidad de revertir
+salía del **estado** de la operación, así que *Fallida* significaba «no hay nada que
+deshacer» y el efecto quedaba afuera del embudo: hubo que sacarlo a mano en GitHub, que es
+justamente lo que el embudo existe para evitar.
+
+Ahora sale de los **hechos**: apenas la escritura sale, y **antes** de verificarla, se
+deja constancia en la bitácora en su propia conexión —para que sobreviva a una caída— con
+el estado previo adentro. **Si ves una operación *Fallida* que tiene el botón *Revertir*
+activo, está bien: quiere decir que escribió.** El caso contrario también está probado:
+una que falla antes de escribir no ofrece revertir nada.
 
 ---
 
