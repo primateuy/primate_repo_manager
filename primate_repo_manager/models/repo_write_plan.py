@@ -52,6 +52,11 @@ OPERATION_KINDS = [
 	# D2 · promoción de módulos. `module_copy` escribe CONTENIDO, que es lo que ninguna
 	# operación hacía hasta ahora.
 	("module_copy", "Copiar un módulo a otro repositorio"),
+	# Y ésta BORRA contenido. Es la única del catálogo que saca código de un repositorio
+	# de cliente, y por eso nunca corre sola: depende de que su copia haya quedado
+	# verificada (D2.0). El peor caso permitido es duplicación benigna, jamás borrado sin
+	# copia.
+	("module_delete", "Retirar un módulo de un repositorio"),
 ]
 
 
@@ -509,6 +514,8 @@ class RepoWriteOperation(models.Model):
 	KINDS_DESTRUCTIVOS = (
 		"branch_protection_remove", "ruleset_delete", "collaborator_revoke",
 		"team_repo_revoke", "team_member_remove",
+		# La más destructiva de todas: saca código de un repositorio ajeno.
+		"module_delete",
 	)
 
 	state = fields.Selection(
@@ -670,6 +677,16 @@ class RepoWriteOperation(models.Model):
 				"destino": repo, "rama": datos.get("destino_rama") or "—",
 				"origen": "%s@%s" % (datos.get("origen_repo") or "—",
 									 datos.get("origen_rama") or "—"),
+			}
+		if self.kind == "module_delete":
+			return _(
+				"De %(repo)s, rama %(rama)s, SE BORRA el módulo «%(modulo)s» (%(ruta)s). "
+				"Las instancias que lo tomen de este repositorio dejan de encontrarlo: "
+				"eso es addons_path, y Repo Manager no lo cambia."
+			) % {
+				"repo": repo, "rama": datos.get("rama") or "—",
+				"modulo": datos.get("modulo") or (datos.get("ruta") or "").split("/")[-1],
+				"ruta": datos.get("ruta") or "—",
 			}
 		if self.kind == "team_member_remove":
 			return _(

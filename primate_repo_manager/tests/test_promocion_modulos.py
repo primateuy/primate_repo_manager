@@ -30,6 +30,19 @@ class TransporteGit:
 		self.mover = mover_la_rama_en_el_medio
 		self.escrituras = []
 		self.commits = 0
+		# LO QUE UN ÁRBOL CON BORRADOS DEJÓ PENDIENTE. El doble tiene que borrar de
+		# verdad: si el árbol que devuelve fuera siempre el original, la verificación del
+		# borrado diría «sigue estando» sobre un doble que nunca borró nada, y el test
+		# estaría probando el doble en vez del código.
+		self._arbol_pendiente = None
+		self._arboles_enviados = []
+		# (repo, sha) -> cómo era el árbol en ese commit. Es lo que permite que mover la
+		# referencia atrás DEVUELVA el contenido, como en git de verdad: sin esto, el
+		# rollback movía una referencia hacia un pasado que el doble ya había olvidado, y
+		# la verificación posterior fallaba por culpa del doble.
+		self.instantaneas = {(repo, sha): list(arboles.get((repo, rama), []))
+							 for (repo, rama), sha in cabezas.items()}
+		self._n = 0
 
 	def post(self, url, json=None, headers=None, timeout=None, **kw):
 		if url.endswith("/access_tokens"):
@@ -38,15 +51,53 @@ class TransporteGit:
 		if "/git/blobs" in url:
 			return RespuestaFalsa(201, {"sha": "blob-nuevo"})
 		if "/git/trees" in url:
+			entradas = (json or {}).get("tree") or []
+			self._arboles_enviados.append(entradas)
+			repo = url.split("/repos/")[1].split("/git/trees")[0]
+			# SÓLO SE MODELAN LOS BORRADOS. Las altas de la copia siguen resolviéndose por
+			# el árbol sembrado en el fixture, que es lo que le da a cada test control
+			# sobre el SHA que la verificación va a comparar. Modelar la construcción de
+			# árboles de git en un doble sería reimplementar git para probar otra cosa.
+			fuera = {e["path"] for e in entradas if e.get("sha") is None}
+			if fuera:
+				self._arbol_pendiente = (repo, fuera)
 			return RespuestaFalsa(201, {"sha": "arbol-nuevo"})
 		if "/git/commits" in url:
 			self.commits += 1
-			return RespuestaFalsa(201, {"sha": "commit-nuevo"})
+			self._n += 1
+			sha = "commit-%s" % self._n
+			if self._arbol_pendiente:
+				repo, fuera = self._arbol_pendiente
+				rama = self._rama_de(repo)
+				quedan = [(r, t, s) for r, t, s in self.arboles.get((repo, rama), [])
+						  if r not in fuera]
+				# El directorio se va con su último archivo, como en git: un árbol sin
+				# hojas no existe.
+				self.instantaneas[(repo, sha)] = [
+					(r, t, s) for r, t, s in quedan
+					if t != "tree" or any(o.startswith(r + "/") for o, _t, _s in quedan)]
+				self._arbol_pendiente = None
+			return RespuestaFalsa(201, {"sha": sha})
 		return RespuestaFalsa(201, {})
 
 	def patch(self, url, json=None, headers=None, timeout=None, **kw):
-		self.escrituras.append(("PATCH", url))
+		self.escrituras.append(("PATCH", url, json or {}))
+		if "/git/refs/heads/" in url:
+			# Mover la referencia mueve el contenido: es lo que hace git, y es lo que hace
+			# que el rollback pueda verificarse contra lo que había antes.
+			repo = url.split("/repos/")[1].split("/git/refs/")[0]
+			rama = url.split("/git/refs/heads/")[1]
+			sha = (json or {}).get("sha")
+			if (repo, sha) in self.instantaneas:
+				self.arboles[(repo, rama)] = list(self.instantaneas[(repo, sha)])
+			self.cabezas[(repo, rama)] = sha
 		return RespuestaFalsa(200, {})
+
+	def _rama_de(self, repo):
+		for (r, rama) in list(self.arboles):
+			if r == repo:
+				return rama
+		return "17.0"
 
 	def delete(self, url, json=None, headers=None, timeout=None, **kw):
 		self.escrituras.append(("DELETE", url))
@@ -136,6 +187,10 @@ class BaseD2(TransactionCase):
 		t.repos_de_la_instalacion = (self.origen.full_name, self.destino.full_name)
 		return t
 
+	def _aprobar(self):
+		self.plan._aprobar(
+			confirmadas=self.plan.operation_ids.filtered("is_destructive"))
+
 	def _aplicar(self, transporte):
 		Backend = type(self.backend)
 		original = Backend.write_client
@@ -220,17 +275,9 @@ class TestLaBarrera(BaseD2):
 		self.plan.invalidate_recordset()
 		self.assertNotEqual(self.plan._huella(), huella)
 
-	def _aprobar(self):
-		self.plan._aprobar(
-			confirmadas=self.plan.operation_ids.filtered("is_destructive"))
-
 
 class TestCopiaEnUnCommit(BaseD2):
 	"""D2.1 y D2.2."""
-
-	def _aprobar(self):
-		self.plan._aprobar(
-			confirmadas=self.plan.operation_ids.filtered("is_destructive"))
 
 	def test_la_copia_es_UN_solo_commit(self):
 		"""Cuarenta archivos con la API de contenidos serían cuarenta commits, y una
@@ -357,3 +404,171 @@ class TestGuardaDeRamaProtegida(BaseD2):
 		self._copia()
 		self.plan._aprobar()
 		self.assertEqual(self.plan.state, "approved")
+
+
+class TestElBorrado(BaseD2):
+	"""D2.3: la operación que saca código de un repositorio de cliente.
+
+	Todo con transporte falso. Contra GitHub corre en el ensayo por fases, que es otro
+	momento y con otra atención.
+	"""
+
+	def _borrado(self, arbol_esperado="ARBOL-DEL-MODULO", ruta="addons/mi_modulo"):
+		return self.env["repo.write.operation"].create({
+			"plan_id": self.plan.id, "kind": "module_delete", "sequence": 20,
+			"repository_id": self.origen.id, "target": ruta,
+			"payload_json": json.dumps({
+				"ruta": ruta, "modulo": "mi_modulo", "rama": "17.0",
+				"arbol_esperado": arbol_esperado,
+				"copiado_a": self.destino.full_name})})
+
+	# --- lo que la pantalla tiene que decir antes de que nadie apruebe ------
+
+	def test_es_destructivo_y_es_reversible(self):
+		"""Las dos cosas a la vez, y no son lo mismo: saca algo, y tiene vuelta."""
+		borrado = self._borrado()
+		self.assertTrue(borrado.is_destructive)
+		self.assertFalse(borrado.is_irreversible)
+		self.assertTrue(borrado.is_supported)
+
+	def test_la_frase_dice_QUÉ_se_pierde_y_avisa_del_addons_path(self):
+		"""Un módulo que borra código y no avisa que algo más tiene que cambiar rompe
+		producciones ajenas en silencio."""
+		frase = self._borrado().description
+		self.assertIn("SE BORRA", frase)
+		self.assertIn("mi_modulo", frase)
+		self.assertIn("addons_path", frase)
+
+	def test_aprobar_sin_confirmarlo_se_niega(self):
+		self._borrado()
+		with self.assertRaises(UserError):
+			self.plan._aprobar(confirmadas=self.env["repo.write.operation"])
+
+	# --- el borrado ---------------------------------------------------------
+
+	def test_saca_el_modulo_en_UN_commit_y_sin_force(self):
+		borrado = self._borrado()
+		self._aprobar()
+		transporte = self._transporte()
+		self._aplicar(transporte)
+
+		self.assertEqual(borrado.state, "applied", borrado.error or "")
+		self.assertEqual(transporte.commits, 1)
+		refs = [e for e in transporte.escrituras
+				if e[0] == "PATCH" and "/git/refs/heads/" in e[1]]
+		self.assertEqual(len(refs), 1)
+		self.assertIs(refs[0][2].get("force"), False)
+
+	def test_borra_SÓLO_lo_que_cuelga_del_módulo(self):
+		"""`base_tree` conserva lo que no se nombra: nombrar de más borraría el repo."""
+		self.origen_extra = self._borrado()
+		self._aprobar()
+		transporte = self._transporte()
+		transporte.arboles[(self.origen.full_name, "17.0")].append(
+			("addons/otro_modulo/__manifest__.py", "blob", "b9"))
+		self._aplicar(transporte)
+
+		enviadas = transporte._arboles_enviados[-1]
+		rutas = sorted(e["path"] for e in enviadas)
+		self.assertEqual(rutas, ["addons/mi_modulo/__manifest__.py",
+								 "addons/mi_modulo/models.py"])
+		self.assertTrue(all(e["sha"] is None for e in enviadas))
+
+	def test_la_verificacion_relee_y_el_modulo_YA_NO_ESTÁ(self):
+		borrado = self._borrado()
+		self._aprobar()
+		transporte = self._transporte()
+		self._aplicar(transporte)
+
+		self.assertEqual(borrado.state, "applied")
+		quedan = [r for r, _t, _s in transporte.arboles[(self.origen.full_name, "17.0")]]
+		self.assertNotIn("addons/mi_modulo", quedan)
+
+	# --- las dos negativas, que son el punto entero -------------------------
+
+	def test_NO_borra_si_el_modulo_cambio_desde_que_se_planificó(self):
+		"""La barrera dice «la copia salió bien». Esto pregunta otra cosa: «¿lo que voy a
+		borrar es lo que se copió?». Lo que alguien tocó en el medio no está en ninguna
+		copia, y borrarlo lo perdería para siempre.
+
+		MUTACIÓN: sacando la comparación contra `arbol_esperado`, este test se pone rojo.
+		"""
+		borrado = self._borrado(arbol_esperado="LO-QUE-SE-COPIÓ")
+		self._aprobar()
+		transporte = self._transporte()   # el origen tiene ARBOL-DEL-MODULO, otro sha
+		self._aplicar(transporte)
+
+		self.assertEqual(borrado.state, "failed")
+		self.assertIn("volver a promover", borrado.error)
+		self.assertEqual(transporte.commits, 0)
+		self.assertFalse([e for e in transporte.escrituras if e[0] == "PATCH"])
+
+	def test_NO_da_por_hecho_un_borrado_sobre_una_ruta_que_no_existe(self):
+		"""«No está» puede ser «ya se borró» o «la ruta está mal escrita». Se ven igual
+		desde acá, así que se para: reportar éxito sobre la segunda sería mentir."""
+		borrado = self._borrado(ruta="addons/no_existe")
+		self._aprobar()
+		transporte = self._transporte()
+		self._aplicar(transporte)
+
+		self.assertEqual(borrado.state, "failed")
+		self.assertIn("no es ésa", borrado.error)
+		self.assertEqual(transporte.commits, 0)
+
+	# --- revertir -----------------------------------------------------------
+
+	def test_revertir_devuelve_la_rama_al_commit_que_tenía(self):
+		borrado = self._borrado()
+		self._aprobar()
+		transporte = self._transporte()
+		self._aplicar(transporte)
+
+		Backend = type(self.backend)
+		original = Backend.write_client
+		Backend.write_client = lambda s, transport=None: original(s, transport=transporte)
+		try:
+			borrado.action_rollback_operation()
+		finally:
+			Backend.write_client = original
+
+		self.assertEqual(borrado.state, "rolled_back")
+		vuelta = [e for e in transporte.escrituras
+				  if e[0] == "PATCH" and "/git/refs/heads/" in e[1]][-1]
+		self.assertEqual(vuelta[2].get("sha"), "c-origen")
+
+	def test_revertir_se_NIEGA_si_alguien_empujó_encima(self):
+		"""Devolver la rama atrás borraría lo que empujó otra persona. Se niega y dice
+		desde qué commit se restaura a mano."""
+		borrado = self._borrado()
+		self._aprobar()
+		transporte = self._transporte()
+		self._aplicar(transporte)
+		transporte.cabezas[(self.origen.full_name, "17.0")] = "empujó-otro"
+
+		Backend = type(self.backend)
+		original = Backend.write_client
+		Backend.write_client = lambda s, transport=None: original(s, transport=transporte)
+		try:
+			with self.assertRaises(UserError) as ctx:
+				borrado.action_rollback_operation()
+		finally:
+			Backend.write_client = original
+		self.assertIn("se movió después del borrado", str(ctx.exception))
+		self.assertIn("a mano", str(ctx.exception))
+
+	# --- y la barrera, con las dos operaciones de verdad ---------------------
+
+	def test_si_la_copia_falla_el_BORRADO_no_se_intenta(self):
+		"""EL test de todo D2, ahora con la operación que borra de verdad."""
+		copia = self._copia()
+		borrado = self._borrado()
+		borrado.depends_on_ids = [(6, 0, copia.ids)]
+		self._aprobar()
+		transporte = self._transporte(sha_en_destino="OTRA-COSA")
+		self._aplicar(transporte)
+
+		self.assertEqual(copia.state, "failed")
+		self.assertEqual(borrado.state, "blocked_by_dependency")
+		# Y el módulo sigue estando en el origen: eso es lo que se estaba protegiendo.
+		quedan = [r for r, _t, _s in transporte.arboles[(self.origen.full_name, "17.0")]]
+		self.assertIn("addons/mi_modulo", quedan)

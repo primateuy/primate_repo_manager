@@ -268,3 +268,202 @@ class RepoWriteOperationModule(models.Model):
 			"revertir": "_revertir_modulo_copiado",
 		}
 		return manejadores
+
+
+class RepoWriteOperationModuleDelete(models.Model):
+	"""Retirar un módulo de un repositorio: LA PRIMERA OPERACIÓN QUE BORRA CONTENIDO.
+
+	NUNCA CORRE SOLA. Depende, por la barrera de D2.0, de que la copia al destino haya
+	quedado **verificada por hash**. Si la copia falló, ésta no se intenta y queda en «no
+	ejecutada por dependencia». El peor caso que este diseño permite es que el módulo
+	quede en dos lados —duplicación benigna, molesta y arreglable—; el que no permite es
+	que no quede en ninguno.
+
+	Y ADEMÁS COMPRUEBA POR SU CUENTA. La barrera dice «la copia salió bien»; esta
+	operación pregunta algo distinto: «¿lo que voy a borrar es lo mismo que se copió?».
+	Entre que se armó el plan y se aplica, alguien pudo tocar el módulo en el origen. Si
+	el subárbol ya no tiene el SHA que el plan declaró, se niega: borraría trabajo que
+	nunca se copió a ningún lado. Dos preguntas distintas necesitan dos comprobaciones.
+
+	LA REVERSIÓN ES POR AVANCE RÁPIDO, igual que la de la copia. Se guarda el commit donde
+	estaba la rama; si alguien empujó después, revertir pisaría lo suyo y el módulo se
+	niega y explica en vez de hacerlo.
+	"""
+	_inherit = "repo.write.operation"
+
+	# El payload:
+	#   {"ruta": "addons/mi_modulo", "modulo": "mi_modulo", "rama": "17.0",
+	#    "arbol_esperado": "<sha del subárbol que se copió>",
+	#    "copiado_a": "org/general"}   ← sólo para la frase y la bitácora
+	#
+	# `repository_id` es el repositorio DEL QUE SE SACA.
+
+	def _datos_borrado(self):
+		self.ensure_one()
+		try:
+			datos = json.loads(self.payload_json or "{}")
+		except (TypeError, ValueError) as exc:
+			raise UserError(_("El payload del borrado no es JSON válido: %s") % exc)
+		faltan = [c for c in ("ruta", "rama") if not datos.get(c)]
+		if faltan:
+			raise UserError(_(
+				"Al payload del borrado le faltan datos: %s.") % ", ".join(faltan))
+		return datos
+
+	# ------------------------------------------------------------------
+	# Leer: dónde está la rama y qué se va a sacar
+	# ------------------------------------------------------------------
+
+	def _leer_modulo_a_borrar(self, cliente):
+		self.ensure_one()
+		datos = self._datos_borrado()
+		repo = self.repository_id.full_name
+		rama = datos["rama"]
+		ref = cliente.get("/repos/%s/git/ref/heads/%s" % (repo, rama))
+		if not ref or not (ref.get("object") or {}).get("sha"):
+			raise _falla(_(
+				"No se pudo leer la rama «%(rama)s» de %(repo)s. Sin punto de retorno no "
+				"se borra nada.") % {"rama": rama, "repo": repo})
+		# LA LECTURA REPORTA HECHOS, NO DECIDE. Que el módulo no esté es un hecho válido
+		# —es el estado normal DESPUÉS de un borrado— y este mismo método es el que el
+		# motor usa para fotografiar la situación antes de revertir. Negarse acá dejaba al
+		# borrado sin reversión posible: el rollback moría leyendo, antes de intentar
+		# nada. La negativa a escribir sobre una ruta vacía vive en `_borrar_modulo`, que
+		# es el paso que escribe.
+		return {
+			"rama": rama,
+			"commit": ref["object"]["sha"],
+			"arbol_del_modulo": self._sha_del_subarbol(cliente, repo, rama, datos["ruta"]),
+		}
+
+	# ------------------------------------------------------------------
+	# Ejecutar: un árbol sin el módulo, un commit, la referencia
+	# ------------------------------------------------------------------
+
+	def _borrar_modulo(self, cliente):
+		self.ensure_one()
+		datos = self._datos_borrado()
+		repo = self.repository_id.full_name
+		rama = datos["rama"]
+		ruta = datos["ruta"]
+		previo = self._leer_modulo_a_borrar(cliente)
+
+		if not previo["arbol_del_modulo"]:
+			# NO es un éxito silencioso. Que no haya nada puede significar que ya se borró
+			# —y entonces no hay nada que hacer— o que la ruta está mal escrita y el
+			# borrado apuntaba a otro lado. Las dos cosas se ven igual desde acá, así que
+			# se para y se dice, en vez de reportar «listo» sobre algo que no se hizo.
+			raise _falla(_(
+				"En %(repo)s@%(rama)s no hay nada en «%(ruta)s». O ya se borró, o la ruta "
+				"no es ésa: en cualquier caso no se escribe sin saber cuál de las dos.")
+				% {"repo": repo, "rama": rama, "ruta": ruta})
+
+		# LA SEGUNDA COMPROBACIÓN, la propia. La barrera ya dijo que la copia quedó bien;
+		# esto pregunta si lo que está acá AHORA es lo que se copió. Si alguien tocó el
+		# módulo en el origen después de armar el plan, su cambio no está en ninguna copia
+		# y borrarlo lo perdería para siempre.
+		esperado = datos.get("arbol_esperado")
+		if esperado and previo["arbol_del_modulo"] != esperado:
+			raise _falla(_(
+				"El módulo en %(repo)s@%(rama)s cambió después de armarse el plan: se "
+				"copió %(esperado)s y ahora hay %(actual)s. Lo que cambió no está en la "
+				"copia, así que borrarlo lo perdería. Hay que volver a promover."
+			) % {"repo": repo, "rama": rama, "esperado": esperado[:8],
+				 "actual": (previo["arbol_del_modulo"] or "")[:8]})
+
+		# Los archivos que se van. En la API de datos de git, un `sha: null` en el árbol
+		# borra esa ruta; hay que nombrarlos uno por uno, porque `base_tree` conserva todo
+		# lo que no se menciona — que es justamente lo que se quiere para el resto del
+		# repositorio.
+		arbol = cliente.get("/repos/%s/git/trees/%s?recursive=1" % (repo, rama)) or {}
+		if arbol.get("truncated"):
+			raise _falla(_(
+				"El árbol de %(repo)s@%(rama)s vino truncado: no se puede borrar un "
+				"módulo sin ver todos sus archivos.") % {"repo": repo, "rama": rama})
+		entradas = [
+			{"path": e["path"], "mode": e.get("mode", "100644"), "type": "blob",
+			 "sha": None}
+			for e in (arbol.get("tree") or [])
+			if e.get("type") == "blob" and (e.get("path") or "").startswith(ruta + "/")
+		]
+		if not entradas:
+			raise _falla(_(
+				"No hay archivos bajo «%(ruta)s» en %(repo)s@%(rama)s. Un commit que no "
+				"borra nada quedaría en la historia pareciendo un borrado hecho.")
+				% {"ruta": ruta, "repo": repo, "rama": rama})
+
+		arbol_nuevo = cliente.post("/repos/%s/git/trees" % repo, {
+			"base_tree": previo["commit"], "tree": entradas,
+		})
+		commit = cliente.post("/repos/%s/git/commits" % repo, {
+			"message": _("[REM] %(modulo)s: retirado, ahora vive en %(destino)s\n\n"
+						 "Retirado por Repo Manager: la copia en %(destino)s quedó "
+						 "verificada por hash antes de este borrado. Plan «%(plan)s».\n"
+						 "OJO: las instancias que tomaban el módulo de este repositorio "
+						 "necesitan un cambio de addons_path que Repo Manager no hace.")
+					   % {"modulo": datos.get("modulo") or ruta.split("/")[-1],
+						  "destino": datos.get("copiado_a") or _("el repositorio común"),
+						  "plan": self.plan_id.name},
+			"tree": arbol_nuevo["sha"], "parents": [previo["commit"]],
+		})
+		# SIN force, por lo mismo que la copia: si alguien empujó en el medio, que rechace.
+		cliente.patch("/repos/%s/git/refs/heads/%s" % (repo, rama), {
+			"sha": commit["sha"], "force": False,
+		})
+		return {"commit": commit["sha"], "archivos": len(entradas),
+				"arbol_borrado": previo["arbol_del_modulo"]}
+
+	# ------------------------------------------------------------------
+	# Verificar: que YA NO ESTÉ
+	# ------------------------------------------------------------------
+
+	def _verificar_modulo_borrado(self, cliente):
+		"""El borrado vale si el subárbol dejó de existir. Se relee, no se supone."""
+		self.ensure_one()
+		datos = self._datos_borrado()
+		quedo = self._sha_del_subarbol(
+			cliente, self.repository_id.full_name, datos["rama"], datos["ruta"])
+		if quedo:
+			return False, _(
+				"el módulo sigue estando en «%(ruta)s» (%(sha)s). El commit de borrado "
+				"puede no haber movido la rama."
+			) % {"ruta": datos["ruta"], "sha": quedo[:8]}
+		return True, _("«%s» ya no está en la rama") % datos["ruta"]
+
+	# ------------------------------------------------------------------
+	# Revertir: el módulo vuelve, si nadie empujó encima
+	# ------------------------------------------------------------------
+
+	def _revertir_modulo_borrado(self, cliente, punto_de_retorno):
+		self.ensure_one()
+		datos = self._datos_borrado()
+		repo = self.repository_id.full_name
+		rama = datos["rama"]
+		nuestro = json.loads(self.result_json or "{}").get("commit")
+		ref = cliente.get("/repos/%s/git/ref/heads/%s" % (repo, rama)) or {}
+		actual = (ref.get("object") or {}).get("sha")
+		if nuestro and actual and actual != nuestro:
+			raise UserError(_(
+				"La rama «%(rama)s» de %(repo)s se movió después del borrado: ahora está "
+				"en %(actual)s y nosotros la dejamos en %(nuestro)s.\n\n"
+				"Devolverla atrás borraría lo que empujó otra persona. El módulo está "
+				"guardado en el commit %(previo)s: se restaura a mano desde ahí."
+			) % {"rama": rama, "repo": repo, "actual": actual[:8],
+				 "nuestro": nuestro[:8], "previo": punto_de_retorno["commit"][:8]})
+		cliente.patch("/repos/%s/git/refs/heads/%s" % (repo, rama), {
+			"sha": punto_de_retorno["commit"], "force": True,
+		})
+		return True
+
+	# ------------------------------------------------------------------
+
+	@api.model
+	def _manejadores(self):
+		manejadores = super()._manejadores()
+		manejadores["module_delete"] = {
+			"leer": "_leer_modulo_a_borrar",
+			"ejecutar": "_borrar_modulo",
+			"verificar": "_verificar_modulo_borrado",
+			"revertir": "_revertir_modulo_borrado",
+		}
+		return manejadores
