@@ -243,3 +243,50 @@ class TestAsistenteDeHabilitacion(TransactionCase):
 			asistente.action_confirm()
 		self.assertIn("no hay forma de saber sobre qué", str(ctx.exception))
 		self.assertFalse(self.backend.write_enabled)
+
+
+class TestElBotonSoloEnProduccion(TransactionCase):
+	"""La habilitación explícita es de producción, y la pantalla tiene que decir lo mismo.
+
+	El botón «Habilitar escritura» apareció sobre una conexión de SANDBOX porque su
+	condición miraba las credenciales y se olvidaba del entorno. No era peligroso —el flag
+	no cambia nada en sandbox— pero invitaba a apretar algo innecesario y, peor, sugería
+	que el sandbox estaba bloqueado cuando no lo estaba: exactamente la clase de mentira
+	tranquilizadora al revés que este módulo evita en todos lados.
+
+	Es la TERCERA condición de vista que se escapa sin que nada la detecte —antes fueron un
+	`groups_id` que en 19 se llama `group_ids` y un `target` inválido—. Por eso el test no
+	prueba el botón: prueba la condición, leyendo la vista.
+	"""
+
+	def _condicion(self, boton):
+		from lxml import etree
+
+		vista = self.env.ref("primate_repo_manager.view_repo_backend_form")
+		arbol = etree.fromstring(vista.arch)
+		nodos = arbol.xpath("//button[@name='%s']" % boton)
+		self.assertEqual(len(nodos), 1, "se esperaba un solo botón «%s»" % boton)
+		return nodos[0].get("invisible") or ""
+
+	def test_habilitar_solo_se_ofrece_en_produccion(self):
+		condicion = self._condicion("action_enable_writes")
+		self.assertIn("environment", condicion,
+					  "la condición del botón tiene que mirar el ENTORNO, no sólo las "
+					  "credenciales")
+		self.assertIn("production", condicion)
+
+	def test_deshabilitar_NO_mira_el_entorno_y_es_a_proposito(self):
+		"""Si por lo que fuera quedara habilitada una conexión que no debería, tiene que
+		haber forma de apagarla. Esconder la salida es peor que ofrecerla de más."""
+		condicion = self._condicion("action_disable_writes")
+		self.assertNotIn("environment", condicion)
+		self.assertIn("write_enabled", condicion)
+
+	def test_el_campo_que_la_condicion_usa_esta_en_la_vista(self):
+		"""Una condición sobre un campo que la vista no carga se evalúa contra vacío y no
+		avisa: es un `invisible` que miente en silencio."""
+		from lxml import etree
+
+		vista = self.env.ref("primate_repo_manager.view_repo_backend_form")
+		arbol = etree.fromstring(vista.arch)
+		self.assertTrue(arbol.xpath("//field[@name='environment']"))

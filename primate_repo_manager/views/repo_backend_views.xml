@@ -26,17 +26,31 @@
 				<header>
 					<button name="action_test_connection" type="object" string="Probar conexión"
 							class="btn-primary"/>
-					<!-- Sólo aparece cuando hay algo que habilitar: con credenciales de
-						 escritura cargadas y todavía sin habilitar. -->
+					<!-- SÓLO EN PRODUCCIÓN. La habilitación explícita es una condición
+						 que `write_client()` exige únicamente sobre conexiones de
+						 producción; en sandbox no cambia nada. Ofrecer el botón ahí
+						 invitaba a apretar algo que no hace falta y, peor, sugería que el
+						 sandbox estaba bloqueado cuando no lo estaba.
+
+						 La condición miraba las credenciales y se olvidaba del entorno.
+						 Es la tercera vez que una condición de vista se escapa sin que
+						 nada la detecte: el test de abajo la vigila desde ahora. -->
 					<button name="action_enable_writes" type="object"
 							string="Habilitar escritura" class="btn-danger"
 							groups="primate_repo_manager.group_repo_admin"
-							invisible="write_enabled or not write_key_set"/>
+							invisible="environment != 'production' or write_enabled
+									   or not write_key_set"/>
+					<!-- El de apagar no mira el entorno a propósito: si por lo que fuera
+						 quedara habilitada una conexión que no debería, tiene que haber
+						 forma de apagarla. Esconder la salida es peor que ofrecerla de
+						 más. -->
 					<button name="action_disable_writes" type="object"
 							string="Deshabilitar escritura" class="btn-secondary"
 							groups="primate_repo_manager.group_repo_admin"
 							invisible="not write_enabled"/>
 					<field name="state" widget="statusbar"/>
+					<!-- Necesario para la condición de los botones de arriba. -->
+					<field name="environment" invisible="1"/>
 				</header>
 				<sheet>
 					<div class="oe_title">
