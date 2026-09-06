@@ -68,6 +68,19 @@ class RepoModule(models.Model):
 		"Ese módulo ya está registrado en esta conexión.")
 
 	@api.depends("copy_ids.tree_sha", "copy_ids.repository_id", "copy_ids.line")
+	def action_promover(self):
+		"""Abre la pantalla de promoción de ESTE módulo.
+
+		Se pasa el id por contexto y no por dominio: la pantalla no es una lista filtrada
+		sino una decisión sobre un módulo concreto.
+		"""
+		self.ensure_one()
+		accion = self.env["ir.actions.actions"]._for_xml_id(
+			"primate_repo_manager.action_repo_promocion_modulo")
+		accion["context"] = {"default_module_id": self.id}
+		accion["params"] = {"module_id": self.id}
+		return accion
+
 	def _compute_copias(self):
 		"""La divergencia se compara DENTRO de cada línea de versión, no entre líneas.
 
