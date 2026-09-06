@@ -130,6 +130,20 @@
 		}
 	}
 
+	// Mismo peso visual que armar el plan: una tarjeta entera, no un enlace al pie.
+	.rm-promo-abortar {
+		border-left: 4px solid var(--rm-accent);
+		.rm-promo-abortar-titulo { font-weight: 600; font-size: .9375rem; }
+		p { margin: var(--rm-space-1) 0 var(--rm-space-2); font-size: .875rem;
+			line-height: 1.55; max-width: 46rem; }
+		.rm-promo-abortar-acciones {
+			display: flex;
+			align-items: center;
+			gap: var(--rm-space-3);
+			flex-wrap: wrap;
+		}
+	}
+
 	.rm-promo-pie {
 		display: flex;
 		align-items: center;

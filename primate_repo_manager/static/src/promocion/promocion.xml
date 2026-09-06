@@ -114,6 +114,36 @@
 					</div>
 				</div>
 
+				<!-- ABORTAR ES UNA SALIDA DE PRIMERA, NO UN «cancelar» chiquito.
+					 Cuando dos copias divergen de verdad, la respuesta correcta muchas
+					 veces NO es elegir una y perder la otra: es mergearlas a mano y
+					 volver. Una pantalla que ofrece «elegí» en grande y «volver» en un
+					 enlace gris está empujando a decidir, que es exactamente lo que esta
+					 pantalla no hace. Por eso tiene su propio bloque, con el mismo peso
+					 que armar el plan. -->
+				<div t-if="state.datos.hay_que_elegir" class="rm-card rm-promo-abortar">
+					<div class="rm-promo-abortar-titulo">
+						¿Ninguna de las tres tendría que ganar?
+					</div>
+					<p>
+						Es una respuesta válida y a veces la correcta: si cada copia tiene
+						algo que vale, elegir una pierde el resto. El camino es
+						<strong>unificarlas a mano en un repositorio</strong> —con las PRs
+						que hagan falta— y volver acá cuando las copias sean iguales.
+						Entonces esta pantalla no va a pedir que elijas nada.
+					</p>
+					<div class="rm-promo-abortar-acciones">
+						<button class="btn btn-secondary"
+								t-on-click="() => this.abortar()">
+							Salir sin promover
+						</button>
+						<span class="rm-promo-nota">
+							No se crea ningún plan y no cambia nada. El inventario sigue
+							marcando el módulo como divergente hasta que se resuelva.
+						</span>
+					</div>
+				</div>
+
 				<!-- EL BOTÓN NACE DESHABILITADO -->
 				<div class="rm-promo-pie">
 					<button class="btn btn-primary"

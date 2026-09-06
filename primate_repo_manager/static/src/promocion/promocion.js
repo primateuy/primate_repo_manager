@@ -111,6 +111,23 @@ export class PromocionDeModulo extends Component {
 
 	// --- lo que produce ------------------------------------------------------
 
+	/**
+	 * Salir sin promover. No crea nada, no cambia nada, y vuelve al módulo.
+	 *
+	 * Está acá y con su propio bloque porque «no elegir» es una decisión legítima: si
+	 * cada copia tiene algo que vale, la respuesta correcta es unificarlas a mano y
+	 * volver. Ofrecer sólo «elegí» empuja a decidir cuando la decisión correcta es no
+	 * decidir todavía.
+	 */
+	abortar() {
+		this.action.doAction({
+			type: "ir.actions.act_window",
+			res_model: "repo.module",
+			res_id: this.moduleId,
+			views: [[false, "form"]],
+		});
+	}
+
 	async armarPlan() {
 		const resultado = await this.orm.call(
 			"repo.module.promotion", "armar_plan",
