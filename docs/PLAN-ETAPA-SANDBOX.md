@@ -394,7 +394,7 @@ D2.3. Dimensionado completo en `TRAMO-VISUAL.md`; las tres reglas de proceso que
 con él —el mockup manda, lo no implementado se muestra apagado, y cada pantalla nace
 visual y funcional a la vez— están en `CLAUDE.md` y valen para B, C, D y E.
 
-### D2 · La promoción *(escritura)*
+### D2 · La promoción *(escritura)* — CERRADO el 6-sep-2026
 
 *Hallazgo del motor, encontrado al construir D2.0 y ya corregido:* el bucle del apply **no
 se detenía ante un fallo**. En F2 eso era correcto —proteger una rama y bajar un permiso
@@ -443,12 +443,33 @@ idénticas, la promoción **no puede armarse sola**: alguien tiene que elegir qu
 gana y qué se hace con lo que se pierde. La pantalla tiene que forzar esa elección, no
 resolverla por antigüedad ni por tamaño.
 
-**D2.5 · El plan de promoción como una sola unidad.** Una promoción es una escritura al
-destino y N borrados en orígenes. Media promoción aplicada —copiado al general, borrado de
-dos de cuatro clientes— es un estado peor que no haber empezado. Hay que decidir si el
-plan se aplica todo-o-nada o si el rollback alcanza; ver «decisiones abiertas».
+**D2.5 · El plan de promoción como una sola unidad.** *(DECIDIDO el 6-sep-2026: el
+rollback alcanza. Todo-o-nada NO se construye.)*
 
-**D2.6 · Conciliar las escrituras huérfanas.** *(lo primero del próximo tramo)* Lo que
+La pregunta era si un plan de promoción tenía que aplicarse todo-o-nada o si el rollback
+alcanzaba. Se decidió lo segundo, y las razones quedan escritas porque una decisión sin sus
+razones se vuelve a discutir:
+
+1. **El ensayo dio evidencia real, no una opinión.** Media promoción quedó aplicada —copia
+   hecha, borrados sin correr— y se revirtió sin perder nada. El caso que motivaba
+   todo-o-nada se probó reversible en el sandbox, contra GitHub.
+
+2. **Todo-o-nada contra GitHub sería simulado.** GitHub no tiene transacciones: «deshacer
+   todo» se implementaría encadenando rollbacks automáticos. Es más maquinaria —y más
+   superficie de falla— para llegar al mismo resultado que la barrera ya garantiza, con el
+   peor caso acotado a duplicación benigna: el módulo en dos lados, molesto y arreglable.
+
+3. **Y sería una escritura que nadie aprobó en ese momento.** Un rollback automático ante
+   un fallo parcial escribe en GitHub por decisión del sistema, no de una persona, y
+   justamente cuando algo ya salió distinto de lo previsto. El estado correcto después de
+   un fallo parcial es **frenado y visible**, con las dos salidas ofrecidas —revertir o
+   completar— y alguien mirando. Es la misma doctrina que sostiene la conciliación de
+   D2.6: lo que quedó a medias se concilia, no se resuelve solo.
+
+*Consecuencia práctica:* no hay código nuevo. Lo que ya existe —la barrera, el rollback por
+operación y por plan, la conciliación y el freno— es la respuesta completa.
+
+**D2.6 · Conciliar las escrituras huérfanas.** *(hecho, y ejercitado contra GitHub)* Lo que
 encontró el ensayo: si el proceso muere entre la escritura y su verificación, la operación
 vuelve a «pendiente» y el efecto queda en GitHub, registrado sólo como constancia de
 emisión en la bitácora. Al reaplicar, la operación lee un estado previo que **ya incluye su
@@ -469,6 +490,23 @@ probado; lo nuevo es el tipo de operación y su reversión.
 exige crear e instalar una segunda App con `contents:write` sobre los repos de la tanda, y
 después habilitar la escritura por A7. En el sandbox ya se puede: `prm-sandbox` tiene
 `contents:write`.
+
+### F4 ya está DISEÑADO — no se rediseña cuando llegue
+
+El entregable trae, en su turno 6, las pantallas completas de F4 y de lo que lo rodea:
+
+- **6a · Promoción entre ramas y PRs desde la app.** El camino desarrollo → staging →
+  support → producción como columnas, y promover exige que las pre-validaciones estén
+  verdes.
+- **6b · Nacimientos:** crear una rama desde una tarea, y crear un repositorio.
+- **6c · Notificaciones:** los tres canales, incluido el correo del delta semanal.
+- **6d · Especificación fina del drag & drop:** tres usos, cuatro estados, un solo lenguaje
+  visual. Ya se aplicó en hallazgos; el tercer uso —promover entre ramas— es de F4.
+- **6e · Guía de tono visual** para las pantallas que el diseño no dibujó.
+
+**Nada de esto se implementa ahora.** Se anota acá para que el día que F4 arranque nadie
+vuelva a diseñar lo que ya está diseñado: la pantalla se construye contra esas páginas,
+como manda la regla 3.
 
 ### Lo que el checklist de cobertura mandó al plan
 

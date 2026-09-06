@@ -19,8 +19,8 @@ está completo?».
 **Se actualiza con cada tramo.** Un elemento que pasa de ⛔ a 🔒 o a ✅ se mueve acá en el
 mismo commit que lo mueve en el código.
 
-**Última revisión:** 6 de septiembre de 2026, tras D2.4 (la divergencia con elección
-forzada).
+**Última revisión:** 6 de septiembre de 2026, tras implementar la variante de modo
+oscuro (turno 7 del entregable).
 
 ---
 
@@ -232,6 +232,31 @@ final cuenta cuáles eran y dónde fueron.
 | Hallazgos de seguridad (secretos, dependencias) | 🔒 | casillero, **bloque E** |
 | Higiene (ramas, repos a archivar) | 🔒 | casillero, **bloque E** |
 | Forks y su upstream | 🔒 | casillero, **bloque C** |
+
+## 7a · Modo oscuro *(llegó el 6-sep-2026)*
+
+| elemento | estado | dónde |
+|---|---|---|
+| Neutrales dark (bg, surface, border, las tres tintas) | ✅ | `tokens.dark.scss`, valor por valor de la tabla |
+| `--rm-surface-2` — encabezados de grupo y celdas de antes/después | ✅ | token nuevo, en los dos modos |
+| `--rm-accent-solid` y su texto | ✅ | token nuevo; el acento de TEXTO se aclara en oscuro y un relleno de ese color sería ilegible |
+| `--rm-unread-bg` — la base de la trama | ✅ | token nuevo; la trama se invierte sola |
+| Acento dark (enlaces, foco, tinte) | ✅ | |
+| Severidad · sólidos recalibrados | ✅ | crítico sube, medio e informativo bajan |
+| Severidad · tenues dark | ✅ | |
+| Severidad · **borde tenue** (columna nueva) | ✅ | sólo tabulada en dark; en claro toma el borde neutro |
+| Severidad · **texto sobre tenue** (columna nueva) | ✅ | sólo tabulada en dark; en claro es el propio sólido |
+| Estados dark (live, done, error y sus tintes) | ✅ | |
+| Trama invertida: rayas claras sobre `--rm-unread-bg` | ✅ | la forma no cambia —135°, 2 px— así se reconoce igual |
+| Regla 1 · el chip de severidad invierte su texto | ✅ | vía `--rm-chip-ink`; único cambio de estructura |
+| Regla 2 · nada se apaga con opacidad | ✅ | escrita en `tokens.scss`; los tenues son colores propios |
+| Regla 3 · el modo lo decide Odoo, ningún componente pregunta | ✅ | bundle `web.assets_web_dark` de Odoo 19 Enterprise |
+| Jerarquía crítico > alto > medio > informativo en oscuro | ✅ | verificada en pantalla; si se retoca un nivel se vuelve a medir |
+| `--rm-accent-dark` en oscuro | ↔️ | **decisión de traducción**: la tabla nueva no lo trae. Se usa como color de TEXTO sobre tinte, así que en oscuro toma el valor del acento; un «pizarra oscuro» sobre tinte oscuro sería ilegible |
+
+**Verificado en Chromium con el tema oscuro de Odoo activo**, en las cuatro pantallas del
+tramo: bundle oscuro servido, `--rm-bg` en `#14171C`, tarjetas en `#1C2027`, texto en
+`#E7EAEF`, y el chip crítico en `#FF7A73` con texto `#14171C`. La isla clara desapareció.
 
 ## 6a–6c · F4 y notificaciones
 
