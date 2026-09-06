@@ -105,6 +105,34 @@ class RepoWritePlan(models.Model):
 	current_fingerprint = fields.Char(
 		string="Huella actual", compute="_compute_current_fingerprint",
 		help="Se recalcula siempre. Si difiere de la aprobada, el plan cambió.")
+	# --- HALLAZGO 2: la pantalla cuenta que hubo una ejecución interrumpida ---
+	#
+	# Después de una caída, el plan se veía IDÉNTICO a antes del intento: aprobado, todo
+	# pendiente. Quien mirara sólo Odoo no tenía manera de saber que algo había salido
+	# hacia GitHub; la única señal estaba en la bitácora y había que ir a buscarla. Un
+	# sistema que sabe algo importante y no lo dice en la pantalla donde se decide es un
+	# sistema que esconde.
+	was_interrupted = fields.Boolean(
+		string="Tuvo una ejecución interrumpida", compute="_compute_interrupcion")
+	interrupted_detail = fields.Char(
+		string="Qué quedó sin resolver", compute="_compute_interrupcion")
+
+	@api.depends("operation_ids.state")
+	def _compute_interrupcion(self):
+		for plan in self:
+			pendientes = plan.operation_ids.filtered(
+				lambda o: o._emisiones_sin_desenlace())
+			plan.was_interrupted = bool(pendientes)
+			plan.interrupted_detail = _(
+				"%(n)s operación(es) emitieron una escritura hacia GitHub sin que se "
+				"registrara cómo terminó. Hay que conciliarlas —releer GitHub y decidir "
+				"si eso cuenta como aplicado o se revierte— antes de volver a aplicar: "
+				"%(cuales)s"
+			) % {
+				"n": len(pendientes),
+				"cuales": ", ".join(pendientes.mapped("display_name")[:3]),
+			} if pendientes else ""
+
 	is_frozen = fields.Boolean(
 		string="Intacto desde la aprobación", compute="_compute_current_fingerprint")
 
@@ -432,12 +460,23 @@ class RepoWritePlan(models.Model):
 		corrido.
 		"""
 		for plan in self:
-			# UN PLAN YA APLICADO NO VUELVE A BORRADOR. El registro de qué se aprobó y se
-			# ejecutó tiene que quedar en pie: degradarlo borraría la evidencia de la
+			# UN PLAN QUE EJECUTÓ ALGO NO VUELVE A BORRADOR. El registro de qué se aprobó
+			# y se ejecutó tiene que quedar en pie: degradarlo borraría la evidencia de la
 			# aprobación bajo la cual se escribió en GitHub. Que su contenido después
 			# cambie no lo devuelve a borrador — lo detecta la huella, y el rollback se
 			# niega por eso.
-			if plan.state not in ("draft", "approved"):
+			#
+			# PERO UN PLAN FALLIDO QUE NO ESCRIBIÓ NADA, SÍ. Antes tampoco podía, y eso lo
+			# dejaba en un callejón: fallaba, no se podía reintentar, y la única salida era
+			# armar el plan de nuevo a mano. Lo destapó el camino de la conciliación —una
+			# operación se frena por una cuenta abierta, se concilia, y el plan tiene que
+			# poder correr— pero el callejón ya existía para cualquier fallo.
+			#
+			# El criterio es la evidencia, no el estado: si ninguna operación dejó efecto
+			# en GitHub ni se ejecutó nunca, no hay nada que preservar.
+			if plan.state == "failed" and not plan._algo_se_ejecuto():
+				pass
+			elif plan.state not in ("draft", "approved"):
 				continue
 			if not plan.approval_fingerprint and plan.state == "draft":
 				continue
@@ -448,6 +487,20 @@ class RepoWritePlan(models.Model):
 				"approval_fingerprint": False,
 			})
 			plan.message_post(body=_("Aprobación invalidada: %s") % motivo)
+
+	def _algo_se_ejecuto(self):
+		"""¿Alguna operación de este plan llegó a tocar GitHub, aunque sea a medias?
+
+		Mira los HECHOS y no sólo el estado: `rolled_back` también cuenta —se ejecutó y
+		después se deshizo, y la evidencia de eso importa igual— y una emisión sin
+		desenlace cuenta aunque la operación figure como pendiente, que es justamente el
+		caso que la conciliación existe para atender.
+		"""
+		self.ensure_one()
+		return any(
+			op.state in ("applied", "created", "rolled_back")
+			or op._tiene_efecto_en_github()
+			for op in self.operation_ids)
 
 	def _verificar_congelado(self, estados=("approved",)):
 		"""LA guarda. La llaman el apply Y el rollback, antes de tocar nada.
@@ -564,7 +617,12 @@ class RepoWriteOperation(models.Model):
 		 # buscar un error de GitHub que no existe. Lo que pasó es que la que la habilitaba
 		 # no llegó a buen puerto, así que ésta ni se tocó — que es exactamente lo que se
 		 # quería.
-		 ("blocked_by_dependency", "No ejecutada por dependencia")],
+		 ("blocked_by_dependency", "No ejecutada por dependencia"),
+		 # NI «fallida» NI «pendiente», y por eso tiene nombre propio. «Fallida» diría que
+		 # se intentó y salió mal; «pendiente», que no pasó nada. Lo que pasó es que salió
+		 # una escritura y no se sabe cómo terminó: hay una cuenta abierta allá afuera y
+		 # alguien tiene que mirarla antes de que esta operación vuelva a escribir.
+		 ("needs_reconciliation", "Pendiente de conciliación")],
 		string="Estado", default="pending", required=True, copy=False)
 
 	# --- D2.0 · LA BARRERA -------------------------------------------------

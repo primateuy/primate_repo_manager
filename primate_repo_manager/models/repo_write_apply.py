@@ -150,7 +150,13 @@ class RepoWritePlanApply(models.Model):
 		estados = set(self.operation_ids.mapped("state"))
 		# Una operación bloqueada por dependencia cuenta como plan FALLIDO: algo que se
 		# aprobó no se hizo. Que no se haya intentado es la razón, no una atenuante.
-		if "failed" in estados or "blocked_by_dependency" in estados:
+		#
+		# Y una PENDIENTE DE CONCILIACIÓN, también. Lo encontró un test: con la operación
+		# frenada por una cuenta abierta, el plan se marcaba «aplicado» —no había fallado
+		# nada, técnicamente— y con eso quedaba cerrado y no se podía volver a aplicar
+		# después de conciliar. Un plan que no hizo lo que se aprobó no está aplicado,
+		# aunque el motivo sea una precaución nuestra y no un error de GitHub.
+		if estados & {"failed", "blocked_by_dependency", "needs_reconciliation"}:
 			self.state = "failed"
 		else:
 			self.state = "applied"
@@ -262,6 +268,26 @@ class RepoWriteOperationApply(models.Model):
 	def _aplicar(self, cliente):
 		self.ensure_one()
 		manejador = self._manejador()
+
+		# --- 0. LA CUENTA ABIERTA SE SALDA ANTES DE ESCRIBIR OTRA VEZ ----
+		#
+		# Si esta operación ya emitió una escritura y nunca se supo cómo terminó, el
+		# estado previo que está por leerse INCLUYE esa escritura, y con eso el punto de
+		# retorno queda contaminado para siempre. Se para acá y se pide conciliar.
+		abiertas = self._emisiones_sin_desenlace()
+		if abiertas:
+			self.write({
+				"state": "needs_reconciliation",
+				"error": _(
+					"Esta operación ya emitió %(n)s escritura(s) hacia GitHub sin que se "
+					"registrara cómo terminaron —lo habitual es una caída entre escribir "
+					"y verificar—. Aplicarla de nuevo leería como «estado previo» lo que "
+					"esa escritura dejó, y el punto de retorno quedaría contaminado.\n\n"
+					"Conciliar: releer GitHub y decidir si eso cuenta como aplicado o se "
+					"revierte."
+				) % {"n": len(abiertas)},
+			})
+			return False
 
 		# --- 1. estado previo, y detección de techos --------------------
 		try:
@@ -474,6 +500,98 @@ class RepoWriteOperationApply(models.Model):
 			("event_type", "=", "write_emitted"),
 			("operation_id", "=", self.id)], order="id desc", limit=1)
 
+	# ------------------------------------------------------------------
+	# CONCILIACIÓN — el punto de retorno no se contamina
+	# ------------------------------------------------------------------
+	#
+	# EL PROBLEMA, EN UNA FRASE: una escritura que salió y cuyo ciclo no terminó deja un
+	# efecto en GitHub del que la base no sabe nada, y si la operación se vuelve a aplicar,
+	# LEE ESE EFECTO COMO SU ESTADO PREVIO. A partir de ahí el punto de retorno está
+	# contaminado: el rollback devuelve las cosas a un estado que ya incluía lo que había
+	# quedado suelto, y el resultado final tiene un objeto que ningún plan aplicado
+	# explica. Ningún paso miente y el conjunto igual queda mal.
+	#
+	# Es la versión distribuida del «antes invertido» —cuando una reversión guardaba como
+	# su estado previo el estado que ella misma había dejado—, con la diferencia de que acá
+	# el estado contaminado viene de otro proceso y de otra transacción.
+	#
+	# LA REGLA: una operación con emisiones sin desenlace NO SE APLICA. Se para y pide
+	# conciliar. Absorber lo huérfano como si fuera el paisaje es exactamente lo que no se
+	# puede hacer, y es lo que pasaba.
+
+	DESENLACES = ("write_applied", "write_failed", "write_rolled_back",
+				  "write_reconciled_applied", "write_reconciled_none")
+
+	def _emisiones_sin_desenlace(self):
+		"""Las escrituras que salieron y de las que no se sabe cómo terminaron.
+
+		Se comparan por id: la constancia de emisión se inserta ANTES que la entrada del
+		desenlace —la emisión va por su propia conexión, en el medio del ciclo, y el
+		desenlace se escribe al final—, así que una emisión sin ninguna entrada de
+		desenlace posterior es una cuenta abierta.
+		"""
+		self.ensure_one()
+		Log = self.env["repo.audit.log"].sudo()
+		entradas = Log.search(
+			[("operation_id", "=", self.id),
+			 ("event_type", "in", ("write_emitted",) + self.DESENLACES)],
+			order="id")
+		abiertas = Log.browse()
+		for entrada in entradas:
+			if entrada.event_type == "write_emitted":
+				abiertas |= entrada
+			else:
+				# Un desenlace cierra TODAS las emisiones anteriores: describe cómo
+				# terminó el ciclo, no una emisión puntual.
+				abiertas = Log.browse()
+		return abiertas
+
+	def action_conciliar(self):
+		"""Mira qué hay realmente en GitHub y cierra la cuenta abierta, diciendo qué pasó.
+
+		NO decide por gusto: relee. Si el efecto está, la operación pasa a «aplicada» y
+		queda disponible el rollback —con el punto de retorno de la emisión, que es el
+		bueno: el de ANTES de esa escritura—. Si no está, no quedó nada y la operación
+		vuelve a «pendiente» para poder intentarse de nuevo.
+
+		Las dos salidas dejan su entrada en la bitácora. La conciliación es una decisión
+		sobre un efecto real en GitHub, y una decisión así no puede no quedar registrada.
+		"""
+		self.ensure_one()
+		abiertas = self._emisiones_sin_desenlace()
+		if not abiertas:
+			raise UserError(_(
+				"«%s» no tiene escrituras emitidas sin desenlace: no hay nada que "
+				"conciliar.") % self.display_name)
+		cliente = self.plan_id.backend_id.write_client()
+		manejador = self._manejador()
+		emision = abiertas[-1]
+		previo = json.loads(emision.previous_state_json or "{}")
+
+		ok, detalle = getattr(self, manejador["verificar"])(cliente)
+		datos = {"emisiones": abiertas.ids, "detalle": str(detalle)}
+		if ok:
+			self.write({"state": "applied", "error": False})
+			entrada = self.env["repo.audit.log"].registrar(
+				"write_reconciled_applied",
+				_("La escritura de «%s» sí había quedado en GitHub") % self.display_name,
+				backend=self.plan_id.backend_id, repository=self.repository_id,
+				payload=datos, previous_state=previo,
+				extra={"operation_id": self.id})
+			# El punto de retorno pasa a ser el de la emisión, que es el de ANTES de la
+			# escritura huérfana. Es la parte que evita que el rollback devuelva las cosas
+			# a un estado que ya la contenía.
+			self.audit_log_id = entrada
+		else:
+			self.write({"state": "pending", "error": False})
+			self.env["repo.audit.log"].registrar(
+				"write_reconciled_none",
+				_("La escritura de «%s» no llegó a quedar: no hay nada que deshacer")
+				% self.display_name,
+				backend=self.plan_id.backend_id, repository=self.repository_id,
+				payload=datos, extra={"operation_id": self.id})
+		return True
+
 	def _persistir_identidad(self, identidad, previo):
 		"""Guarda el id devuelto por GitHub, en una transacción que sobreviva a la caída.
 
@@ -528,7 +646,29 @@ class RepoWriteOperationApply(models.Model):
 		# preguntarle qué PASÓ.
 		return (self.state in ("applied", "created")
 				or bool(self._entrada_de_identidad())
-				or bool(self._entrada_de_emision()))
+				or self._emision_con_efecto())
+
+	def _emision_con_efecto(self):
+		"""¿Alguna escritura emitida sigue teniendo efecto allá afuera?
+
+		Una emisión sola dice «salió algo». Lo que vino DESPUÉS dice si ese algo sigue
+		estando: una conciliación que releyó y no encontró nada cierra el asunto, y una
+		reversión lo deshizo. En los dos casos ya no hay efecto que revertir, y seguir
+		diciendo que sí ofrecería deshacer algo que no existe.
+
+		Lo encontró el camino de la conciliación: una emisión conciliada como «no quedó
+		nada» seguía contando como efecto para siempre, y con eso el plan quedaba marcado
+		como «ejecutó algo» y no podía volver a borrador.
+		"""
+		self.ensure_one()
+		entradas = self.env["repo.audit.log"].sudo().search(
+			[("operation_id", "=", self.id),
+			 ("event_type", "in", ("write_emitted",) + self.DESENLACES)],
+			order="id")
+		if not entradas or not any(e.event_type == "write_emitted" for e in entradas):
+			return False
+		return entradas[-1].event_type not in (
+			"write_reconciled_none", "write_rolled_back")
 
 	def _entrada_de_identidad(self):
 		"""La entrada del paso 2b de esta operación, si la hubo."""
