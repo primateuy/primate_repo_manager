@@ -21,6 +21,26 @@
 			font-size: .8125rem;
 			line-height: 1.5;
 		}
+		// El aviso de despliegue pesa como una advertencia, no como una nota: es lo
+		// último que alguien lee antes de aprobar un borrado de código ajeno.
+		.rm-plan-despliegue {
+			margin-top: var(--rm-space-3);
+			padding: var(--rm-space-3) var(--rm-space-4);
+			border-radius: var(--rm-radius-sm);
+			border-left: 4px solid var(--rm-sev-medium);
+			background: var(--rm-sev-medium-tint);
+
+			.rm-plan-despliegue-titulo { font-weight: 600; font-size: .9375rem; }
+			.rm-plan-despliegue-lista {
+				display: flex;
+				flex-wrap: wrap;
+				gap: var(--rm-space-2);
+				margin: var(--rm-space-1) 0;
+				font-size: .8125rem;
+			}
+			p { margin: var(--rm-space-1) 0 var(--rm-space-2); font-size: .8125rem;
+				line-height: 1.55; max-width: 48rem; }
+		}
 		.rm-plan-alerta {
 			margin-top: var(--rm-space-3);
 			padding: var(--rm-space-2) var(--rm-space-3);

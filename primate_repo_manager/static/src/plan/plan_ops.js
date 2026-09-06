@@ -113,6 +113,22 @@ export class PlanOps extends Component {
 		return this.props.record.data.state === "applying";
 	}
 
+	/**
+	 * LOS REPOSITORIOS QUE VAN A DEJAR DE TENER EL MÓDULO.
+	 *
+	 * Sale de las operaciones de retiro que el plan ya tiene: no es una lista aparte que
+	 * alguien tenga que mantener sincronizada, es la misma información leída para otra
+	 * pregunta. Si mañana se agrega o se saca un retiro, esto lo sigue solo.
+	 */
+	get retiros() {
+		return this.operaciones
+			.filter((o) => o.data.kind === "module_delete")
+			.map((o) => ({
+				repositorio: this.repo(o),
+				modulo: o.data.target || "",
+			}));
+	}
+
 	// --- qué va a pasar si aprobás -----------------------------------------
 
 	get resumen() {

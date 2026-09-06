@@ -25,6 +25,33 @@
 					<div><strong>Este plan tuvo una ejecución que no terminó.</strong></div>
 					<div t-esc="props.record.data.interrupted_detail"/>
 				</div>
+				<!-- EL BORDE CON EL DESPLIEGUE, en el cuerpo de la aprobación y no en
+					 una nota al pie. Va acá porque es lo que hay que saber ANTES de
+					 aprobar: el plan saca código de repositorios que alguien está usando,
+					 y lo que hace falta después NO lo hace esta aplicación. Un módulo que
+					 borra en silencio rompe producciones ajenas. -->
+				<div t-if="retiros.length" class="rm-plan-despliegue">
+					<div class="rm-plan-despliegue-titulo">
+						Estos repositorios dejan de tener el módulo
+					</div>
+					<div class="rm-plan-despliegue-lista">
+						<span t-foreach="retiros" t-as="retiro"
+							  t-key="retiro.repositorio + retiro.modulo"
+							  class="rm-mono" t-esc="retiro.repositorio"/>
+					</div>
+					<p>
+						Las instancias que hoy cargan el módulo desde ahí van a necesitar
+						un cambio en su configuración de <span class="rm-mono">addons_path</span>
+						para tomarlo del repositorio destino.
+						<strong>Repo Manager no hace ese cambio.</strong>
+						Es una tarea manual, y aplicar este plan sin hacerla deja esas
+						instancias sin el módulo.
+					</p>
+					<Apagado que="'Qué instancias quedan afectadas'" bloque="'F6'"
+							 forma="'bloque'"
+							 detalle="'Nombrar las instancias concretas necesita el puente con PCM. Hasta entonces el aviso es general: la lista de arriba dice los repositorios, no las instancias.'"/>
+				</div>
+
 				<div t-if="sinSoporte.length" class="rm-plan-alerta">
 					<t t-esc="sinSoporte.length"/> operación(es) de un tipo que todavía no
 					está implementado. El plan no se puede aprobar así: aplicarlo fallaría
