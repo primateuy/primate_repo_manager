@@ -26,3 +26,4 @@ from . import repo_sync
 from . import res_config_settings
 from . import repo_settings
 from . import ir_websocket
+from . import repo_health_panel

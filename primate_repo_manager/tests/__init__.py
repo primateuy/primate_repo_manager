@@ -19,6 +19,7 @@ from . import test_clasificacion_manual
 from . import test_acciones_abren
 from . import test_cadena_bitacora
 from . import test_inventario_modulos
+from . import test_panel_salud
 from . import test_plan_confirmacion
 from . import test_plan_legible
 from . import test_promocion_modulos
