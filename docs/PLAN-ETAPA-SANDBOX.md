@@ -429,6 +429,15 @@ hubo una caída. Los dos abren el próximo tramo.
 entran por el embudo como toda escritura: plan → aprobación → apply → bitácora → rollback.
 No hay excepción; si algo la merecía menos, es justamente esto.
 
+**D2.3b · Lo que el checklist de cobertura dejó pendiente en estas dos pantallas.**
+Sale de `COBERTURA-DEL-DISENO.md` y se hace junto con D2.3, que ya las toca:
+
+- **«Sacar la N del plan y aprobar el resto»** como salida explícita del plan. Hoy se puede
+  borrar la operación desde la pestaña Detalle, pero la salida no está ofrecida donde se
+  decide, que es la fila.
+- **«Regla que incumple» y «Evidencia leída de GitHub»** en el hallazgo expandido. Los
+  datos ya están en `expected_json` y `observed_json`; falta mostrarlos.
+
 **D2.4 · Con copias divergentes, primero se decide.** Si D1.3 dice que las copias no son
 idénticas, la promoción **no puede armarse sola**: alguien tiene que elegir qué versión
 gana y qué se hace con lo que se pierde. La pantalla tiene que forzar esa elección, no
@@ -460,6 +469,33 @@ probado; lo nuevo es el tipo de operación y su reversión.
 exige crear e instalar una segunda App con `contents:write` sobre los repos de la tanda, y
 después habilitar la escritura por A7. En el sandbox ya se puede: `prm-sandbox` tiene
 `contents:write`.
+
+### Lo que el checklist de cobertura mandó al plan
+
+Del recorrido del entregable página por página (`COBERTURA-DEL-DISENO.md`), lo que el
+diseño muestra y el producto no representaba de ninguna forma. Cada uno con su bloque:
+
+**B1 · dos comparaciones que hacen legible el incumplimiento.** Van con la aplicación de
+política por plantilla, que es cuando el módulo empieza a comparar exigido contra
+observado en serio:
+
+- **«Exige … · Tiene …» por rama**, en el formulario del repositorio. Es lo que explica por
+  qué una rama incumple sin obligar a leer dos pantallas.
+- **Columna «Incumplen hoy»** por exigencia, en la plantilla de política. La misma
+  comparación, mirada desde la política en vez de desde el repositorio.
+
+**E4 · las tres columnas de las reglas.** «Decide hoy», «tapada por» y el recálculo en vivo
+mientras se arrastra. No tienen casillero apagado y no es un olvido: una lista de Odoo no
+admite un bloque de texto adentro, así que el casillero llega junto con la pantalla.
+
+**E4 · dos cosas de la navegación, no de una pantalla.** Por eso no tienen casillero: no
+hay dónde ponerlo.
+
+- **Los dos avisos permanentes de la barra**: la auditoría en curso (azul, pulsa) y el plan
+  que espera tu aprobación (rojo, sólo si te toca). Son los dos únicos avisos globales del
+  diseño. Se hacen con un componente de systray de Odoo.
+- **Dos puertas de entrada**: gerencia aterriza en el panel de salud, técnica en hallazgos,
+  definido en el usuario y no con un switch en pantalla. Es la acción de inicio por grupo.
 
 ### D3 · El borde con el despliegue — lo que Repo Manager NO hace
 

@@ -76,7 +76,7 @@
 						<!-- Regla 2: lo que todavía no llegó, a la vista y apagado. -->
 						<Apagado t-if="numero.clave === 'protegidas'"
 								 que="'Comparar con la auditoría anterior'" bloque="'E2'"
-								 detalle="'La tendencia de las últimas 8 corridas.'"/>
+								 detalle="'El delta de los tres números («▲ 6 puntos desde la anterior») y la tendencia de las últimas 8 corridas.'"/>
 						<Apagado t-if="numero.clave === 'convencion'"
 								 que="'Meta configurable'" bloque="'E4'"
 								 detalle="'Hoy el número se muestra sin meta contra la cual compararlo.'"/>

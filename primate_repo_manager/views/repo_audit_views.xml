@@ -32,9 +32,28 @@
 							class="btn-primary" invisible="state != 'draft'"/>
 					<button name="action_resume" type="object" string="Reanudar"
 							class="btn-primary" invisible="state not in ('partial', 'error')"/>
+					<!-- REGLA 2: lo que el diseño muestra acá y todavía no existe, se ve y
+						 no se toca. Un `button` sin `name` no dispara nada; las clases son
+						 las mismas del componente OWL para que el apagado se vea igual en
+						 todas las pantallas. -->
+					<button class="rm-apagado rm-apagado-boton" disabled="disabled"
+							title="Detener después de este repositorio — llega con E1"
+							string="Detener después de este repo — llega con E1"
+							invisible="state != 'running'"/>
 					<field name="state" widget="statusbar"/>
 				</header>
 				<sheet>
+					<!-- El delta entre corridas es la otra mitad de esta pantalla en el
+						 diseño. Se ve dónde va a estar, y con qué bloque llega. -->
+					<div class="rm-apagado rm-apagado-bloque"
+						 invisible="state not in ('done', 'partial')">
+						<span class="rm-apagado-etiqueta">Qué cambió respecto de la
+							corrida anterior</span>
+						<span class="rm-apagado-cartel">llega con E2 — nuevos, resueltos,
+							y los que no se pudieron volver a leer y por eso no cuentan
+							como resueltos ni como nuevos</span>
+					</div>
+
 					<div class="oe_button_box" name="button_box">
 						<button name="action_open_findings" type="object"
 								class="oe_stat_button" icon="fa-exclamation-triangle"
