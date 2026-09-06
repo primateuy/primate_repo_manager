@@ -82,6 +82,16 @@
 						y no en una nota al pie: es la diferencia entre un plan que se va a
 						ejecutar y uno que no.
 					-->
+					<!-- HALLAZGO 2 del ensayo. Va arriba y antes que nada: un plan
+						 que tuvo una ejecución interrumpida se veía idéntico a uno que
+						 nunca se ejecutó, y la única señal estaba en la bitácora. -->
+					<div class="alert alert-danger" role="alert"
+						 invisible="not was_interrupted">
+						<div><strong>Este plan tuvo una ejecución que no terminó.</strong></div>
+						<field name="interrupted_detail" nolabel="1" readonly="1"/>
+					</div>
+					<field name="was_interrupted" invisible="1"/>
+
 					<div class="alert alert-warning" role="alert"
 						 invisible="state != 'draft' or not approval_fingerprint">
 						Este plan tenía una aprobación y la perdió porque cambió su
@@ -129,6 +139,10 @@
 											title="Revertir sólo esta operación"
 											invisible="state != 'applied'"
 											confirm="Se restaura el estado previo de esta operación. ¿Revertir?"/>
+									<button name="action_conciliar" type="object"
+											icon="fa-life-ring" string="Conciliar"
+											title="Releer GitHub y cerrar la cuenta abierta de esta operación"
+											invisible="state != 'needs_reconciliation'"/>
 								</list>
 							</field>
 						</page>

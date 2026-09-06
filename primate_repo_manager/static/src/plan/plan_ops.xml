@@ -19,6 +19,12 @@
 					</t>
 					<t t-else="">Todos se pueden revertir desde la bitácora.</t>
 				</div>
+				<!-- Lo primero que hay que saber al abrir un plan que se ejecutó y no
+					 terminó. Antes que el resumen, antes que las filas. -->
+				<div t-if="props.record.data.was_interrupted" class="rm-plan-interrumpido">
+					<div><strong>Este plan tuvo una ejecución que no terminó.</strong></div>
+					<div t-esc="props.record.data.interrupted_detail"/>
+				</div>
 				<div t-if="sinSoporte.length" class="rm-plan-alerta">
 					<t t-esc="sinSoporte.length"/> operación(es) de un tipo que todavía no
 					está implementado. El plan no se puede aprobar así: aplicarlo fallaría
@@ -89,7 +95,14 @@
 							 borrador se decide; después, esta columna cuenta el
 							 progreso. -->
 						<div class="rm-plan-decision">
-							<t t-if="aplicandose or !enBorrador">
+							<t t-if="op.data.state === 'needs_reconciliation'">
+								<span class="rm-chip rm-chip-error">Cuenta abierta</span>
+								<button class="btn btn-sm btn-warning"
+										t-on-click="() => this.conciliar(op)">
+									Conciliar
+								</button>
+							</t>
+							<t t-elif="aplicandose or !enBorrador">
 								<span t-attf-class="rm-chip rm-chip-{{op.data.state === 'applied' ? 'done' : op.data.state === 'failed' ? 'error' : 'quiet'}}"
 									  t-esc="op.data.state"/>
 							</t>

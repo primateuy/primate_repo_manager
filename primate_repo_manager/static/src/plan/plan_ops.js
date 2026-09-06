@@ -139,6 +139,14 @@ export class PlanOps extends Component {
 		await this.recargar();
 	}
 
+	async conciliar(op) {
+		// Relee GitHub y cierra la cuenta abierta. La decisión sale de lo que se lea, no
+		// de lo que la pantalla suponga: por eso no hay dos botones «contar como
+		// aplicada» y «descartar» — no es una preferencia, es un hecho que se comprueba.
+		await this.orm.call("repo.write.operation", "action_conciliar", [[op.resId]]);
+		await this.recargar();
+	}
+
 	async desconfirmar(op) {
 		await this.orm.call("repo.write.operation", "action_desconfirmar", [[op.resId]]);
 		await this.recargar();

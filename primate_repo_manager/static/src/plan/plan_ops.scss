@@ -12,6 +12,15 @@
 
 	.rm-plan-resumen {
 		.rm-plan-resumen-frase { font-size: .9375rem; line-height: 1.6; }
+		.rm-plan-interrumpido {
+			margin-bottom: var(--rm-space-3);
+			padding: var(--rm-space-3);
+			border-radius: var(--rm-radius-sm);
+			border-left: 4px solid var(--rm-sev-critical);
+			background: var(--rm-sev-critical-tint);
+			font-size: .8125rem;
+			line-height: 1.5;
+		}
 		.rm-plan-alerta {
 			margin-top: var(--rm-space-3);
 			padding: var(--rm-space-2) var(--rm-space-3);
