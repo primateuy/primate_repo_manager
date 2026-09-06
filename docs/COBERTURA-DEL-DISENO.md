@@ -9,6 +9,7 @@ elemento por elemento, con cada uno en una de tres columnas:
 | **🔒 Apagado a propósito** | se ve, no se toca, y dice con qué bloque llega (regla 2 de `CLAUDE.md`) |
 | **⛔ Sin representación** | el diseño lo muestra y en el producto **no hay ni rastro**: ni pantalla, ni casillero |
 | **📋 Ítem de plan** | no tiene pantalla donde poner un casillero (o su pantalla llega en el próximo tramo), así que vive en `PLAN-ETAPA-SANDBOX.md` con su bloque |
+| **↔️ Desvío deliberado** | el producto se aparta del diseño a propósito, por una decisión tomada y escrita. No es un faltante ni una omisión: es una diferencia con motivo |
 
 **Para qué sirve, y por qué la tercera columna es la única que importa.** Mirar el producto
 y compararlo con el prototipo detecta lo que está *mal*; no detecta lo que *falta*, porque
@@ -18,7 +19,8 @@ está completo?».
 **Se actualiza con cada tramo.** Un elemento que pasa de ⛔ a 🔒 o a ✅ se mueve acá en el
 mismo commit que lo mueve en el código.
 
-**Última revisión:** 6 de septiembre de 2026, tras cerrar el tramo visual (V1–V4).
+**Última revisión:** 6 de septiembre de 2026, tras D2.4 (la divergencia con elección
+forzada).
 
 ---
 
@@ -26,9 +28,10 @@ mismo commit que lo mueve en el código.
 
 | columna | cuántos |
 |---|---|
-| ✅ Implementado | 74 |
-| 🔒 Apagado con su cartel | 20 |
-| 📋 Ítem de plan, con su bloque | 9 |
+| ✅ Implementado | 80 |
+| 🔒 Apagado con su cartel | 18 |
+| 📋 Ítem de plan, con su bloque | 11 |
+| ↔️ Desvío deliberado, con su motivo | 1 |
 | ⛔ Sin representación | **0** |
 
 **La tercera columna quedó vacía en esta revisión**, y así tiene que quedar cada vez: los
@@ -217,8 +220,15 @@ final cuenta cuáles eran y dónde fueron.
 |---|---|---|
 | Inventario de módulos: dónde vive cada uno | ✅ | D1 |
 | Duplicados y divergencia por hash | ✅ | D1.3 |
-| Promoción de un módulo | 🔒 | casillero; el motor existe (D2.1–D2.3) y la pantalla llega con **D2.3** |
-| Elegir qué versión gana con copias divergentes | 🔒 | llega con **D2.4** |
+| Promoción de un módulo | ✅ | pantalla propia, se abre desde el módulo del inventario |
+| Elegir qué versión gana con copias divergentes | ✅ | elección forzada, sin preselección |
+| «Si elegís ésta» — qué desaparece, antes de aprobar | ✅ | con los hechos del inventario |
+| «Ver el diff A ↔ C» | ✅ | bajo pedido, sobre un par ya elegido |
+| Etiqueta «referencia» en una de las copias | ↔️ | **desvío deliberado**: se quitó por instrucción explícita — cualquier distintivo funciona como recomendación, y el punto de la pantalla es que nadie elija por el que mira |
+| «Llevar las diferencias como PR aparte» | 📋 | ítem de plan, **F4** — abrir PRs desde la app es F4 |
+| Paso 1 · elegir destino con su explicación por repo | ✅ | selector; la explicación por repositorio llega con B1 |
+| Aviso de despliegue (addons_path) | ✅ | queda en el plan, antes de aprobar |
+| Tarea manual «reconfigurar instancias» con lista de instancias | 📋 | ítem de plan, **F6** — nombrar instancias necesita el puente con PCM |
 | Hallazgos de seguridad (secretos, dependencias) | 🔒 | casillero, **bloque E** |
 | Higiene (ramas, repos a archivar) | 🔒 | casillero, **bloque E** |
 | Forks y su upstream | 🔒 | casillero, **bloque C** |

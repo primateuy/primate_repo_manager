@@ -1,0 +1,148 @@
+// Copyright 2026 - PrimateUY / License AGPL-3.0 or later
+//
+// Promoción de un módulo — página 5b. Lo único que este SCSS tiene que garantizar es que
+// las tarjetas pesen IGUAL: mismo ancho, mismo borde, misma tipografía. Cualquier
+// diferencia visual entre ellas es una recomendación encubierta.
+
+.rm-promo {
+	color: var(--rm-ink);
+	background: var(--rm-bg);
+	min-height: 100%;
+	padding: var(--rm-space-5) var(--rm-space-6) var(--rm-space-6);
+	display: flex;
+	flex-direction: column;
+	gap: var(--rm-space-4);
+
+	.rm-promo-cabeza {
+		h1 { font-size: 1.5rem; font-weight: 600; margin: 0; }
+		.rm-promo-sub { font-size: .8125rem; color: var(--rm-ink-2); }
+	}
+
+	.rm-promo-aviso {
+		border-left: 4px solid var(--rm-sev-medium);
+		p { margin: var(--rm-space-1) 0 0; font-size: .875rem; line-height: 1.55; }
+	}
+	.rm-promo-sin-elegir { border-left: 4px solid var(--rm-done); font-size: .875rem; }
+
+	// --- las opciones ------------------------------------------------------
+	.rm-promo-opciones {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+		gap: var(--rm-space-4);
+		align-items: stretch;   // TODAS DEL MISMO ALTO: una más grande se lee como mejor
+	}
+
+	.rm-promo-opcion {
+		cursor: pointer;
+		display: flex;
+		flex-direction: column;
+		gap: var(--rm-space-2);
+		border: 1px solid var(--rm-border);
+		transition: border-color .12s ease, background .12s ease;
+
+		&:hover { border-color: var(--rm-accent); }
+
+		// La única diferencia visual admitida es LA QUE EL USUARIO PROVOCA al elegir.
+		&.rm-promo-elegida {
+			border: 2px solid var(--rm-done);
+			background: var(--rm-done-tint);
+		}
+
+		.rm-promo-opcion-cabeza {
+			display: flex;
+			align-items: center;
+			gap: var(--rm-space-2);
+			.rm-promo-repo { font-weight: 600; font-size: .875rem; }
+			.rm-chip { margin-left: auto; }
+		}
+		.rm-promo-datos {
+			display: flex;
+			flex-wrap: wrap;
+			gap: var(--rm-space-3);
+			font-size: .75rem;
+			color: var(--rm-ink-2);
+		}
+		.rm-promo-identica { font-size: .75rem; color: var(--rm-accent); }
+		.rm-promo-consecuencia {
+			margin-top: auto;
+			padding-top: var(--rm-space-2);
+			border-top: 1px solid var(--rm-border);
+			font-size: .8125rem;
+			line-height: 1.5;
+		}
+	}
+
+	.rm-promo-rotulo {
+		display: block;
+		font-size: .6875rem;
+		font-weight: 600;
+		letter-spacing: .06em;
+		text-transform: uppercase;
+		color: var(--rm-ink-2);
+		margin-bottom: 2px;
+	}
+
+	// --- el diff -----------------------------------------------------------
+	.rm-promo-diff-pedir {
+		display: flex;
+		align-items: center;
+		gap: var(--rm-space-2);
+		flex-wrap: wrap;
+	}
+	.rm-promo-diff {
+		font-size: .8125rem;
+		.rm-promo-diff-cabeza {
+			display: flex;
+			justify-content: space-between;
+			margin-bottom: var(--rm-space-2);
+		}
+		.rm-promo-diff-fila {
+			display: flex;
+			justify-content: space-between;
+			gap: var(--rm-space-3);
+			padding: 2px 0;
+			border-bottom: 1px solid var(--rm-rule, var(--rm-border));
+			.rm-promo-diff-estado { color: var(--rm-ink-2); font-size: .75rem; }
+		}
+	}
+
+	// --- destino y pie -----------------------------------------------------
+	.rm-promo-destino {
+		display: flex;
+		flex-direction: column;
+		gap: var(--rm-space-2);
+		align-items: flex-start;
+		label { font-size: .8125rem; font-weight: 600; margin: 0; }
+		select {
+			border: 1px solid var(--rm-border);
+			border-radius: var(--rm-radius-sm);
+			background: var(--rm-surface);
+			color: var(--rm-ink);
+			padding: 5px 8px;
+			font-size: .8125rem;
+			max-width: 32rem;
+		}
+		.rm-promo-limpiar {
+			display: flex;
+			align-items: center;
+			gap: var(--rm-space-2);
+			font-weight: 400;
+		}
+	}
+
+	.rm-promo-pie {
+		display: flex;
+		align-items: center;
+		gap: var(--rm-space-3);
+		flex-wrap: wrap;
+		.rm-promo-falta { font-size: .8125rem; color: var(--rm-sev-medium); font-weight: 600; }
+	}
+
+	.rm-promo-nota {
+		font-size: .75rem;
+		color: var(--rm-ink-3);
+		line-height: 1.45;
+		max-width: 40rem;
+	}
+	.rm-promo-nada { color: var(--rm-ink-2); }
+}

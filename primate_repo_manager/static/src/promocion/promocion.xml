@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+	<t t-name="primate_repo_manager.PromocionDeModulo">
+		<div class="rm-promo">
+			<t t-if="!state.datos"><div class="rm-promo-cargando">Leyendo…</div></t>
+
+			<t t-else="">
+				<header class="rm-promo-cabeza">
+					<h1>Promover <span class="rm-mono"
+									   t-esc="state.datos.modulo.nombre"/></h1>
+					<div class="rm-promo-sub" t-esc="state.datos.modulo.detalle"/>
+				</header>
+
+				<!-- SIN DIVERGENCIA NO HAY NADA QUE ELEGIR, y se dice. -->
+				<div t-if="!state.datos.hay_que_elegir" class="rm-card rm-promo-sin-elegir">
+					<strong>Las copias de este módulo son idénticas.</strong>
+					No hay ninguna decisión que tomar: se promueve cualquiera y las demás
+					se retiran sin perder nada.
+				</div>
+
+				<div t-else="" class="rm-card rm-promo-aviso">
+					<strong>Las copias no son iguales: tenés que elegir.</strong>
+					<p>No hay una elección por defecto. La que elijas es la que va a existir
+						de ahora en más, y lo que las otras tengan distinto desaparece de
+						sus repositorios salvo que lo lleves aparte antes.</p>
+				</div>
+
+				<!-- LAS TARJETAS: mismo peso, mismo orden, ninguna destacada -->
+				<div class="rm-promo-opciones">
+					<div t-foreach="opciones" t-as="opcion" t-key="opcion.id"
+						 t-attf-class="rm-card rm-promo-opcion{{state.elegida === opcion.id ? ' rm-promo-elegida' : ''}}"
+						 t-on-click="() => this.elegir(opcion)">
+						<div class="rm-promo-opcion-cabeza">
+							<span class="rm-mono rm-promo-repo"
+								  t-esc="opcion.repositorio"/>
+							<span t-if="state.elegida === opcion.id"
+								  class="rm-chip rm-chip-done">Elegida</span>
+						</div>
+						<div class="rm-promo-datos">
+							<span>rama <span class="rm-mono" t-esc="opcion.rama"/></span>
+							<span t-if="opcion.version">versión declarada
+								<span class="rm-mono" t-esc="opcion.version"/></span>
+							<span t-else="" class="rm-no-legible">
+								el manifiesto no se pudo leer<t t-if="opcion.por_que_no">:
+									<t t-esc="opcion.por_que_no"/></t>
+							</span>
+						</div>
+						<div t-if="opcion.identica_a.length" class="rm-promo-identica">
+							Idéntica a <t t-esc="opcion.identica_a.join(', ')"/>
+						</div>
+						<div class="rm-promo-consecuencia">
+							<span class="rm-promo-rotulo">Si elegís ésta</span>
+							<t t-esc="opcion.consecuencia"/>
+						</div>
+					</div>
+				</div>
+
+				<!-- EL DIFF, bajo pedido y sobre un par concreto -->
+				<div t-if="comparables.length" class="rm-promo-diff-pedir">
+					<span class="rm-promo-rotulo">Ver qué difiere</span>
+					<button t-foreach="comparables" t-as="par" t-key="par.otra.id"
+							class="btn btn-sm btn-secondary"
+							t-on-click="() => this.verDiff(par.elegida, par.otra)">
+						<t t-esc="par.elegida.repositorio"/> ↔
+						<t t-esc="par.otra.repositorio"/>
+					</button>
+					<span class="rm-promo-nota">
+						Es la única consulta cara de esta pantalla: dos lecturas del árbol
+						de GitHub. Por eso va cuando la pedís y no al abrir.
+					</span>
+				</div>
+
+				<div t-if="state.comparando" class="rm-card rm-promo-diff">
+					Comparando <span class="rm-mono" t-esc="state.parA"/> con
+					<span class="rm-mono" t-esc="state.parB"/>…
+				</div>
+
+				<div t-if="state.diff" class="rm-card rm-promo-diff">
+					<div class="rm-promo-diff-cabeza">
+						<strong><span class="rm-mono" t-esc="state.diff.a"/> ↔
+							<span class="rm-mono" t-esc="state.diff.b"/></strong>
+						<a href="#" t-on-click.prevent="() => this.cerrarDiff()">cerrar</a>
+					</div>
+					<div t-if="!state.diff.filas.length" class="rm-promo-nada">
+						No difieren en ningún archivo.
+					</div>
+					<div t-foreach="state.diff.filas" t-as="fila" t-key="fila.ruta"
+						 class="rm-promo-diff-fila">
+						<span class="rm-mono" t-esc="fila.ruta"/>
+						<span class="rm-promo-diff-estado" t-esc="etiquetaEstado(fila)"/>
+					</div>
+					<div class="rm-promo-nota">
+						<t t-esc="state.diff.iguales"/> archivo(s) iguales ·
+						<t t-esc="state.diff.alcance"/>
+					</div>
+				</div>
+
+				<!-- DESTINO Y LIMPIEZA -->
+				<div class="rm-card rm-promo-destino">
+					<label>Repositorio destino</label>
+					<select t-on-change="(ev) => this.alElegirDestino(ev)">
+						<option value="">Elegí un destino…</option>
+						<option t-foreach="destinos" t-as="repo" t-key="repo.id"
+								t-att-value="repo.id" t-esc="repo.display_name"/>
+					</select>
+					<label class="rm-promo-limpiar">
+						<input type="checkbox" t-model="state.limpiar"/>
+						Retirar el módulo de los repositorios de origen
+					</label>
+					<div class="rm-promo-nota">
+						Si no se retira, el módulo queda duplicado y el inventario lo sigue
+						marcando. Cada retiro se confirma por separado en el plan.
+					</div>
+				</div>
+
+				<!-- EL BOTÓN NACE DESHABILITADO -->
+				<div class="rm-promo-pie">
+					<button class="btn btn-primary"
+							t-att-disabled="!puedeContinuar"
+							t-on-click="() => this.armarPlan()">
+						Armar el plan
+					</button>
+					<span t-if="!state.elegida" class="rm-promo-falta">
+						Elegí qué copia gana para continuar.
+					</span>
+					<span t-elif="!state.destino" class="rm-promo-falta">
+						Elegí el repositorio destino.
+					</span>
+					<span class="rm-promo-nota">
+						Esto sólo redacta un plan. No escribe en GitHub: el plan se lee, se
+						aprueba con confirmación por operación, y recién ahí se aplica.
+					</span>
+				</div>
+			</t>
+		</div>
+	</t>
+
+</templates>

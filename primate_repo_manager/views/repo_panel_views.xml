@@ -9,4 +9,12 @@
 		<field name="tag">repo_panel_salud</field>
 	</record>
 
+	<!-- Promover un módulo. Se abre DESDE un módulo del inventario, que es el único
+		 lugar donde la pregunta tiene sentido: sin saber qué módulo, no hay copias que
+		 comparar. Por eso no está en el menú como entrada suelta. -->
+	<record id="action_repo_promocion_modulo" model="ir.actions.client">
+		<field name="name">Promover el módulo</field>
+		<field name="tag">repo_promocion_modulo</field>
+	</record>
+
 </odoo>

@@ -438,7 +438,7 @@ Sale de `COBERTURA-DEL-DISENO.md` y se hace junto con D2.3, que ya las toca:
 - **«Regla que incumple» y «Evidencia leída de GitHub»** en el hallazgo expandido. Los
   datos ya están en `expected_json` y `observed_json`; falta mostrarlos.
 
-**D2.4 · Con copias divergentes, primero se decide.** Si D1.3 dice que las copias no son
+**D2.4 · Con copias divergentes, primero se decide.** *(hecho)* Si D1.3 dice que las copias no son
 idénticas, la promoción **no puede armarse sola**: alguien tiene que elegir qué versión
 gana y qué se hace con lo que se pierde. La pantalla tiene que forzar esa elección, no
 resolverla por antigüedad ni por tamaño.

@@ -54,6 +54,14 @@
 		<field name="model">repo.module</field>
 		<field name="arch" type="xml">
 			<form string="Módulo" create="false" edit="false">
+				<header>
+					<!-- La promoción se abre DESDE el módulo: sin saber cuál, no hay
+						 copias que comparar. Aparece cuando hay más de una. -->
+					<button name="action_promover" type="object" string="Promover"
+							class="btn-primary"
+							groups="primate_repo_manager.group_repo_lead"
+							invisible="repository_count &lt; 2"/>
+				</header>
 				<sheet>
 					<div class="oe_title">
 						<h1 class="rm-mono"><field name="technical_name" readonly="1"/></h1>
