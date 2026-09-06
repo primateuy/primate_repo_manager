@@ -8,6 +8,7 @@ from . import test_policy
 from . import test_sync
 from . import test_audit_launch
 from . import test_avance_vivo
+from . import test_chequeo_de_cierre
 from . import test_conciliacion
 from . import test_findings
 from . import test_hallazgos_pantalla

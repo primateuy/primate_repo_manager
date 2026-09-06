@@ -20,6 +20,41 @@ from .github_client import GithubAppAuth, GithubError, GithubReadClient
 _logger = logging.getLogger(__name__)
 
 
+# LAS APPS QUE EXISTEN, TODAS. Un chequeo que sólo mira las Apps con credenciales
+# cargadas deja fuera del radar exactamente a las peligrosas: una App con permisos de
+# escritura sobre producción que nadie usa desde acá sigue existiendo en GitHub.
+#
+# Esto se mantiene a mano y hay que asumirlo: no hay forma de preguntarle a GitHub «qué
+# Apps tengo» sin credenciales de dueño de cuenta. Lo que sí hace el chequeo es avisar si
+# aparece una App usada por alguna conexión que NO esté declarada acá, para que la lista
+# no envejezca en silencio.
+APPS_DECLARADAS = {
+	"4805796": {
+		"nombre": "Repo Manager · auditoría (lectura)",
+		"cuenta": "primateuy",
+		"rol": "lectura",
+		"se_espera": "todos los permisos en read",
+	},
+	"4808079": {
+		"nombre": "Repo Manager · sandbox (lee y escribe)",
+		"cuenta": "prm-sandbox",
+		"rol": "lectura y escritura",
+		"se_espera": "All repositories sobre la org del sandbox; nunca producción",
+	},
+	"4811232": {
+		"nombre": "prm-writer · producción",
+		"cuenta": "primateuy",
+		"rol": "escritura",
+		"se_espera": (
+			"instalada sólo sobre los 3 repositorios elegidos, y SIN credenciales "
+			"cargadas en ninguna conexión"),
+		# Sin credenciales no hay JWT, y sin JWT no se le puede preguntar nada a GitHub
+		# sobre ella. Lo que se verifica acá es la mitad que sí se puede.
+		"sin_credenciales_a_proposito": True,
+	},
+}
+
+
 class RepoBackend(models.Model):
 	_name = "repo.backend"
 	_description = "Conexión a un proveedor de repositorios (GitHub App)"
@@ -240,6 +275,282 @@ class RepoBackend(models.Model):
 		auth = GithubAppAuth(
 			self.app_id, self.installation_id, self._descifrar(), transport=transport)
 		return GithubReadClient(auth.token, transport=transport)
+
+	# ------------------------------------------------------------------
+	# CHEQUEO DE CIERRE — «¿producción sigue cerrada?»
+	# ------------------------------------------------------------------
+	#
+	# POR QUÉ ES UN MÉTODO Y NO UNA CONSULTA SUELTA. Esta pregunta se hace muchas veces y
+	# siempre igual, y la respuesta tiene que salir de la API y de la base, nunca de lo que
+	# alguien recuerde. Un chequeo que hay que rearmar cada vez se rearma distinto, y la
+	# vez que se rearma mal es la que da tranquilidad falsa.
+	#
+	# Devuelve HECHOS, no un «sí». Cada punto trae su evidencia para que quien lo lea
+	# pueda discrepar con la conclusión sin tener que repetir el trabajo.
+
+	@api.model
+	def chequeo_de_cierre(self):
+		"""Los tres puntos del cierre de producción, con su evidencia.
+
+		1. Ninguna conexión de producción tiene credenciales de escritura ni escritura
+		   habilitada.
+		2. Sobre qué repositorios está instalada cada App de ESCRITURA, exactamente.
+		3. Qué permisos tiene cada App de LECTURA, según GitHub.
+		"""
+		puntos = []
+
+		# --- 1 · producción, desde la BASE --------------------------------
+		for backend in self.search([("environment", "=", "production")]):
+			cerrada = not (backend.write_key_set or backend.write_app_id
+						   or backend.write_installation_id or backend.write_enabled)
+			puntos.append({
+				"punto": "produccion_sin_escritura",
+				"sujeto": backend.name,
+				"ok": cerrada,
+				"evidencia": {
+					"write_app_id": backend.write_app_id or None,
+					"write_installation_id": backend.write_installation_id or None,
+					"write_key_set": backend.write_key_set,
+					"write_enabled": backend.write_enabled,
+					"write_enabled_at": str(backend.write_enabled_at or ""),
+				},
+			})
+
+		# --- 2 · alcance de las Apps de ESCRITURA, desde la API -----------
+		for backend in self.search([("write_app_id", "!=", False)]):
+			try:
+				repos = sorted(
+					r["full_name"] for r in backend.write_client().paginate(
+						"/installation/repositories", envoltorio="repositories"))
+				puntos.append({
+					"punto": "alcance_de_escritura",
+					"sujeto": self._nombrar_app(
+						backend.write_app_id, backend.write_installation_id,
+						backend.owner_login),
+					"ok": all(r.startswith(backend.owner_login + "/") for r in repos),
+					"evidencia": {"repositorios": repos, "cuantos": len(repos),
+								  "conexión": backend.name},
+				})
+			except Exception as exc:   # noqa: BLE001 — el error ES el resultado
+				puntos.append({
+					"punto": "alcance_de_escritura",
+					"sujeto": backend.name, "ok": False,
+					"evidencia": {"error": str(exc)}})
+
+		# --- 3 · permisos de las Apps de LECTURA, desde la API ------------
+		for backend in self.search([("app_id", "!=", False)]):
+			puntos.append(backend._permisos_de_la_app())
+
+		# --- 4 · las Apps declaradas que NO tienen conexión ---------------
+		usadas = set()
+		for backend in self.search([]):
+			usadas.update(str(x) for x in (backend.app_id, backend.write_app_id) if x)
+		for app_id, ficha in APPS_DECLARADAS.items():
+			if app_id in usadas:
+				continue
+			puntos.append({
+				"punto": "app_sin_credenciales",
+				"sujeto": "App %s · %s · cuenta %s" % (
+					app_id, ficha["nombre"], ficha["cuenta"]),
+				"ok": True,
+				"evidencia": {
+					"credenciales_en_alguna_conexión": False,
+					"se_espera": ficha["se_espera"],
+				},
+			})
+			if ficha.get("sin_credenciales_a_proposito"):
+				# NO SE PUEDE VERIFICAR DESDE ACÁ, y eso no es lo mismo que estar bien.
+				# Sin credenciales no hay JWT y GitHub no responde nada sobre esta App.
+				# Darlo por bueno sería la trampa de siempre: contar como verde lo que no
+				# se pudo leer.
+				puntos.append({
+					"punto": "alcance_no_verificable",
+					"sujeto": "App %s · %s" % (app_id, ficha["nombre"]),
+					"ok": None,
+					"evidencia": {
+						"por_qué": "sin credenciales cargadas no hay JWT, y sin JWT "
+								   "GitHub no responde sobre esta App",
+						"se_espera": ficha["se_espera"],
+						"dónde_mirarlo": "github.com/settings/installations, la "
+										 "instalación de esta App",
+					},
+				})
+
+		# --- 5 · ninguna App en uso queda fuera del registro --------------
+		sin_declarar = sorted(usadas - set(APPS_DECLARADAS))
+		puntos.append({
+			"punto": "registro_al_día",
+			"sujeto": "Registro de Apps declaradas",
+			"ok": not sin_declarar,
+			"evidencia": {
+				"declaradas": sorted(APPS_DECLARADAS),
+				"en_uso_sin_declarar": sin_declarar,
+			},
+		})
+
+		verificables = [p for p in puntos if p["ok"] is not None]
+		return {
+			"cuando": fields.Datetime.now(),
+			"todo_ok": all(p["ok"] for p in verificables),
+			"no_verificables": len(puntos) - len(verificables),
+			"puntos": puntos,
+		}
+
+	@api.model
+	def _nombrar_app(self, app_id, installation_id, cuenta):
+		"""App e instalación, siempre juntas y siempre con su cuenta.
+
+		Existe porque tres Apps distintas se confundieron una con otra al preguntar por
+		«prm-writer»: la del sandbox y la de producción se llaman parecido. Un identificador
+		suelto no alcanza; el par App + instalación + cuenta no se confunde.
+		"""
+		ficha = APPS_DECLARADAS.get(str(app_id), {})
+		return "App %s · %s · instalación %s · cuenta %s" % (
+			app_id, ficha.get("nombre", "SIN DECLARAR"), installation_id or "—",
+			ficha.get("cuenta", cuenta or "—"))
+
+	def _permisos_de_la_app(self):
+		"""Los permisos que GitHub dice que tiene esta App, no los que creemos que pedimos.
+
+		Se consulta la instalación con el JWT de la App: es la única fuente que no depende
+		de lo que alguien escribió en un formulario ni de lo que recuerda del manifiesto.
+		"""
+		self.ensure_one()
+		import requests
+
+		from .github_client import ACCEPT, API_ROOT, API_VERSION
+
+		try:
+			auth = GithubAppAuth(self.app_id, self.installation_id, self._descifrar())
+			respuesta = requests.get(
+				"%s/app/installations/%s" % (API_ROOT, self.installation_id),
+				headers={"Authorization": "Bearer %s" % auth._build_jwt(),
+						 "Accept": ACCEPT, "X-GitHub-Api-Version": API_VERSION},
+				timeout=30)
+			if respuesta.status_code != 200:
+				raise ValueError("GitHub %s: %s" % (respuesta.status_code,
+													respuesta.text[:200]))
+			permisos = respuesta.json().get("permissions") or {}
+		except Exception as exc:   # noqa: BLE001 — el error ES el resultado
+			return {"punto": "permisos_de_lectura", "sujeto": self.name, "ok": False,
+					"evidencia": {"error": str(exc)}}
+
+		return self._juzgar_permisos(permisos)
+
+	def _juzgar_permisos(self, permisos):
+		"""La REGLA, separada de la consulta.
+
+		Se puede probar sin red, que es la única forma de que la regla tenga pruebas: si
+		viviera pegada al `requests.get`, probarla exigiría una corrida real y en la
+		práctica no se probaría nunca.
+		"""
+		self.ensure_one()
+		escrituras = sorted(k for k, v in permisos.items() if v != "read")
+		# SI LA MISMA APP ES LA DE ESCRITURA, se espera que tenga permisos de escritura:
+		# exigirle sólo-lectura sería gritar sin razón, y una guarda que grita sin razón
+		# termina ignorada. Lo que sí se exige en ese caso es que la conexión NO sea de
+		# producción — una App con permisos de escritura sobre producción es otra cosa.
+		#
+		# La primera versión de este chequeo no hacía la distinción y marcaba en rojo la
+		# App del sandbox por ser exactamente lo que tiene que ser.
+		if self.write_app_id and str(self.write_app_id) == str(self.app_id):
+			return {
+				"punto": "permisos_de_lectura",
+				"sujeto": "%s (lee Y escribe)" % self._nombrar_app(
+					self.app_id, self.installation_id, self.owner_login),
+				"ok": self.environment != "production",
+				"evidencia": {
+					"permisos": permisos,
+					"con_escritura": escrituras,
+					"entorno": self.environment,
+					"nota": "Esta conexión usa la misma App para leer y para escribir: "
+							"los permisos de escritura son esperables. Lo que se exige "
+							"acá es que no sea producción.",
+				},
+			}
+		return {
+			"punto": "permisos_de_lectura",
+			"sujeto": self._nombrar_app(
+				self.app_id, self.installation_id, self.owner_login),
+			# Una App de auditoría con un permiso que no sea `read` deja de ser de
+			# auditoría, por más que nadie la use para escribir.
+			"ok": not escrituras,
+			"evidencia": {"permisos": permisos, "no_son_read": escrituras},
+		}
+
+	@api.model
+	def _nombrar_app(self, app_id, installation_id, cuenta):
+		"""App e instalación, siempre juntas y siempre con su cuenta.
+
+		Existe porque tres Apps distintas se confundieron una con otra al preguntar por
+		«prm-writer»: la del sandbox y la de producción se llaman parecido. Un identificador
+		suelto no alcanza; el par App + instalación + cuenta no se confunde.
+		"""
+		ficha = APPS_DECLARADAS.get(str(app_id), {})
+		return "App %s · %s · instalación %s · cuenta %s" % (
+			app_id, ficha.get("nombre", "SIN DECLARAR"), installation_id or "—",
+			ficha.get("cuenta", cuenta or "—"))
+
+	def _permisos_de_la_app(self):
+		"""Los permisos que GitHub dice que tiene esta App, no los que creemos que pedimos.
+
+		Se consulta la instalación con el JWT de la App: es la única fuente que no depende
+		de lo que alguien escribió en un formulario ni de lo que recuerda del manifiesto.
+		"""
+		self.ensure_one()
+		import requests
+
+		from .github_client import ACCEPT, API_ROOT, API_VERSION
+
+		try:
+			auth = GithubAppAuth(self.app_id, self.installation_id, self._descifrar())
+			respuesta = requests.get(
+				"%s/app/installations/%s" % (API_ROOT, self.installation_id),
+				headers={"Authorization": "Bearer %s" % auth._build_jwt(),
+						 "Accept": ACCEPT, "X-GitHub-Api-Version": API_VERSION},
+				timeout=30)
+			if respuesta.status_code != 200:
+				raise ValueError("GitHub %s: %s" % (respuesta.status_code,
+													respuesta.text[:200]))
+			permisos = respuesta.json().get("permissions") or {}
+		except Exception as exc:   # noqa: BLE001 — el error ES el resultado
+			return {"punto": "permisos_de_lectura", "sujeto": self.name, "ok": False,
+					"evidencia": {"error": str(exc)}}
+
+		escrituras = sorted(k for k, v in permisos.items() if v != "read")
+		# SI LA MISMA APP ES LA DE ESCRITURA, se espera que tenga permisos de escritura:
+		# exigirle sólo-lectura sería gritar sin razón, y una guarda que grita sin razón
+		# termina ignorada. Lo que sí se exige en ese caso es que la conexión NO sea de
+		# producción — una App con permisos de escritura sobre producción es otra cosa.
+		#
+		# La primera versión de este chequeo no hacía la distinción y marcaba en rojo la
+		# App del sandbox por ser lo que tiene que ser.
+		es_tambien_la_de_escritura = (
+			self.write_app_id and str(self.write_app_id) == str(self.app_id))
+		if es_tambien_la_de_escritura:
+			return {
+				"punto": "permisos_de_lectura",
+				"sujeto": "%s (lee Y escribe)" % self._nombrar_app(
+					self.app_id, self.installation_id, self.owner_login),
+				"ok": self.environment != "production",
+				"evidencia": {
+					"permisos": permisos,
+					"con_escritura": escrituras,
+					"entorno": self.environment,
+					"nota": "Esta conexión usa la misma App para leer y para escribir: "
+							"los permisos de escritura son esperables. Lo que se exige "
+							"acá es que no sea producción.",
+				},
+			}
+		return {
+			"punto": "permisos_de_lectura",
+			"sujeto": self._nombrar_app(
+				self.app_id, self.installation_id, self.owner_login),
+			# Una App de auditoría con un permiso que no sea `read` deja de ser de
+			# auditoría, por más que nadie la use para escribir.
+			"ok": not escrituras,
+			"evidencia": {"permisos": permisos, "no_son_read": escrituras},
+		}
 
 	def write_client(self, transport=None):
 		"""Cliente de ESCRITURA. Única puerta, y con dos condiciones.
