@@ -362,7 +362,13 @@ class RepoWriteOperationApply(models.Model):
 				"plan_fingerprint": self.plan_id.approval_fingerprint,
 				"resultado": detalle,
 			},
-			previous_state=previo)
+			previous_state=previo,
+			# EL ENLACE, que faltaba. La operación apuntaba a la entrada pero la entrada no
+			# apuntaba a la operación, y con eso `_emisiones_sin_desenlace` no encontraba
+			# los desenlaces: cada apply EXITOSO dejaba cuentas abiertas falsas, y el
+			# siguiente apply se habría frenado pidiendo conciliar algo que estaba
+			# perfecto. Lo encontró la primera corrida contra GitHub.
+			extra={"operation_id": self.id})
 		self.write({
 			"state": "applied",
 			"result_json": json.dumps(resultado, default=str)[:8000],
@@ -422,7 +428,7 @@ class RepoWriteOperationApply(models.Model):
 				"restaurado_a": punto_de_retorno,
 				"revierte_a_la_entrada": self.audit_log_id.id,
 			},
-			previous_state=antes_de_revertir)
+			previous_state=antes_de_revertir, extra={"operation_id": self.id})
 		self.state = "rolled_back"
 		return True
 
@@ -520,7 +526,8 @@ class RepoWriteOperationApply(models.Model):
 	# puede hacer, y es lo que pasaba.
 
 	DESENLACES = ("write_applied", "write_failed", "write_rolled_back",
-				  "write_reconciled_applied", "write_reconciled_none")
+				  "write_reconciled_applied", "write_reconciled_none",
+				  "write_reconciled_other")
 
 	def _emisiones_sin_desenlace(self):
 		"""Las escrituras que salieron y de las que no se sabe cómo terminaron.
@@ -569,7 +576,12 @@ class RepoWriteOperationApply(models.Model):
 		previo = json.loads(emision.previous_state_json or "{}")
 
 		ok, detalle = getattr(self, manejador["verificar"])(cliente)
-		datos = {"emisiones": abiertas.ids, "detalle": str(detalle)}
+		# LO QUE HAY AHORA, comparado con lo que había antes de la escritura. Es lo único
+		# que distingue los dos «no» que la verificación mete en la misma bolsa.
+		ahora = getattr(self, manejador["leer"])(cliente)
+		datos = {"emisiones": abiertas.ids, "detalle": str(detalle),
+				 "leido_al_conciliar": ahora}
+
 		if ok:
 			self.write({"state": "applied", "error": False})
 			entrada = self.env["repo.audit.log"].registrar(
@@ -582,7 +594,9 @@ class RepoWriteOperationApply(models.Model):
 			# escritura huérfana. Es la parte que evita que el rollback devuelva las cosas
 			# a un estado que ya la contenía.
 			self.audit_log_id = entrada
-		else:
+		elif ahora == previo:
+			# NADA CAMBIÓ desde antes de la escritura: salió, pero no llegó a quedar. No
+			# hay nada que deshacer y la operación puede volver a intentarse.
 			self.write({"state": "pending", "error": False})
 			self.env["repo.audit.log"].registrar(
 				"write_reconciled_none",
@@ -590,6 +604,39 @@ class RepoWriteOperationApply(models.Model):
 				% self.display_name,
 				backend=self.plan_id.backend_id, repository=self.repository_id,
 				payload=datos, extra={"operation_id": self.id})
+		else:
+			# EL TERCER CASO, Y EL QUE CASI NO EXISTE.
+			#
+			# «La verificación no pasa» y «no se escribió nada» NO son lo mismo, y la
+			# primera versión de esto los trataba igual: la operación quedaba «pendiente»
+			# y la bitácora decía «no hay nada que deshacer» mientras allá afuera había un
+			# cambio real. Es exactamente la absorción que toda esta función existe para
+			# evitar, corrida un paso más adelante.
+			#
+			# Lo encontró la PRIMERA CORRIDA CONTRA GITHUB DE VERDAD. Con transporte falso
+			# los dos casos se veían iguales.
+			#
+			# Acá hay efecto y no es el aprobado: la operación queda fallida —con el
+			# efecto registrado, así que el rollback sigue disponible y su punto de
+			# retorno es el de antes de la escritura— y nadie la vuelve a aplicar encima.
+			entrada = self.env["repo.audit.log"].registrar(
+				"write_reconciled_other",
+				_("En «%s» quedó algo DISTINTO de lo aprobado: hay efecto, y no es el que "
+				  "se pidió") % self.display_name,
+				backend=self.plan_id.backend_id, repository=self.repository_id,
+				payload=datos, previous_state=previo,
+				extra={"operation_id": self.id})
+			self.audit_log_id = entrada
+			self.write({
+				"state": "failed",
+				"error": _(
+					"La escritura salió y lo que quedó en GitHub NO es lo que se aprobó: "
+					"%(detalle)s. Hay un efecto real allá afuera: se puede revertir desde "
+					"acá —el punto de retorno es el de antes de esta escritura— o "
+					"resolverlo a mano y armar un plan nuevo. Lo que no se puede es "
+					"aplicar esto de nuevo encima."
+				) % {"detalle": detalle},
+			})
 		return True
 
 	def _persistir_identidad(self, identidad, previo):
@@ -707,7 +754,7 @@ class RepoWriteOperationApply(models.Model):
 			backend=self.plan_id.backend_id, repository=self.repository_id,
 			payload={"kind": self.kind, "error": motivo,
 					 "plan_fingerprint": self.plan_id.approval_fingerprint},
-			previous_state=previo)
+			previous_state=previo, extra={"operation_id": self.id})
 
 	# ------------------------------------------------------------------
 	# Manejadores por tipo

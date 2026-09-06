@@ -56,6 +56,10 @@ EVENT_TYPES = [
 	# estar pendiente. Un solo tipo obligaría a leer el detalle para saber cuál pasó.
 	("write_reconciled_applied", "Emisión huérfana conciliada: la escritura sí quedó"),
 	("write_reconciled_none", "Emisión huérfana conciliada: no quedó nada"),
+	# El tercer desenlace, y el que casi no existe. Ver `action_conciliar`: «no es lo que
+	# se aprobó» y «no pasó nada» son cosas distintas, y confundirlas declara como
+	# inexistente un efecto que está ahí.
+	("write_reconciled_other", "Emisión huérfana conciliada: quedó algo distinto"),
 	# Cambiar la política es la escritura más silenciosa de todas: no toca un solo
 	# repositorio y sin embargo redefine qué cuenta como incumplimiento para todos los de
 	# esa clasificación, en todas las auditorías que vengan. El chatter no alcanza —es
@@ -91,6 +95,7 @@ RESULTADO_POR_EVENTO = {
 	"write_emitted": ("Emitida, sin verificar todavía", "live"),
 	"write_reconciled_applied": ("Conciliada: la escritura había quedado", "done"),
 	"write_reconciled_none": ("Conciliada: no había quedado nada", "quiet"),
+	"write_reconciled_other": ("Conciliada: quedó algo DISTINTO de lo aprobado", "error"),
 	"write_rolled_back": ("Revertida", "quiet"),
 	"write_identity": ("Objeto creado en GitHub", "done"),
 	"drift_detected": ("Cambio hecho fuera de la app", "error"),
@@ -113,6 +118,7 @@ CLASE_POR_EVENTO = {
 	"write_reconciled_applied": "escritura",
 	# No cambió nada allá afuera: fue una lectura que cerró una cuenta abierta.
 	"write_reconciled_none": "lectura",
+	"write_reconciled_other": "escritura",
 	# Lecturas y decisiones que no tocan GitHub.
 	"sync": "lectura",
 	"policy_changed": "lectura",
