@@ -1,0 +1,197 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+	<t t-name="primate_repo_manager.PanelDeSalud">
+		<div class="rm-panel">
+			<t t-if="!datos">
+				<div class="rm-panel-cargando">Leyendo…</div>
+			</t>
+
+			<t t-elif="!datos.hay_conexion">
+				<div class="rm-panel-vacio">
+					<h1>Todavía no hay ninguna conexión</h1>
+					<p>Este panel lee lo que la auditoría encontró. Sin una conexión a
+						GitHub configurada no hay nada que mirar — y decir «todo bien»
+						sería inventarlo.</p>
+				</div>
+			</t>
+
+			<t t-else="">
+				<!-- CABECERA: de cuándo son estos números, y cuántos repos se leyeron -->
+				<header class="rm-panel-cabeza">
+					<div class="rm-panel-titulo-fila">
+						<h1>Salud de los repositorios</h1>
+						<!-- Con una sola conexión el selector sobra y no se muestra. -->
+						<select t-if="datos.conexiones.length > 1"
+								class="rm-panel-conexion"
+								t-on-change="(ev) => this.cambiarConexion(ev)">
+							<option t-foreach="datos.conexiones" t-as="c" t-key="c.id"
+									t-att-value="c.id"
+									t-att-selected="c.id === datos.conexion.id"
+									t-esc="c.nombre"/>
+						</select>
+					</div>
+					<div class="rm-panel-sub">
+						<t t-if="datos.corrida.hubo">
+							<t t-if="datos.corrida.es_la_primera">Primera auditoría</t>
+							<t t-else="">Última auditoría</t><!--
+							--><t t-if="cuando">, <span class="rm-mono"
+														t-esc="cuando"/></t>
+							<t t-if="datos.corrida.sin_detalle">
+								· esta corrida no registró el detalle por repositorio
+							</t>
+							<t t-else="">
+								· <t t-esc="datos.corrida.leidos"/> de
+								<t t-esc="datos.corrida.total"/> repositorios leídos
+							</t>
+							<t t-if="datos.corrida.sin_leer.length">
+								· <a href="#" t-on-click.prevent="() => this.verCorrida()">
+									<t t-esc="datos.corrida.sin_leer.length"/> sin leer,
+									por qué
+								</a>
+							</t>
+						</t>
+						<t t-else="">Todavía no se auditó <span class="rm-mono"
+							t-esc="datos.conexion.cuenta"/></t>
+					</div>
+				</header>
+
+				<!-- LOS TRES NÚMEROS -->
+				<div class="rm-panel-numeros">
+					<div t-foreach="datos.numeros" t-as="numero" t-key="numero.clave"
+						 class="rm-card rm-panel-numero">
+						<div class="rm-panel-numero-titulo" t-esc="numero.titulo"/>
+						<div t-attf-class="rm-panel-numero-valor{{sinMedida(numero) ? ' rm-panel-sin-medida' : ''}}"
+							 t-esc="texto(numero)"/>
+						<div class="rm-panel-numero-pie" t-esc="numero.pie"/>
+						<div t-if="numero.clave === 'hallazgos' and numero.criticos"
+							 class="rm-chip rm-chip-critical">
+							<t t-esc="numero.criticos"/> críticos
+						</div>
+						<div t-if="numero.sin_leer" class="rm-no-legible">
+							<t t-esc="numero.sin_leer"/> rama(s) sin leer, fuera del cálculo
+						</div>
+						<div class="rm-panel-numero-que" t-esc="numero.explicacion"/>
+
+						<!-- Regla 2: lo que todavía no llegó, a la vista y apagado. -->
+						<Apagado t-if="numero.clave === 'protegidas'"
+								 que="'Comparar con la auditoría anterior'" bloque="'E2'"
+								 detalle="'La tendencia de las últimas 8 corridas.'"/>
+						<Apagado t-if="numero.clave === 'convencion'"
+								 que="'Meta configurable'" bloque="'E4'"
+								 detalle="'Hoy el número se muestra sin meta contra la cual compararlo.'"/>
+					</div>
+				</div>
+
+				<!-- LA FRASE, con su chip y sus botones -->
+				<div t-attf-class="rm-card rm-panel-estado rm-panel-estado-{{datos.estado.tono}}">
+					<span t-attf-class="rm-chip rm-chip-{{datos.estado.tono}}"
+						  t-esc="datos.estado.chip"/>
+					<p class="rm-panel-frase" t-esc="datos.estado.frase"/>
+					<div class="rm-panel-salidas">
+						<t t-if="datos.estado.chip === 'SIN POLÍTICA'">
+							<button class="btn btn-primary"
+									t-on-click="() => this.verPolitica()">
+								Definir la primera política
+							</button>
+							<button class="btn btn-secondary"
+									t-on-click="() => this.verRepositorios()">
+								Revisar la clasificación de los repositorios
+							</button>
+						</t>
+						<t t-else="">
+							<button class="btn btn-primary"
+									t-on-click="() => this.verHallazgos()">
+								Ver los hallazgos
+							</button>
+							<button class="btn btn-secondary"
+									t-on-click="() => this.verPlanes()">
+								Leer el plan antes de aprobar
+							</button>
+						</t>
+					</div>
+				</div>
+
+				<!-- LO QUE NO SE PUDO LEER: nunca se cuenta como bueno -->
+				<div t-if="datos.corrida.hubo and datos.corrida.sin_leer.length"
+					 class="rm-card rm-panel-sinleer">
+					<div class="rm-panel-sinleer-titulo">
+						<t t-esc="datos.corrida.sin_leer.length"/> repositorio(s) no se
+						pudieron leer. Este panel no sabe cómo están.
+					</div>
+					<div t-foreach="datos.corrida.sin_leer" t-as="fallo"
+						 t-key="fallo.repositorio" class="rm-panel-sinleer-item">
+						<span class="rm-mono" t-esc="fallo.repositorio"/>
+						<span class="rm-panel-sinleer-causa" t-esc="fallo.causa"/>
+					</div>
+				</div>
+
+				<!-- EL PLIEGUE -->
+				<div class="rm-panel-pliegue">
+					<a href="#" t-on-click.prevent="() => this.alternarPliegue()">
+						<t t-esc="tituloDetalle"/>
+					</a>
+				</div>
+
+				<div t-if="state.abierto and datos.detalle.hay" class="rm-panel-detalle">
+					<div class="rm-card">
+						<h2>Qué está mal, por gravedad</h2>
+						<div t-if="!datos.detalle.por_gravedad.length"
+							 class="rm-panel-nada">Ningún hallazgo abierto.</div>
+						<div t-foreach="datos.detalle.por_gravedad" t-as="fila"
+							 t-key="fila.clave" class="rm-panel-gravedad">
+							<span t-attf-class="rm-chip rm-chip-{{fila.clave}}"
+								  t-esc="fila.etiqueta"/>
+							<span class="rm-panel-gravedad-n" t-esc="fila.cuantos"/>
+							<span class="rm-panel-gravedad-repos">
+								en <t t-esc="fila.repos"/> repositorio(s)
+							</span>
+						</div>
+					</div>
+
+					<div class="rm-card">
+						<h2>Por tipo de repositorio</h2>
+						<div t-foreach="datos.detalle.por_tipo" t-as="fila"
+							 t-key="fila.etiqueta" class="rm-panel-tipo">
+							<span class="rm-panel-tipo-nombre" t-esc="fila.etiqueta"/>
+							<span class="rm-panel-tipo-repos">
+								<t t-esc="fila.repos"/> repos
+							</span>
+							<span t-if="fila.protegidas !== null"
+								  class="rm-panel-tipo-pct">
+								<t t-esc="fila.protegidas"/> % protegidas
+							</span>
+							<span t-else="" class="rm-no-legible">
+								sin ramas de entorno legibles
+							</span>
+							<span t-if="fila.sin_leer" class="rm-panel-tipo-sinleer">
+								<t t-esc="fila.sin_leer"/> sin leer
+							</span>
+						</div>
+					</div>
+
+					<div class="rm-card">
+						<h2>Cuentas sin dueño</h2>
+						<div class="rm-panel-duenos">
+							<span class="rm-panel-duenos-n"
+								  t-esc="datos.detalle.sin_dueno.cuantas"/>
+							<span>de <t t-esc="datos.detalle.sin_dueno.total"/>
+								colaboradores</span>
+						</div>
+						<div class="rm-panel-duenos-lista">
+							<span t-foreach="datos.detalle.sin_dueno.quienes" t-as="quien"
+								  t-key="quien" class="rm-mono" t-esc="quien"/>
+						</div>
+						<p class="rm-panel-nota">Cuentas con acceso que ninguna persona
+							reconoce como propia. Siempre son críticas.</p>
+					</div>
+
+					<Apagado que="'Hallazgos abiertos, auditoría por auditoría'"
+							 bloque="'E2'" forma="'bloque'"
+							 detalle="'La tendencia de las últimas 8 corridas, con las que fallaron marcadas y sin inventarles un valor.'"/>
+				</div>
+			</t>
+		</div>
+	</t>
+
+</templates>

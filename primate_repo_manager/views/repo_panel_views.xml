@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+
+	<!-- El panel es una acción de cliente y no una vista de un modelo: no muestra
+		 registros de una tabla, sino una lectura compuesta de varias. Forzarlo a ser una
+		 vista habría obligado a inventar un modelo que no existe. -->
+	<record id="action_repo_panel_salud" model="ir.actions.client">
+		<field name="name">Salud de los repositorios</field>
+		<field name="tag">repo_panel_salud</field>
+	</record>
+
+</odoo>

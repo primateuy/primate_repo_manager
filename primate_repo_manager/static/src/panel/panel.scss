@@ -1,0 +1,190 @@
+// Copyright 2026 - PrimateUY / License AGPL-3.0 or later
+//
+// El panel de salud — páginas 3a y 1b. Tres números arriba, una frase, y el detalle
+// plegado debajo. Nada más entra en la primera lectura.
+
+.rm-panel {
+	color: var(--rm-ink);
+	background: var(--rm-bg);
+	min-height: 100%;
+	padding: var(--rm-space-5) var(--rm-space-6) var(--rm-space-6);
+
+	.rm-panel-cargando, .rm-panel-nada { color: var(--rm-ink-2); }
+
+	.rm-panel-vacio {
+		max-width: 42rem;
+		h1 { font-size: 1.5rem; font-weight: 600; }
+		p { color: var(--rm-ink-2); line-height: 1.6; }
+	}
+
+	// --- cabecera ----------------------------------------------------------
+	.rm-panel-cabeza {
+		margin-bottom: var(--rm-space-5);
+		.rm-panel-titulo-fila {
+			display: flex;
+			align-items: center;
+			gap: var(--rm-space-3);
+			flex-wrap: wrap;
+		}
+		.rm-panel-conexion {
+			// Que no se estire: es un selector chico al lado del título, no una barra.
+			width: auto;
+			flex: none;
+			border: 1px solid var(--rm-border);
+			border-radius: var(--rm-radius-sm);
+			background: var(--rm-surface);
+			color: var(--rm-ink);
+			padding: 4px 8px;
+			font-size: .8125rem;
+		}
+		h1 {
+			font-size: 1.625rem;
+			font-weight: 600;
+			letter-spacing: -.015em;
+			margin: 0;
+		}
+		.rm-panel-sub {
+			font-size: .8125rem;
+			color: var(--rm-ink-2);
+			margin-top: var(--rm-space-1);
+			a { color: var(--rm-accent); font-weight: 600; }
+		}
+	}
+
+	// --- los tres números --------------------------------------------------
+	//
+	// Tres columnas iguales. No hay una «principal»: las tres dicen algo distinto y
+	// jerarquizar una haría que las otras dos se lean menos.
+	.rm-panel-numeros {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+		gap: var(--rm-space-4);
+		margin-bottom: var(--rm-space-4);
+	}
+
+	.rm-panel-numero {
+		display: flex;
+		flex-direction: column;
+		gap: var(--rm-space-1);
+
+		.rm-panel-numero-titulo {
+			font-size: .6875rem;
+			font-weight: 600;
+			letter-spacing: .06em;
+			text-transform: uppercase;
+			color: var(--rm-ink-2);
+		}
+		.rm-panel-numero-valor {
+			font-size: 2.5rem;
+			font-weight: 600;
+			line-height: 1.05;
+			font-variant-numeric: tabular-nums;
+		}
+		// EL GUIÓN NO ES UN NÚMERO GRIS: es la señal de que no hay nada que medir, y
+		// tiene que leerse distinto de un cero. Un cero apagado se confunde con un dato.
+		.rm-panel-sin-medida { color: var(--rm-ink-3); }
+
+		.rm-panel-numero-pie { font-size: .8125rem; color: var(--rm-ink-2); }
+		.rm-panel-numero-que {
+			font-size: .75rem;
+			color: var(--rm-ink-3);
+			line-height: 1.45;
+			margin-top: var(--rm-space-1);
+		}
+		.rm-chip { align-self: flex-start; }
+		.rm-no-legible { align-self: flex-start; font-size: .75rem; }
+		.rm-apagado { margin-top: var(--rm-space-2); }
+	}
+
+	// --- la frase ----------------------------------------------------------
+	.rm-panel-estado {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: var(--rm-space-2);
+		border-left: 4px solid var(--rm-border);
+		margin-bottom: var(--rm-space-4);
+
+		&.rm-panel-estado-error { border-left-color: var(--rm-sev-critical); }
+		&.rm-panel-estado-done  { border-left-color: var(--rm-done); }
+		&.rm-panel-estado-quiet { border-left-color: var(--rm-accent); }
+
+		.rm-panel-frase { margin: 0; font-size: 1rem; line-height: 1.55; }
+		.rm-panel-salidas {
+			display: flex;
+			gap: var(--rm-space-2);
+			flex-wrap: wrap;
+			margin-top: var(--rm-space-1);
+		}
+	}
+
+	// --- lo que no se pudo leer --------------------------------------------
+	.rm-panel-sinleer {
+		border-left: 4px solid var(--rm-unread);
+		margin-bottom: var(--rm-space-4);
+		.rm-panel-sinleer-titulo { font-weight: 600; margin-bottom: var(--rm-space-2); }
+		.rm-panel-sinleer-item {
+			display: flex;
+			gap: var(--rm-space-3);
+			flex-wrap: wrap;
+			font-size: .8125rem;
+			padding: 2px 0;
+			.rm-panel-sinleer-causa { color: var(--rm-ink-2); }
+		}
+	}
+
+	// --- el pliegue --------------------------------------------------------
+	.rm-panel-pliegue {
+		margin: var(--rm-space-4) 0 var(--rm-space-3);
+		a { color: var(--rm-accent); font-weight: 600; font-size: .875rem; }
+	}
+
+	.rm-panel-detalle {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+		gap: var(--rm-space-4);
+		align-items: start;
+
+		h2 {
+			font-size: .875rem;
+			font-weight: 600;
+			margin: 0 0 var(--rm-space-3);
+		}
+		.rm-panel-gravedad, .rm-panel-tipo {
+			display: flex;
+			align-items: baseline;
+			gap: var(--rm-space-2);
+			flex-wrap: wrap;
+			font-size: .8125rem;
+			padding: 3px 0;
+		}
+		.rm-panel-gravedad-n {
+			font-weight: 600;
+			font-variant-numeric: tabular-nums;
+		}
+		.rm-panel-gravedad-repos, .rm-panel-tipo-repos { color: var(--rm-ink-2); }
+		.rm-panel-tipo-nombre { font-weight: 600; min-width: 8rem; }
+		.rm-panel-tipo-pct { margin-left: auto; font-variant-numeric: tabular-nums; }
+		.rm-panel-tipo-sinleer { color: var(--rm-unread); font-size: .75rem; }
+
+		.rm-panel-duenos {
+			display: flex;
+			align-items: baseline;
+			gap: var(--rm-space-2);
+			.rm-panel-duenos-n { font-size: 2rem; font-weight: 600; }
+		}
+		.rm-panel-duenos-lista {
+			display: flex;
+			flex-wrap: wrap;
+			gap: var(--rm-space-2);
+			font-size: .75rem;
+			margin-top: var(--rm-space-1);
+		}
+		.rm-panel-nota {
+			font-size: .75rem;
+			color: var(--rm-ink-3);
+			margin: var(--rm-space-2) 0 0;
+			line-height: 1.45;
+		}
+	}
+}

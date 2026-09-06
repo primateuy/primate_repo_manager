@@ -17,13 +17,10 @@
 -->
 <odoo>
 
-	<record id="action_pendiente_panel" model="ir.actions.act_window">
-		<field name="name">Panel de salud</field>
-		<field name="res_model">repo.coming.soon</field>
-		<field name="view_mode">form</field>
-		<field name="target">current</field>
-		<field name="context">{'prm_titulo': 'Panel de salud', 'prm_bloque': 'Bloque E · última etapa del plan', 'prm_que': 'Tres números arriba: qué porcentaje de las ramas de entorno está protegido, cuántos hallazgos críticos y altos siguen abiertos con su tendencia, y cuántos repositorios están gobernados sobre el total. Debajo, el detalle plegado.\n\nLa tendencia necesita historia, y la historia no se puede reconstruir hacia atrás: por eso las métricas se empiezan a guardar antes, con el drift de política, aunque el panel llegue al final.'}</field>
-	</record>
+	<!-- El panel dejó de ser un casillero: existe desde V4 del tramo visual. Su acción
+	     está en repo_panel_views.xml. Lo que sigue apagado —la tendencia de 8 corridas y
+	     la meta configurable— vive DENTRO de la pantalla, que es donde el usuario lo
+	     necesita ver. -->
 
 	<record id="action_pendiente_promocion_modulos" model="ir.actions.act_window">
 		<field name="name">Promoción de módulos</field>

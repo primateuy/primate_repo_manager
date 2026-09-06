@@ -20,7 +20,7 @@
 			  parent="menu_repo_root"/>
 
 	<menuitem id="menu_repo_panel" name="Panel de salud" sequence="10"
-			  parent="menu_repo_ver" action="action_pendiente_panel"/>
+			  parent="menu_repo_ver" action="action_repo_panel_salud"/>
 	<menuitem id="menu_repo_repositories" name="Repositorios" sequence="20"
 			  parent="menu_repo_ver" action="action_repo_repository"/>
 	<menuitem id="menu_repo_audit" name="Auditorías" sequence="30"
