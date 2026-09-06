@@ -21,11 +21,20 @@
 	--rm-border: #DDE1E7;
 	--rm-bg: #F4F5F7;           // fondo de la página
 	--rm-surface: #FFFFFF;      // tarjetas, tablas
+	// Superficie de segundo nivel: encabezados de grupo y celdas de antes/después. En
+	// claro casi no se distingue del blanco y por eso no existía; en oscuro es la que
+	// separa una cabecera de su tabla sin usar un borde más.
+	--rm-surface-2: #FAFBFC;
 
 	// --- acento: pizarra ---------------------------------------------------
-	--rm-accent: #2F4A6D;
+	--rm-accent: #2F4A6D;        // enlaces, texto de acento, foco
 	--rm-accent-dark: #1E3552;
 	--rm-accent-tint: #E8EEF6;
+	// Relleno de un botón primario propio, con su color de texto. Es distinto de
+	// `--rm-accent`, que es color de TEXTO: en oscuro el acento se aclara para poder
+	// leerse, y un relleno de ese color dejaría el botón ilegible.
+	--rm-accent-solid: #2F4A6D;
+	--rm-accent-on-solid: #FFFFFF;
 
 	// --- severidades, en par sólido/tenue ----------------------------------
 	// El sólido es el fondo del chip; el tenue, el fondo de la fila o del bloque.
@@ -39,6 +48,23 @@
 	--rm-sev-info: #4A6079;
 	--rm-sev-info-tint: #EAEEF3;
 
+	// Texto sobre el tenue, y borde del tenue. En CLARO la tabla del entregable no los
+	// trae —el texto sobre tenue es el propio sólido, que es lo que el sistema viene
+	// haciendo, y no hay bordes teñidos—, así que acá se declaran con esos valores y en
+	// oscuro se sobrescriben con los suyos, que sí están tabulados.
+	--rm-sev-critical-on-tint: var(--rm-sev-critical);
+	--rm-sev-high-on-tint: var(--rm-sev-high);
+	--rm-sev-medium-on-tint: var(--rm-sev-medium);
+	--rm-sev-info-on-tint: var(--rm-sev-info);
+	--rm-sev-critical-border: var(--rm-border);
+	--rm-sev-high-border: var(--rm-border);
+	--rm-sev-medium-border: var(--rm-border);
+	--rm-sev-info-border: var(--rm-border);
+
+	// El texto de los chips de severidad. Existe como token porque es LO ÚNICO que
+	// cambia de estructura entre los dos modos: ver la regla 1, abajo.
+	--rm-chip-ink: #FFFFFF;
+
 	// --- estados -----------------------------------------------------------
 	--rm-live: #2563EB;         // corriendo
 	--rm-live-tint: #E6EEFC;
@@ -47,6 +73,7 @@
 	--rm-error: #A1201F;        // falló
 	--rm-error-tint: #FBE9E8;
 	--rm-unread: #6B7280;       // NO SE PUDO LEER — ver la regla de abajo
+	--rm-unread-bg: #F1F3F6;    // la base de la trama, entre raya y raya
 
 	// --- forma y espacio ---------------------------------------------------
 	--rm-radius-sm: 4px;
@@ -68,8 +95,12 @@
 // «esta rama no está protegida» llegan como el mismo 404 de GitHub, y confundirlos habría
 // hecho que el informe acusara a repositorios sanos.
 @mixin rm-no-legible {
+	// LA FORMA NO CAMBIA ENTRE MODOS —135°, 2 px— y por eso se reconoce igual. Lo que
+	// cambia son los dos colores, y los dos son tokens: en claro son rayas grises sobre
+	// casi blanco; en oscuro, rayas claras sobre superficie oscura. La trama se invierte
+	// sola sin que este código pregunte nada.
 	background: repeating-linear-gradient(
-		135deg, var(--rm-unread) 0 2px, var(--rm-surface) 2px 4px);
+		135deg, var(--rm-unread) 0 2px, var(--rm-unread-bg) 2px 4px);
 	color: var(--rm-ink-2);
 }
 
@@ -165,3 +196,32 @@
 
 .rm-alert-ok { background: var(--rm-done-tint); border-color: var(--rm-done); }
 .rm-alert-warn { background: var(--rm-sev-medium-tint); border-color: var(--rm-sev-medium); }
+
+
+// ============================================================================
+// LAS TRES REGLAS DEL MODO OSCURO — del entregable del 6-sep-2026
+// ============================================================================
+//
+// 1 · EL CHIP DE SEVERIDAD INVIERTE SU TEXTO, y es el ÚNICO componente que cambia de
+//     estructura entre los dos modos. En claro es texto blanco sobre relleno oscuro; en
+//     oscuro, texto casi negro sobre relleno claro. Se resuelve con `--rm-chip-ink`, que
+//     el chip usa sin preguntar en qué modo está.
+//
+//     Por qué invierte: sobre fondo oscuro el contraste crece con la CLARIDAD, al revés
+//     que en claro. Si el chip conservara relleno oscuro y texto blanco, el crítico
+//     perdería contra el ocre del medio y se rompería la jerarquía.
+//
+// 2 · NADA SE APAGA CON OPACIDAD. Los tenues son colores propios y no el sólido al 12 %:
+//     sobre oscuro la transparencia ensucia el tono y rompe la jerarquía. Si hace falta
+//     una variante nueva, se pide a la tabla; no se calcula con `opacity` ni con `mix`.
+//
+// 3 · EL MODO LO DECIDE ODOO, Y NINGÚN COMPONENTE PREGUNTA. Los tokens viven en `:root`
+//     acá, y `tokens.dark.scss` los sobrescribe. Ese archivo entra sólo en el bundle
+//     oscuro de Odoo 19 Enterprise (`web.assets_web_dark`), que se sirve según
+//     `res.users.settings.color_scheme`. No hay media queries, no hay clases de tema, y
+//     ningún SCSS ni JS del módulo consulta el modo: si algún día hiciera falta, es señal
+//     de que un color se escapó de la tabla.
+//
+// LA JERARQUÍA SE CONSERVA Y ES MEDIBLE. El contraste de cada sólido contra `--rm-bg`
+// ordena crítico > alto > medio > informativo, en los dos modos. Si algún día se retoca
+// un nivel, se vuelve a medir contra los otros tres — no alcanza con que «se vea bien».

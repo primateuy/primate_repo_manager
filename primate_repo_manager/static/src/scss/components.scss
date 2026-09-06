@@ -23,7 +23,8 @@
 	letter-spacing: .06em;
 	text-transform: uppercase;
 	white-space: nowrap;
-	color: var(--rm-surface);
+	// Ver la regla 1 en tokens.scss: es lo único que cambia de estructura entre modos.
+	color: var(--rm-chip-ink);
 	background: var(--rm-ink-2);
 
 	&.rm-chip-critical { background: var(--rm-sev-critical); }
@@ -74,7 +75,7 @@
 		white-space: pre-wrap;
 	}
 	.rm-ad-antes {
-		background: var(--rm-bg);
+		background: var(--rm-surface-2);
 		.rm-ad-titulo { color: var(--rm-ink-2); }
 	}
 	.rm-ad-despues {
@@ -120,7 +121,7 @@
 		padding: 5px 12px;
 		border: 1px dashed var(--rm-border);
 		border-radius: var(--rm-radius-sm);
-		background: var(--rm-bg);
+		background: var(--rm-surface-2);
 		font-size: .8125rem;
 	}
 	&.rm-apagado-bloque {
@@ -129,7 +130,7 @@
 		gap: var(--rm-space-1);
 		border: 1px dashed var(--rm-border);
 		border-radius: var(--rm-radius);
-		background: var(--rm-bg);
+		background: var(--rm-surface-2);
 		padding: var(--rm-space-3) var(--rm-space-4);
 	}
 	.rm-apagado-etiqueta {

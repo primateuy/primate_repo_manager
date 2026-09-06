@@ -66,7 +66,9 @@
 		letter-spacing: .06em;
 		text-transform: uppercase;
 		color: var(--rm-ink-2);
-		background: var(--rm-bg);
+		// Encabezado de grupo: superficie de segundo nivel, no el fondo de la página.
+		// En claro casi no se nota; en oscuro es lo que separa la cabecera de su tabla.
+		background: var(--rm-surface-2);
 		cursor: default;
 	}
 

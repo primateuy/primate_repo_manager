@@ -69,6 +69,22 @@
 			"primate_repo_manager/static/src/live_progress/live_progress.xml",
 			"primate_repo_manager/static/src/live_progress/live_progress.scss",
 		],
+		# ========= MODO OSCURO =========
+		#
+		# Odoo 19 Enterprise no resuelve el tema con una clase: compila un bundle aparte y
+		# lo sirve según `res.users.settings.color_scheme`. Este archivo entra SÓLO ahí, y
+		# redefine las mismas variables de `:root` que declara `tokens.scss`.
+		#
+		# Por eso no hace falta sacarlo del bundle claro: no está listado arriba. Y por eso
+		# ningún componente del módulo pregunta en qué modo está.
+		#
+		# En una instalación Community este bundle no lo sirve nadie y el archivo
+		# simplemente no se carga — el módulo se ve en claro, que es lo correcto: el tema
+		# oscuro es de Enterprise.
+		"web.assets_web_dark": [
+			"primate_repo_manager/static/src/scss/tokens.dark.scss",
+		],
+
 		# El tour vive en su propio bundle: no viaja a la pantalla de nadie, sólo se carga
 		# cuando corren los tests.
 		"web.assets_tests": [

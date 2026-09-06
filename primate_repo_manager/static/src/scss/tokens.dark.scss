@@ -1,0 +1,84 @@
+// Copyright 2026 - PrimateUY / License AGPL-3.0 or later
+//
+// MODO OSCURO — columna «Dark» de la tabla de tokens del entregable (7a, 6-sep-2026),
+// traducida valor por valor igual que la clara. Acá NO se decide nada de color: si un
+// valor hay que cambiarlo, se cambia en la tabla y se vuelve a traducir.
+//
+// CÓMO ENTRA ESTE ARCHIVO, que es lo que hace que ningún componente pregunte por el modo.
+// Odoo 19 Enterprise no resuelve el tema oscuro con una clase ni con `prefers-color-scheme`:
+// compila un BUNDLE APARTE. Los archivos que terminan en `.dark.scss` entran sólo en
+// `web.assets_web_dark`, y el cliente web sirve ese bundle —en vez del claro— según
+// `res.users.settings.color_scheme`, que cada persona elige en su perfil.
+//
+// La consecuencia es la que buscábamos: acá se redefinen las MISMAS variables de `:root`
+// y todo lo demás del módulo sigue escrito una sola vez. Ningún SCSS y ningún JS del
+// módulo consulta en qué modo está.
+//
+// EL FONDO NO ES NEGRO PURO. Mantiene el tinte frío para que el rojo de crítico siga
+// siendo el color más saliente de la pantalla, que es la única cosa que el color tiene
+// asignada en este sistema.
+
+:root {
+	// --- neutrales y acento ------------------------------------------------
+	--rm-bg: #14171C;
+	--rm-surface: #1C2027;
+	--rm-surface-2: #23282F;
+	--rm-border: #333A44;
+	--rm-ink: #E7EAEF;          // 13,6:1 sobre surface
+	--rm-ink-2: #A8B1BE;        // 7,5:1 — sigue siendo texto legible
+	--rm-ink-3: #78828F;        // sólo rótulos y guiones, nunca texto que haya que leer
+
+	--rm-accent: #8FB0DA;       // enlaces, texto de acento, foco · 7,3:1
+	--rm-accent-tint: #1E2A3A;
+	--rm-accent-solid: #3E6494;
+	--rm-accent-on-solid: #F2F5F9;
+	// `--rm-accent-dark` no está en la tabla nueva: venía de la vieja como «pizarra
+	// oscuro» y en el módulo se usa como COLOR DE TEXTO sobre el tinte del acento. En
+	// oscuro un pizarra oscuro sobre tinte oscuro sería ilegible, así que toma el valor
+	// del acento, que es el que la tabla define para texto. Queda dicho porque es una
+	// decisión de traducción y no un valor tabulado.
+	--rm-accent-dark: #8FB0DA;
+
+	// --- severidad · pares recalibrados ------------------------------------
+	//
+	// El crítico SUBE y el medio y el informativo BAJAN. No es un capricho: sobre oscuro
+	// el contraste crece con la claridad, así que conservar las luminancias de claro
+	// dejaría al ocre del medio ganándole al rojo. Con estos valores el contraste contra
+	// `--rm-bg` ordena crítico 7,1 > alto 6,0 > medio 5,1 > informativo 4,6.
+	--rm-sev-critical: #FF7A73;
+	--rm-sev-critical-tint: #3A1A1D;
+	--rm-sev-critical-border: #7A2B2C;
+	--rm-sev-critical-on-tint: #FF9A94;
+
+	--rm-sev-high: #E07B2C;
+	--rm-sev-high-tint: #35231A;
+	--rm-sev-high-border: #6E4220;
+	--rm-sev-high-on-tint: #F2AE72;
+
+	--rm-sev-medium: #A98431;
+	--rm-sev-medium-tint: #2A2618;
+	--rm-sev-medium-border: #55441E;
+	--rm-sev-medium-on-tint: #D6B76B;
+
+	--rm-sev-info: #6E839B;
+	--rm-sev-info-tint: #212831;
+	--rm-sev-info-border: #394656;
+	--rm-sev-info-on-tint: #A6B7C9;
+
+	// REGLA 1: el chip de severidad invierte su texto. Es el único componente que cambia
+	// de estructura entre los dos modos, y se resuelve acá y no en el componente.
+	--rm-chip-ink: #14171C;
+
+	// --- estados -----------------------------------------------------------
+	--rm-live: #5B9BFF;
+	--rm-live-tint: #16233A;
+	--rm-done: #43BE83;
+	--rm-done-tint: #16281F;
+	--rm-error: #FF7A73;        // el mismo valor que crítico, en cuadrado y no en círculo
+	--rm-error-tint: #3A1A1D;
+
+	// La trama de «no se pudo leer» se invierte: rayas CLARAS sobre superficie oscura.
+	// La forma no cambia —135°, 2 px— así que se reconoce igual que en claro.
+	--rm-unread: #8A94A6;
+	--rm-unread-bg: #1E232A;
+}
