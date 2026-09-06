@@ -169,6 +169,34 @@ construyeron así.
 - **Flags de seguridad cross-proceso se leen frescos** (search/read en el momento de uso, no cacheados) — lección permanente de PCM.
 - **Defaults silenciosos de primitivos son el enemigo:** validá configuración explícitamente; un campo vacío no puede colapsar a un comportamiento peligroso.
 
+## Dos formas en que un test tapa el defecto que buscaba
+
+Las dos costaron un defecto real y las dos se ven bien mientras se escriben.
+
+### Un test de un mecanismo de registro NO fabrica las entradas
+
+Si el mecanismo escribe entradas —bitácora, constancias, desenlaces—, el test las produce
+**por el camino real**: aplica, revierte, concilia. Nunca las crea a mano.
+
+Fabricarlas verifica **lo que el código debería hacer en vez de lo que hace**, y ahí el
+test absorbe justo el defecto que venía a buscar. Pasó: la prueba de «un desenlace cierra
+la cuenta abierta» creaba la entrada con el enlace a la operación puesto por el test,
+cuando el código no lo ponía. Resultado: cada apply exitoso dejaba cuentas abiertas falsas
+y la guarda de frenar se habría disparado sobre planes impecables — un falso positivo en
+una guarda, que es la peor clase, porque **la guarda que grita sin razón termina ignorada**.
+
+Vale igual para los dobles: uno que imita media interfaz miente en la mitad que no imita.
+El GitHub simulado de la promoción tuvo que aprender a borrar de verdad por esto mismo.
+
+### Un tour que se rompe tras una migración visual NO es ruido por definición
+
+Cuando una pantalla cambia de estructura, los tours que la verificaban por su HTML se
+rompen, y la reacción natural es ajustar el selector. **Antes de ajustarlo hay que leer qué
+comprobaba el paso.** De tres tours rotos en la migración de hallazgos, dos eran
+efectivamente selectores viejos y el tercero avisaba de un callejón sin salida: el clic en
+la fila había dejado de abrir la ficha y con eso desapareció el camino hallazgo →
+repositorio. Ajustar los tres de una habría tapado una funcionalidad perdida.
+
 ## Testing
 
 - Tests por fase, obligatorios antes de cada FRENO. `odoo-bin -c <conf> -d <db_test> -i primate_repo_manager --test-enable --stop-after-init`.
