@@ -84,6 +84,49 @@ Por eso la verificación por relectura acá no es opcional y el rollback tiene q
 el ruleset anterior, no borrarlo — borrar un ruleset que ya existía sería destruir
 configuración que no pusimos nosotros. *(Ya hay un test que cubre esto en el motor.)*
 
+### B1, en pasos — aprobado el 7-sep-2026
+
+| paso | qué deja hecho | estado |
+|---|---|---|
+| **B1.1** | La traducción plantilla → JSON de ruleset, **pura**: no toca GitHub ni la base | **hecho** |
+| **B1.2** | `ruleset_update` entra al catálogo de operaciones | |
+| **B1.3** | El apply: leer, aplicar el diff, verificar releyendo, registrar | |
+| **B1.4** | «Exige … · Tiene …» por rama, en el formulario del repositorio | |
+| **B1.5** | «Incumplen hoy» por exigencia, en la plantilla | |
+| **B1.6** | Ensayo contra el sandbox y mutación de las guardas nuevas | |
+
+**Dos confirmaciones que se pidieron y quedan escritas acá para que no se pierdan:**
+
+1. **`ruleset_update` va con el ciclo de cuatro pasos**, y su lugar en la taxonomía de
+   `repo_write_apply.py` queda documentado **en el commit que lo agrega**: es
+   **idempotente por destino** —el ruleset ya existe y tiene id propio; escribir dos veces
+   deja el mismo resultado— y **no crea identidad**, así que no lleva el paso 2b. Es
+   justamente por esto que hace falta: con sólo `ruleset_create` y `ruleset_delete`,
+   reaplicar una política significa borrar y crear, y eso destruye el id por el que el
+   rollback vuelve.
+
+2. **La mutación de B1.6 cubre las dos guardas nuevas, cada una con su rojo:**
+   «no se borra un ruleset ajeno» y «el rollback devuelve el ruleset anterior, no lo
+   borra». Una guarda que nunca falló no está probada, está supuesta.
+
+**Y B1.4/B1.5 nacen visuales** —tokens y patrones desde el primer commit, regla 3—: son la
+tercera columna del checklist de cobertura volviéndose pantalla, no una lista sobre la
+cara vieja.
+
+#### Lo que B1.1 dejó decidido, y conviene saber antes de B1.3
+
+- **Las condiciones del ruleset nombran las ramas observadas, una por una.** Los roles de
+  rama se deciden con expresiones regulares y las condiciones de GitHub son fnmatch:
+  traducir regex a glob no se puede en general, y aproximarlo inventaría el alcance de una
+  regla que bloquea merges. El agujero —una rama creada después de la última auditoría no
+  queda cubierta hasta la próxima— **está dicho en el código y se muestra**, no tapado.
+- **El actor exento sale de la conexión** (`write_app_id`), nunca de una constante: es
+  4808079 en el sandbox y 4811232 en producción. Sin App de escritura declarada **no se
+  arma el ruleset** — uno sin exención se aplica bien y frena el apply siguiente.
+- **Lo que no se traduce viaja en `no_traducido` y se ve.** Hoy son tres: los checks sin
+  confirmar, el patrón de nombre de rama —que gobierna las ramas nuevas y necesita su
+  propio ruleset sobre todas— y las ramas de fork.
+
 ## B2 · Checks requeridos, con la propuesta armada
 
 **El problema que resuelve.** Un check requerido cuyo nombre no existe **bloquea todos los

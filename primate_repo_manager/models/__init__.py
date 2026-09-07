@@ -6,6 +6,7 @@ from . import repo_policy_audited
 from . import repo_rules
 from . import repo_backend
 from . import repo_policy
+from . import repo_ruleset
 from . import repo_repository
 from . import repo_branch
 from . import repo_member

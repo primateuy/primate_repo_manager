@@ -39,6 +39,15 @@ BRANCH_ROLES = [
 	("other", "Otra"),
 ]
 
+# Los roles que la política gobierna, y por lo tanto los únicos contra los que tiene
+# sentido medir cumplimiento o escribir un ruleset. Una rama «otra» o una de un fork sin
+# migrar no es incumplimiento: no hay convención contra la cual medirla.
+#
+# Vive acá —y no en quien la usa— porque la usan el panel de salud y el armado de
+# rulesets, y dos listas iguales en dos archivos se desincronizan el día que alguien
+# agrega un rol. Esa desincronización no falla: mide una cosa y aplica otra.
+ROLES_GOBERNADOS = ("base", "prod", "staging", "support")
+
 
 class RepoClassificationRule(models.Model):
 	_name = "repo.classification.rule"

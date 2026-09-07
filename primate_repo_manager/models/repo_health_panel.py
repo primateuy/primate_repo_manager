@@ -18,12 +18,14 @@ sanos. Ninguna de las dos es cierta.
 """
 from odoo import api, fields, models, _
 
+# Las ramas que la política gobierna vienen de `repo_rules`: la misma lista que usa el
+# armado de rulesets. Medir el cumplimiento contra un conjunto de roles y aplicarlo
+# sobre otro es la clase de desfase que no se ve hasta que alguien compara los dos
+# números.
+from .repo_rules import ROLES_GOBERNADOS  # noqa: F401
+
 # Cuántos días mira la métrica de convención. Sale del entregable: «últimos 30 días».
 VENTANA_CONVENCION = 30
-
-# Las ramas que la política gobierna. Una rama «otra» o una de un fork sin migrar no se
-# cuenta como incumplimiento: no hay convención contra la cual medirla.
-ROLES_GOBERNADOS = ("base", "prod", "staging", "support")
 
 
 class RepoHealthPanel(models.AbstractModel):

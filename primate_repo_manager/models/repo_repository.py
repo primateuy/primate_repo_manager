@@ -96,6 +96,24 @@ class RepoRepository(models.Model):
 		"UNIQUE (backend_id, github_id)",
 		"Ese repositorio ya está registrado en esta conexión.")
 
+	def plantilla_efectiva(self):
+		"""La plantilla que gobierna este repositorio, por su clasificación.
+
+		Existe para que haya UN criterio y no dos. Lo usan la auditoría —que compara
+		contra la plantilla— y el armado de rulesets —que la escribe—: si cada uno
+		buscara por su cuenta, el día que el criterio cambie se compararía contra una
+		plantilla y se aplicaría otra, y los dos lados dirían la verdad por separado.
+
+		Returns:
+			repo.policy.template: la plantilla, o un recordset vacío si el repositorio
+			no está clasificado o su clasificación no tiene plantilla.
+		"""
+		self.ensure_one()
+		if not self.classification:
+			return self.env["repo.policy.template"].browse()
+		return self.env["repo.policy.template"].search(
+			[("classification_default", "=", self.classification)], limit=1)
+
 	@api.depends("branch_ids", "collaborator_ids", "pull_request_ids", "finding_ids")
 	def _compute_counts(self):
 		for repo in self:

@@ -76,8 +76,9 @@ class RepoAuditEngine(models.AbstractModel):
 			# Sin clasificación no hay plantilla contra la cual comparar el resto.
 			return
 
-		plantilla = self.env["repo.policy.template"].search(
-			[("classification_default", "=", repo.classification)], limit=1)
+		# El mismo criterio que usa el armado de rulesets: se compara contra la
+		# plantilla que después se va a escribir, no contra otra parecida.
+		plantilla = repo.plantilla_efectiva()
 		if not plantilla:
 			return
 
