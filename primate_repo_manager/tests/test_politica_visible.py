@@ -131,6 +131,15 @@ class TestAlcanceDeLaPlantilla(TransactionCase):
 			"name": "Alcance %s" % uuid.uuid4().hex[:6],
 			"owner_login": "cuenta-%s" % uuid.uuid4().hex[:8],
 			"owner_type": "user", "app_id": "1", "installation_id": "2"})
+		# Desde B1.2 hay UNA plantilla activa por clasificación. La de fábrica ocupa
+		# «interno», así que se libera antes de crear la del test — que es lo mismo que
+		# haría alguien en la pantalla: archivar la vigente antes de estrenar otra.
+		self.env["repo.policy.template"].search([
+			("classification_default", "=", "interno")]).classification_default = False
+		# El write queda pendiente en el buffer del ORM y el INSERT de abajo llega
+		# antes a Postgres: sin vaciarlo, el índice único salta con el error crudo
+		# en vez del mensaje que explica qué archivar.
+		self.env.flush_all()
 		plantilla = self.env["repo.policy.template"].create({
 			"name": "Interno", "code": "int-%s" % uuid.uuid4().hex[:6],
 			"classification_default": "interno"})

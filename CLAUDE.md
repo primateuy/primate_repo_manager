@@ -335,6 +335,20 @@ tiene **ninguna** referencia a PCM y hay un test que lo verifica recorriendo los
 - **Flags de seguridad cross-proceso se leen frescos** (search/read en el momento de uso, no cacheados) — lección permanente de PCM.
 - **Defaults silenciosos de primitivos son el enemigo:** validá configuración explícitamente; un campo vacío no puede colapsar a un comportamiento peligroso.
 
+### Quitar una guarda del código NO la quita de la base
+
+Medido el 7-sep-2026 mutando el índice único de plantillas. Odoo **no borra** un índice
+declarado con `models.UniqueIndex` cuando alguien saca la declaración: sólo lo recrea si
+la definición cambió. Así que la mutación «borro la guarda» corrió con la guarda todavía
+puesta en Postgres y **pareció cazada por los tests equivocados**.
+
+Para mutar una guarda que vive en la base hay que sacarla **de los dos lados**:
+
+    psql -d <db> -c 'drop index if exists <nombre_del_indice>;'
+
+Con el índice realmente ausente aparecieron los cuatro rojos que tenían que aparecer. Sin
+ese paso, la mutación habría firmado una cobertura que no existía.
+
 ## Dos formas en que un test tapa el defecto que buscaba
 
 Las dos costaron un defecto real y las dos se ven bien mientras se escriben.

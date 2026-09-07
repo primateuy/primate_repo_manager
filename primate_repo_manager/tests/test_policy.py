@@ -22,10 +22,26 @@ Así que quedan separados: **los valores de fábrica se verifican contra el XML 
 contra plantillas que el test se construye**, sin depender de lo que haya en la base.
 """
 import ast
+import uuid
 from xml.etree import ElementTree
 
+from psycopg2 import IntegrityError
+
 from odoo.tests.common import TransactionCase
+from odoo.tools import mute_logger
 from odoo.tools.misc import file_path
+from odoo.tools.sql import index_exists
+
+from odoo.addons.primate_repo_manager.models.repo_policy import (
+	_mensaje_de_clasificacion_ocupada,
+)
+
+
+class _Diagnostico:
+	"""Lo único que la función del mensaje mira del error de Postgres."""
+
+	def __init__(self, message_detail):
+		self.message_detail = message_detail
 
 ARCHIVO = "primate_repo_manager/data/repo_policy_data.xml"
 
@@ -220,3 +236,104 @@ class TestPolicyAccess(TransactionCase):
 		self.assertGreater(Colaborador.level_of("admin"), Colaborador.level_of("push"))
 		self.assertGreater(Colaborador.level_of("push"), Colaborador.level_of("pull"))
 		self.assertEqual(Colaborador.level_of("inventado"), -1)
+
+
+class TestUnaPlantillaActivaPorClasificacion(TransactionCase):
+	"""La ambigüedad que `plantilla_efectiva()` resolvía por orden, prevenida en la fuente.
+
+	Con dos plantillas activas para una clasificación, la resolución tomaba la primera por
+	`sequence, name` y nadie se enteraba. Mientras eso decidía contra qué se COMPARABA era
+	un empate silencioso; desde B1 decide qué se ESCRIBE en GitHub.
+
+	La guarda es un índice único parcial y no un `@api.constrains`, así que lo que salta
+	es un error de integridad: Postgres rechaza antes de que el ORM valide. El mensaje que
+	ve la persona se prueba aparte, sobre la función que lo arma.
+	"""
+
+	def _crear(self, clasificacion, **extra):
+		valores = {
+			"name": "Plantilla %s" % uuid.uuid4().hex[:6],
+			"code": "code-%s" % uuid.uuid4().hex[:6],
+			"classification_default": clasificacion,
+		}
+		valores.update(extra)
+		return self.env["repo.policy.template"].create(valores)
+
+	def _prohibido(self):
+		"""Lo que tiene que pasar cuando alguien intenta el empate."""
+		return self.assertRaises(IntegrityError)
+
+	def setUp(self):
+		super().setUp()
+		self.env["repo.policy.template"].search([
+			("classification_default", "=", "cliente")]).classification_default = False
+		# El write queda pendiente en el buffer del ORM y el INSERT de abajo llega
+		# antes a Postgres: sin vaciarlo, el índice único salta sobre la plantilla de
+		# fábrica en lugar de sobre lo que el test quiere probar.
+		self.env.flush_all()
+		self.vigente = self._crear("cliente")
+
+	# ------------------------------------------------------------------
+	# La guarda
+	# ------------------------------------------------------------------
+
+	def test_dos_activas_para_la_misma_clasificacion_no_se_pueden(self):
+		with self._prohibido(), mute_logger("odoo.sql_db"):
+			with self.env.cr.savepoint():
+				self._crear("cliente")
+
+	def test_activar_una_segunda_tampoco_se_puede(self):
+		"""No alcanza con vigilar la creación: reactivar entra por otra puerta."""
+		guardada = self._crear("cliente", active=False)
+		with self._prohibido(), mute_logger("odoo.sql_db"):
+			with self.env.cr.savepoint():
+				guardada.active = True
+
+	def test_mover_una_plantilla_a_una_clasificacion_ocupada_tampoco(self):
+		"""Y la tercera puerta: no crear ni activar, sino mudar."""
+		libre = self._crear(False)
+		with self._prohibido(), mute_logger("odoo.sql_db"):
+			with self.env.cr.savepoint():
+				libre.classification_default = "cliente"
+
+	# ------------------------------------------------------------------
+	# Las salidas que la restricción deja abiertas a propósito
+	# ------------------------------------------------------------------
+
+	def test_archivada_no_compite(self):
+		"""La salida para «plantilla en preparación»: se archiva, no se borra."""
+		self.vigente.active = False
+		self.env.flush_all()
+		self.assertTrue(self._crear("cliente").exists())
+
+	def test_pueden_convivir_muchas_archivadas(self):
+		primera = self._crear("cliente", active=False)
+		segunda = self._crear("cliente", active=False)
+		self.env.flush_all()
+		self.assertTrue(primera.exists() and segunda.exists())
+
+	def test_sin_clasificacion_pueden_ser_todas_las_que_quieras(self):
+		"""Una plantilla sin clasificación no gobierna a nadie: no hay a quién ambiguar."""
+		self._crear(False)
+		self._crear(False)
+		self.env.flush_all()
+
+	# ------------------------------------------------------------------
+	# El mensaje, que es la mitad que le sirve a quien lo lee
+	# ------------------------------------------------------------------
+
+	def test_el_mensaje_nombra_a_la_que_ya_estaba_y_dice_que_hacer(self):
+		mensaje = _mensaje_de_clasificacion_ocupada(
+			self.env, _Diagnostico("Key (classification_default)=(cliente) already exists."))
+		self.assertIn(self.vigente.name, mensaje)
+		self.assertIn("rchiv", mensaje, "tiene que decir qué hacer, no sólo qué pasó")
+
+	def test_si_el_detalle_no_se_entiende_el_mensaje_igual_sirve(self):
+		"""Adornar el mensaje no puede romperlo: otra versión de Postgres, otro idioma."""
+		mensaje = _mensaje_de_clasificacion_ocupada(self.env, _Diagnostico(""))
+		self.assertIn("rchiv", mensaje)
+
+	def test_la_guarda_vive_en_la_base_y_no_solo_en_el_orm(self):
+		"""Dos transacciones a la vez no las para ninguna validación de Python."""
+		self.assertTrue(index_exists(
+			self.env.cr, "repo_policy_template_una_activa_por_clasificacion"))

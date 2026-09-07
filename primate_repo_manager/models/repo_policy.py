@@ -11,6 +11,8 @@ definir y la auditoría reporta "no evaluable". Comparar contra un número inven
 produce hallazgos falsos, que es peor que no reportar nada — sobre todo con checks
 requeridos, donde un nombre equivocado en un ruleset bloquea todos los merges del repo.
 """
+import re
+
 from odoo import _, api, fields, models
 from odoo.exceptions import ValidationError
 
@@ -22,6 +24,41 @@ MERGE_STRATEGIES = [
 	("merge_commit", "Merge commit"),
 	("rebase", "Rebase"),
 ]
+
+
+def _mensaje_de_clasificacion_ocupada(env, diagnostics):
+	"""El mensaje del índice único, nombrando a la plantilla que ya estaba si se puede.
+
+	Un «ya existe un registro» manda a buscar a mano cuál es. Postgres dice en el detalle
+	del error qué clasificación se pisó; con eso se busca la vigente y se la nombra.
+
+	Si el detalle no viene o no se entiende —otra versión de Postgres, otro idioma—, se
+	devuelve el mensaje general, que igual dice qué hacer. Nunca se rompe por adornar.
+	"""
+	generico = _(
+		"Ya hay una plantilla de política activa para esa clasificación, y los "
+		"repositorios de una clasificación se gobiernan con UNA sola. Archivá la vigente "
+		"antes de activar otra: archivada sigue existiendo y se puede editar, pero no "
+		"compite.")
+	detalle = getattr(diagnostics, "message_detail", None) or ""
+	encontrado = re.search(r"=\(([^)]+)\)", detalle)
+	if not encontrado:
+		return generico
+	clasificacion = encontrado.group(1).strip()
+	vigente = env["repo.policy.template"].search(
+		[("classification_default", "=", clasificacion), ("active", "=", True)], limit=1)
+	if not vigente:
+		return generico
+	return _(
+		"«%(vigente)s» ya gobierna la clasificación «%(clasificacion)s», y se gobierna "
+		"con UNA sola plantilla. Archivá «%(vigente)s» antes de activar otra: archivada "
+		"sigue existiendo y se puede editar, pero no compite."
+	) % {
+		"vigente": vigente.name,
+		"clasificacion": dict(
+			vigente._fields["classification_default"].selection
+		).get(clasificacion, clasificacion),
+	}
 
 
 class RepoPolicyTemplate(models.Model):
@@ -81,6 +118,33 @@ class RepoPolicyTemplate(models.Model):
 
 	_code_uniq = models.Constraint(
 		"UNIQUE (code)", "Ya existe una plantilla con ese código.")
+
+	# UNA PLANTILLA ACTIVA POR CLASIFICACIÓN
+	#
+	# POR QUÉ ES UNA RESTRICCIÓN Y NO UN HALLAZGO. `plantilla_efectiva()` resuelve con
+	# `limit=1`: con dos plantillas activas para la misma clasificación ganaba la primera
+	# por `sequence, name` y nadie se enteraba. Mientras eso decidía sólo contra qué se
+	# COMPARABA era un empate silencioso; desde B1 decide qué se ESCRIBE en GitHub, y un
+	# empate silencioso que elige reglas de merge no es un dato: es un accidente esperando.
+	# Se previene en la fuente. El `limit=1` queda como defensa en profundidad —la
+	# resolución sigue siendo determinista— pero deja de ser el árbitro.
+	#
+	# POR QUÉ UN ÍNDICE Y NO UN `@api.constrains`. Se escribió primero como constrains, y
+	# con el índice puesto al lado quedaba INALCANZABLE: Postgres rechaza el INSERT antes
+	# de que el ORM llegue a correr sus validaciones, así que el mensaje lindo no se veía
+	# nunca. Una guarda que no puede dispararse es peor que ninguna —parece cubrir algo—.
+	# `UniqueIndex` da las dos cosas: la garantía la hace cumplir la base, incluso entre
+	# dos transacciones simultáneas que un constrains no podría ver, y el mensaje es el
+	# nuestro. Verificado rompiéndolo.
+	#
+	# LA PLANTILLA EN PREPARACIÓN TIENE SALIDA: archivarla. El índice es PARCIAL —sólo
+	# sobre las activas y con clasificación—, así que se puede tener la próxima versión
+	# escrita al lado de la vigente sin pelearse por la clasificación.
+
+	_una_activa_por_clasificacion = models.UniqueIndex(
+		"(classification_default) WHERE active AND classification_default IS NOT NULL",
+		lambda env, diagnostics: _mensaje_de_clasificacion_ocupada(env, diagnostics),
+	)
 
 	def rule_for_role(self, branch_role):
 		"""Reglas efectivas para un rol de rama: la específica si existe, o la general."""

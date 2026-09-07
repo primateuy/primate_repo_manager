@@ -32,6 +32,10 @@ class TestRulesetPayload(TransactionCase):
 		# que un test verde no pruebe nada.
 		self.env["repo.policy.template"].search([
 			("classification_default", "=", "cliente")]).classification_default = False
+		# El write queda pendiente en el buffer del ORM y el INSERT de abajo llega
+		# antes a Postgres: sin vaciarlo, el índice único salta con el error crudo
+		# en vez del mensaje que explica qué archivar.
+		self.env.flush_all()
 		self.plantilla = self.env["repo.policy.template"].create({
 			"name": "De prueba", "code": "prueba-%s" % uuid.uuid4().hex[:6],
 			"classification_default": "cliente",
