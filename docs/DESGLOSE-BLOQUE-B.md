@@ -300,6 +300,38 @@ porque no pudo mirar es la peor pantalla que este módulo podría tener.
 
 ---
 
+### B6, en pasos — aprobado el 7-sep-2026
+
+| paso | qué deja hecho | estado |
+|---|---|---|
+| **B6.1** | El cliente y el espejo, con los tres estados y sin copiar el secreto | **hecho** |
+| **B6.2** | Los hallazgos, con sus dos tratamientos | |
+| **B6.3** | La pantalla, con los cuatro repos públicos como primer dato vivo | |
+| **B6.4** | Mutación y verificación contra la cuenta real (sólo lectura) | |
+
+**Las tres decisiones:**
+
+1. **Se espejan.** Sin espejo no hay «esto apareció desde la corrida anterior» —lo que E2
+   va a querer— y cada pantalla tendría que volver a pegarle a GitHub.
+2. **Por alerta en secretos, por repositorio en Dependabot.** La asimetría es correcta
+   porque los objetos lo son: un secreto filtrado es un incidente con nombre propio;
+   cuarenta vulnerabilidades de dependencias son **un** trabajo, no cuarenta.
+3. **«Apagado» es informativo, con su causa distinguida:** Dependabot se enciende gratis
+   (acción concreta) y secret scanning en privados exige Advanced Security (decisión
+   comercial, familia `plan_limit`). B6 **lee**: no enciende nada.
+
+#### La regla que manda en B6.2 — el hallazgo NO contiene el secreto
+
+Ubicación, tipo y enlace a GitHub. **Nunca el valor, ni el fragmento** que la API ofrece.
+Ni la pantalla, ni la bitácora, ni el informe pueden contenerlo: **un módulo de
+gobernanza no replica la filtración que reporta**. Copiarlo multiplicaría por seis los
+lugares donde ese secreto existe, que es lo contrario de lo que se está arreglando.
+
+En B6.1 la garantía ya es **estructural**: el espejo no tiene ningún campo donde ponerlo,
+y hay un test que falla si aparece uno. El filtrado es por **lista blanca** —se nombra lo
+que entra— porque una lista negra deja pasar el campo nuevo que GitHub agregue mañana, y
+acá el campo nuevo que se cuele puede ser el secreto.
+
 ## Orden propuesto, y por qué
 
 1. **B1 · rulesets** — es lo que hace que el módulo *aplique* y no sólo *mire*; todo lo

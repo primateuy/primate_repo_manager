@@ -29,4 +29,5 @@ from . import repo_settings
 from . import ir_websocket
 from . import repo_health_panel
 from . import repo_metric
+from . import repo_security
 from . import repo_module_promotion

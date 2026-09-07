@@ -57,3 +57,7 @@ access_repo_ruleset_reader,repo.ruleset.reader,model_repo_ruleset,group_repo_rea
 access_repo_ruleset_lead,repo.ruleset.lead,model_repo_ruleset,group_repo_lead,1,1,1,1
 access_repo_metric_reader,repo.metric.reader,model_repo_metric,group_repo_reader,1,0,0,0
 access_repo_metric_lead,repo.metric.lead,model_repo_metric,group_repo_lead,1,1,1,1
+access_repo_security_scan_reader,repo.security.scan.reader,model_repo_security_scan,group_repo_reader,1,0,0,0
+access_repo_security_scan_lead,repo.security.scan.lead,model_repo_security_scan,group_repo_lead,1,1,1,1
+access_repo_security_alert_reader,repo.security.alert.reader,model_repo_security_alert,group_repo_reader,1,0,0,0
+access_repo_security_alert_lead,repo.security.alert.lead,model_repo_security_alert,group_repo_lead,1,1,1,1

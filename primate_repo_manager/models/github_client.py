@@ -80,6 +80,17 @@ TIMEOUT = 30
 MAX_PAGES = 50
 
 
+def _apagado(mensaje):
+	"""¿GitHub está diciendo «esto está apagado acá»?
+
+	Se mira el MENSAJE y no el código, porque el código miente: el mismo 404 significa
+	«no existe» y «está deshabilitado», y el mismo 403 significa «apagado» y «no tenés
+	permiso». Es exactamente el patrón que ya obligó a leer el mensaje en las
+	protecciones de rama.
+	"""
+	return "disabled" in (mensaje or "").lower()
+
+
 class GithubError(Exception):
 	"""Error de la API de GitHub. Nunca se traga: siempre llega con status y cuerpo.
 
@@ -148,6 +159,28 @@ class GithubPlanLimit(GithubError):
 	Colapsar las tres en "no está protegida" produce un informe que afirma cosas que nadie
 	verificó, y manda a alguien a "arreglar" repos que en realidad no se pudieron mirar.
 	Ya pasó una vez en este proyecto, muestreando cuatro repos a mano.
+	"""
+
+
+class GithubFeatureDisabled(GithubError):
+	"""La función existe y está APAGADA en ese repositorio. No es falta de permiso.
+
+	NO SIMPLIFICAR ESTA CLASE. GitHub contesta las tres cosas con códigos que se parecen y
+	significan lo contrario:
+
+	  · **404** «Secret scanning is disabled on this repository» → apagado.
+	  · **403** «Dependabot alerts are disabled for this repository» → apagado.
+	  · **403** «Resource not accessible by integration» → NO SE PUDO LEER.
+
+	Medido sobre 25 repositorios de `primateuy` el 7-sep-2026, después de conceder los dos
+	permisos: 21 y 25 apagados, 4 con alertas, **cero** sin permiso. Sin esta clase, los
+	apagados caerían en el mismo saco que los ilegibles y el módulo diría «no pude mirar»
+	sobre repositorios que contestaron perfectamente — o peor, si se los tomara como «no
+	hay alertas», diría «cero secretos filtrados» sobre algo que nunca miró.
+
+	Encenderlo es acción de otro: Dependabot se prende gratis; secret scanning en un
+	repositorio PRIVADO necesita Advanced Security, que es decisión comercial y cae en la
+	misma familia que el techo de plan de las protecciones.
 	"""
 
 
@@ -237,20 +270,43 @@ class GithubReadClient:
 		response = self._transport.get(url, headers=self._headers(), timeout=TIMEOUT)
 		self._registrar_cuota(response)
 
+		if self._clasificar_error(response, path, tolerar_404=tolerar_404):
+			return None
+		return response.json()
+
+	def _clasificar_error(self, response, path, tolerar_404=False):
+		"""Traduce la respuesta a la excepción que corresponde. UNA sola vez.
+
+		Vivía duplicada: `get` clasificaba y `paginate` sólo miraba la cuota, así que un
+		endpoint paginado que chocaba un techo de plan levantaba `GithubError` genérico y
+		el que llamaba no podía distinguirlo de una caída. Lo destapó B6.1, donde las
+		alertas se leen paginadas y los tres estados dependen justamente de esa
+		distinción.
+
+		Returns:
+			bool: True cuando el que llama tiene que devolver None (404 tolerado).
+		"""
+		if response.status_code < 400:
+			return False
 		exigido = _exigido(response)
+		mensaje = _cuerpo(response)
 		if response.status_code == 404:
+			# APAGADO NO ES AUSENTE. «Secret scanning is disabled on this repository»
+			# llega con 404, el mismo código que «no existe»: distinguirlos es la misma
+			# disciplina que separó «rama sin proteger» de «protección no legible».
+			if _apagado(mensaje):
+				raise GithubFeatureDisabled(404, mensaje, path, exigido)
 			if tolerar_404:
-				return None
-			raise GithubNotFound(404, _cuerpo(response), path, exigido)
-		if response.status_code == 403 and self._sin_cuota(response):
-			raise GithubRateLimit(403, "cuota de API agotada", path, exigido)
+				return True
+			raise GithubNotFound(404, mensaje, path, exigido)
 		if response.status_code == 403:
-			mensaje = _cuerpo(response)
+			if self._sin_cuota(response):
+				raise GithubRateLimit(403, "cuota de API agotada", path, exigido)
+			if _apagado(mensaje):
+				raise GithubFeatureDisabled(403, mensaje, path, exigido)
 			if "upgrade" in mensaje.lower() or "plan" in mensaje.lower():
 				raise GithubPlanLimit(403, mensaje, path, exigido)
-		if response.status_code >= 400:
-			raise GithubError(response.status_code, _cuerpo(response), path, exigido)
-		return response.json()
+		raise GithubError(response.status_code, mensaje, path, exigido)
 
 	def paginate(self, path, params=None, max_items=None, envoltorio=None):
 		"""Recorre una colección paginada siguiendo la cabecera Link.
@@ -273,11 +329,8 @@ class GithubReadClient:
 		for _pagina in range(MAX_PAGES):
 			response = self._transport.get(url, headers=self._headers(), timeout=TIMEOUT)
 			self._registrar_cuota(response)
-			if response.status_code == 403 and self._sin_cuota(response):
-				raise GithubRateLimit(403, "cuota de API agotada", path)
-			if response.status_code >= 400:
-				raise GithubError(response.status_code, _cuerpo(response), path,
-								  _exigido(response))
+			# La MISMA clasificación que `get`. Ver `_clasificar_error`.
+			self._clasificar_error(response, path)
 
 			lote = response.json()
 			if not isinstance(lote, list):
