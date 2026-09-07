@@ -13,6 +13,7 @@ import logging
 from odoo import _, api, fields, models
 
 from .repo_audit_finding import BASE_SEVERITY
+from .repo_write_apply import _coincide_con_lo_pedido
 from .repo_collaborator import PERMISSION_LEVELS
 from .res_config_settings import DEFAULTS, ResConfigSettings
 
@@ -95,12 +96,75 @@ class RepoAuditEngine(models.AbstractModel):
 			self._evaluate_fork_drift(run, repo)
 			return
 
+		self._evaluate_ruleset_drift(run, repo)
 		self._evaluate_permissions(run, repo, plantilla)
 		self._evaluate_branches(run, repo, plantilla)
 		self._evaluate_commits(run, repo, plantilla)
 		self._evaluate_pull_requests(run, repo)
 		self._evaluate_fork_drift(run, repo)
 
+
+	@api.model
+	def _evaluate_ruleset_drift(self, run, repo):
+		"""B4 · sentido 1: alguien cambió por fuera lo que el módulo aplicó.
+
+		SE COMPARA CONTRA LO APLICADO, NO CONTRA LA PLANTILLA, y ésa es la decisión que
+		hace posible todo el bloque. Comparando contra la plantilla, «GitHub cambió» y
+		«la política se movió acá» dan el mismo resultado, y separarlos es exactamente
+		para lo que B4 existe: uno es un incidente y el otro es trabajo pendiente.
+
+		La referencia es la bitácora inmutable: la última escritura aplicada sobre ese
+		ruleset, con el payload que se verificó por relectura en su momento. Que la
+		referencia sea inmutable importa — si viviera en el plan, quien edita el plan
+		reescribiría contra qué se mide el desvío.
+
+		Y EL CRITERIO DE COMPARACIÓN ES EL DE LA ESCRITURA, compartido: «difiere en lo que
+		gobernamos» no es lo mismo que «difiere en lo que GitHub agrega solo». Sin eso,
+		cada auditoría reportaría drift sobre rulesets intactos, por los defaults que
+		GitHub completa — el mismo defecto que el ensayo de B1.6 encontró en la
+		verificación, que acá saldría multiplicado por cada corrida.
+		"""
+		Espejo = self.env["repo.ruleset"]
+		for aplicado in self.env["repo.audit.log"]._ultimas_escrituras_de_ruleset(repo):
+			nombre = aplicado["target"]
+			esperado = aplicado["payload"]
+			fila = Espejo.search([
+				("repository_id", "=", repo.id), ("name", "=", nombre),
+			], limit=1)
+
+			if not fila or not fila.present:
+				self._drift(run, repo, nombre, esperado, _(
+					"El ruleset «%(nombre)s» que este módulo aplicó en «%(repo)s» ya no "
+					"está en GitHub") % {"nombre": nombre, "repo": repo.full_name},
+					observado={"presente": False}, severidad="critical")
+				continue
+
+			coincide, donde = _coincide_con_lo_pedido(esperado, fila.definicion())
+			if coincide:
+				# Volvió a coincidir: si había un desvío abierto, se cierra. Si no había,
+				# no pasa nada — y no pasar nada NO se anota.
+				self.env["repo.audit.log"]._cerrar_drift(repo, nombre)
+				continue
+
+			self._drift(run, repo, nombre, esperado, _(
+				"El ruleset «%(nombre)s» de «%(repo)s» cambió fuera de la aplicación: "
+				"difiere en «%(donde)s»") % {
+					"nombre": nombre, "repo": repo.full_name, "donde": donde},
+				observado=fila.definicion(), severidad="high", donde=donde)
+
+	@api.model
+	def _drift(self, run, repo, nombre, esperado, resumen, observado, severidad,
+			   donde=None):
+		"""El hallazgo del desvío, y la entrada de bitácora SÓLO si el estado cambió."""
+		self._finding(
+			run, repo, "policy_drift_external", resumen,
+			subject=nombre, severity=severidad,
+			expected=esperado, observed=observado,
+			# PLANIFICABLE, y su payload es ejecutable de verdad: es la definición que
+			# este módulo aplicó y verificó. Ver la nota en PLANIFICABLES.
+			remediation_payload=esperado)
+		self.env["repo.audit.log"]._abrir_drift(
+			repo, nombre, resumen, esperado, observado, donde)
 
 	@api.model
 	def _evaluate_permissions(self, run, repo, plantilla):

@@ -68,6 +68,11 @@ FINDING_TYPES = [
 	# inherente a la propiedad y no se puede bajar. El dato igual se conserva, como nota.
 	("owner_account_admin", "La cuenta dueña figura como colaboradora"),
 	("institutional_account", "Cuenta institucional sin persona asociada"),
+	# B4 · los dos sentidos del drift. Son dos tipos y no uno con una bandera porque
+	# significan cosas distintas: el primero es un INCIDENTE —alguien cambió GitHub por
+	# fuera del embudo— y el segundo es TRABAJO PENDIENTE —la política se movió acá y los
+	# repositorios quedaron atrás—. Mostrarlos juntos convierte los dos en ruido.
+	("policy_drift_external", "Ruleset cambiado fuera de la aplicación"),
 ]
 
 BASE_SEVERITY = {
@@ -111,6 +116,7 @@ REMEDIATION_ACTIONS = [
 	("check_app_access", "Revisar el acceso de la App al repositorio"),
 	("review_manually", "Revisar a mano"),
 	("no_action_owner", "No requiere acción: es la cuenta dueña"),
+	("reapply_ruleset", "Volver a aplicar el ruleset como estaba"),
 ]
 
 REMEDIATION_BY_TYPE = {
@@ -136,6 +142,7 @@ REMEDIATION_BY_TYPE = {
 	# escribió en la base por fuera de la aplicación. No hay hallazgo más grave que ése,
 	# porque pone en duda todo lo demás que la bitácora afirma.
 	"audit_log_chain_broken": "review_manually",
+	"policy_drift_external": "reapply_ruleset",
 }
 
 # Las que quitan acceso o cambian algo que puede romper el trabajo de otro.
@@ -166,6 +173,17 @@ DESTRUCTIVE_ACTIONS = ("revoke_permission", "rename_default_branch")
 # tipo de operación de destino, no sólo que exista.
 PLANIFICABLES = {
 	"revoke_permission": "collaborator_revoke",
+	# B4 · LA EXCEPCIÓN A LA LECCIÓN DE ARRIBA, Y HAY QUE DECIR POR QUÉ ES UNA.
+	#
+	# «`remediation_payload` identifica, no configura» sigue valiendo para todos los
+	# demás. Éste es distinto: su payload NO lo arma el hallazgo a partir de lo que ve —
+	# es, literalmente, **la definición que este módulo aplicó y verificó por relectura**,
+	# copiada de su entrada `write_applied` en la bitácora inmutable. Ya fue ejecutable
+	# una vez, contra este mismo repositorio, y GitHub la aceptó.
+	#
+	# Por eso acá el payload sí configura, y es correcto que configure: la remediación de
+	# «alguien cambió esto por fuera» es exactamente «volver a poner lo que había».
+	"reapply_ruleset": "ruleset_update",
 }
 
 # Por qué NO se puede planificar cada una de las otras. Se muestra en pantalla: un botón

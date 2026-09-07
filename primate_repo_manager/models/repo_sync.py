@@ -30,6 +30,7 @@ from datetime import datetime
 
 from odoo import _, api, fields, models
 
+from .repo_ruleset import RULESET_PREFIX
 from .github_client import (
 	GithubError,
 	GithubNotFound,
@@ -241,6 +242,14 @@ class RepoRepositorySync(models.Model):
 			if "rulesets" not in no_legible:
 				no_legible.append("rulesets")
 
+		# B4 · EL ESPEJO DE LOS NUESTROS, con su definición completa.
+		#
+		# El listado trae un resumen —id, nombre, aplicación— y no las reglas, así que la
+		# definición se pide una por una. Sólo de LOS NUESTROS: lo ajeno se cuenta pero no
+		# se copia, porque el módulo no vigila configuración que no puso, y pedir el
+		# detalle de todo multiplicaría las llamadas para guardar lo que nadie compara.
+		self._sync_rulesets_propios(client, rulesets, no_legible)
+
 		for item in client.paginate("/repos/%s/branches" % self.full_name):
 			nombre = item.get("name")
 			rol = Reglas.role_for(nombre)
@@ -285,6 +294,41 @@ class RepoRepositorySync(models.Model):
 				rama.write(valores)
 			else:
 				Rama.create(valores)
+
+	def _sync_rulesets_propios(self, client, listado, no_legible):
+		"""Trae la definición completa de los rulesets que puso este módulo.
+
+		Los que ya no aparecen quedan marcados `present = False` en vez de borrarse: un
+		ruleset nuestro que desapareció es el drift más grave que hay, y la fila es la que
+		dice cuándo se lo vio por última vez.
+		"""
+		Espejo = self.env["repo.ruleset"]
+		vistos = []
+		for resumen in listado:
+			nombre = resumen.get("name") or ""
+			if not nombre.startswith(RULESET_PREFIX + "/"):
+				continue
+			try:
+				definicion = client.get(
+					"/repos/%s/rulesets/%s" % (self.full_name, resumen.get("id")))
+			except GithubNotFound:
+				# Se listó hace un segundo y ya no está. No es un error del recorrido:
+				# es exactamente el caso que el drift tiene que ver, y se resuelve solo
+				# al no marcarlo como visto.
+				continue
+			except GithubPlanLimit:
+				if "rulesets" not in no_legible:
+					no_legible.append("rulesets")
+				return
+			Espejo.upsert(self, definicion, origen="sync")
+			vistos.append(resumen.get("id"))
+
+		desaparecidos = Espejo.search([
+			("repository_id", "=", self.id), ("present", "=", True),
+			("github_id", "not in", vistos),
+		])
+		if desaparecidos:
+			desaparecidos.write({"present": False})
 
 	def _sync_collaborators(self, client, no_legible):
 		"""Permisos observados. Requiere push o más; sin eso se anota como no legible."""

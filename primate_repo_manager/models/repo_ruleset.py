@@ -37,14 +37,24 @@ Lo que no sabe traducir viaja en `no_traducido` y la pantalla lo muestra. Pasar 
 en silencio produce un ruleset que parece la política entera y es una parte, que es la
 forma más cara de mentir: el informe diría «aplicado» sobre algo incompleto.
 """
+import json
 import logging
 
-from odoo import _, api, models
+from odoo import _, api, fields, models
 from odoo.exceptions import UserError
 
 from .repo_rules import ROLES_GOBERNADOS
 
+# El mismo normalizador que usa el apply. Compartido y no reimplementado: si el
+# espejo guardara los campos con otro criterio que el que verifica la escritura,
+# el drift compararía dos cosas que no son la misma.
+
 _logger = logging.getLogger(__name__)
+
+
+def _comparable(definicion):
+	from .repo_write_apply import _definicion_comparable
+	return _definicion_comparable(definicion)
 
 # El prefijo es lo que hace reconocible un ruleset NUESTRO entre los que ya había en el
 # repositorio. B1.3 lo necesita para no tocar lo ajeno: un ruleset sin este prefijo no se
@@ -271,3 +281,102 @@ class RepoRulesetBuilder(models.AbstractModel):
 					"todavía. Llegan con el bloque C.")],
 			})
 		return salida
+
+
+class RepoRuleset(models.Model):
+	"""El espejo de un ruleset de GitHub. Sólo de los nuestros.
+
+	POR QUÉ SÓLO LOS NUESTROS. Un repositorio puede tener rulesets de la organización o
+	de otra herramienta, y traerlos al espejo invitaría a compararlos contra una política
+	que no los gobierna. Lo ajeno se ve —el sync lo cuenta— pero no se copia: el módulo
+	no vigila configuración que no puso.
+
+	POR QUÉ ES UN MODELO Y NO UNA LECTURA AL VUELO. El drift compara lo que aplicamos
+	contra lo que hay, y «lo que hay» tiene que tener fecha: sin `last_seen_at`, la
+	pregunta «¿esto está desactualizado o es así?» no tiene respuesta. Con los webhooks de
+	F4 conviviendo con las auditorías, esa pregunta se vuelve diaria.
+
+	`present` EN VEZ DE BORRAR LA FILA. Un ruleset nuestro que desaparece de GitHub es el
+	drift más grave que hay —alguien borró la protección entera—, y borrar la fila se
+	llevaría puesto cuándo se lo vio por última vez, que es justo el dato que hace falta
+	para contarlo.
+	"""
+	_name = "repo.ruleset"
+	_description = "Ruleset de GitHub puesto por este módulo"
+	_order = "repository_id, name"
+
+	repository_id = fields.Many2one(
+		"repo.repository", string="Repositorio", required=True,
+		ondelete="cascade", index=True)
+	github_id = fields.Integer(string="Id en GitHub", required=True, index=True)
+	name = fields.Char(string="Nombre", required=True, index=True)
+	enforcement = fields.Char(string="Aplicación")
+	definition_json = fields.Text(
+		string="Definición observada (JSON)",
+		help="La definición completa tal como la devolvió GitHub, normalizada a los "
+			 "campos que gobernamos. Es contra esto que se compara lo aplicado.")
+	present = fields.Boolean(
+		string="Sigue en GitHub", default=True,
+		help="Falso cuando el ruleset que este módulo aplicó ya no aparece. No se borra "
+			 "la fila: cuándo se lo vio por última vez es el dato que hace falta.")
+	last_seen_at = fields.Datetime(string="Visto por última vez", readonly=True)
+	origin = fields.Selection(
+		[("sync", "Auditoría"), ("webhook", "Evento de GitHub")],
+		string="Por dónde entró", default="sync", required=True,
+		help="Con qué mecanismo se supo. Hoy sólo la auditoría; los webhooks llegan en F4 "
+			 "y van a escribir por este mismo upsert.")
+
+	_ruleset_uniq = models.Constraint(
+		"UNIQUE (repository_id, github_id)",
+		"Ese ruleset ya está registrado en el repositorio.")
+
+	@api.model
+	def upsert(self, repo, definicion, origen="sync"):
+		"""La ÚNICA forma de escribir el espejo de un ruleset.
+
+		Existe por la segunda regla de construcción: un objeto del espejo, un método que
+		lo actualiza. El día que un webhook traiga un ruleset cambiado va a entrar por
+		acá, y no por un camino paralelo que diverja de éste.
+
+		Args:
+			repo: registro de `repo.repository`.
+			definicion: el objeto tal como lo devolvió GitHub.
+			origen: `sync` o `webhook`.
+
+		Returns:
+			repo.ruleset: la fila del espejo, creada o actualizada.
+		"""
+		valores = {
+			"repository_id": repo.id,
+			"github_id": definicion.get("id"),
+			"name": definicion.get("name"),
+			"enforcement": definicion.get("enforcement"),
+			"definition_json": json.dumps(
+				_comparable(definicion), sort_keys=True, default=str),
+			"present": True,
+			"last_seen_at": fields.Datetime.now(),
+			"origin": origen,
+		}
+		fila = self.search([
+			("repository_id", "=", repo.id),
+			("github_id", "=", definicion.get("id")),
+		], limit=1)
+		if not fila:
+			return self.create(valores)
+		# No se reescribe lo que no cambió: un `write` con los mismos datos igual genera
+		# un UPDATE con su write_date, y sobre una fila que varios jobs tocan eso basta
+		# para matar al de al lado. `last_seen_at` sí cambia siempre —es el dato de
+		# cuándo se supo— así que se compara el resto y se escribe lo mínimo.
+		iguales = all(fila[campo] == valores[campo]
+					  for campo in ("name", "enforcement", "definition_json", "present"))
+		fila.write({"last_seen_at": valores["last_seen_at"], "origin": origen}
+				   if iguales else valores)
+		return fila
+
+	def definicion(self):
+		"""La definición observada, ya normalizada."""
+		self.ensure_one()
+		try:
+			return json.loads(self.definition_json or "{}")
+		except ValueError:
+			return {}

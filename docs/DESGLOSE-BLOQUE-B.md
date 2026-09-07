@@ -220,6 +220,36 @@ sentidos son distintos y por eso son dos:
 **Por qué importa la distinción:** el primero es un incidente y el segundo es trabajo
 pendiente. Mostrarlos juntos convierte los dos en ruido.
 
+### B4, en pasos — aprobado el 7-sep-2026
+
+| paso | qué deja hecho | estado |
+|---|---|---|
+| **B4.1** | Sentido 1: lo aplicado contra lo observado. Hallazgo planificable + bitácora sólo en el cambio de estado. Y el modelo de métricas, escribiendo desde ya | **hecho** |
+| **B4.2** | Sentido 2: la política se movió y no se reaplicó, leyendo `policy_changed` | |
+| **B4.3** | La bitácora dibuja las entradas «Fuera de la app»; la cobertura pasa de 🔒 a ✅ | |
+| **B4.4** | Mutación y ensayo contra el sandbox, con las dos caras: el cambio externo apareciendo y resolviéndose por reversión externa **y** por reaplicación desde el plan | |
+
+**Los cinco criterios, decididos:**
+
+1. **La referencia es lo APLICADO, no la plantilla.** Sale de la entrada `write_applied`
+   de la bitácora inmutable. Comparando contra la plantilla, «GitHub cambió» y «la
+   política se movió acá» dan el mismo resultado — y separarlos es para lo que existe B4.
+   La bitácora deja de ser sólo registro y pasa a ser **referencia**: que sea inmutable
+   ya no es sólo virtud de auditoría, es garantía de la detección.
+2. **Corre con la auditoría**, pero escrito sin asumir corrida: un drift de webhook no va
+   a tener `run_id`.
+3. **El criterio de comparación es el de la escritura, compartido.** «Difiere en lo que
+   gobernamos» no es «difiere en lo que GitHub agrega solo».
+4. **La bitácora anota el CAMBIO de estado**, no la persistencia: nace el desvío, se
+   cierra el desvío. El estado se **deriva** de la última entrada `drift_*`, sin bandera.
+5. **El sentido 2 no produce entrada de bitácora**, produce hallazgo: que la política se
+   movió acá ya lo registró A5 como `policy_changed`; anotarlo como «cambio fuera de la
+   app» sería mentir sobre dónde pasó.
+
+**Y el hallazgo de drift externo es planificable:** su remediación es `ruleset_update` con
+el payload de la última `write_applied`. El módulo que detecta el incidente ofrece su
+corrección por el mismo embudo que todo lo demás.
+
 ## B5 · Wizard de crear repositorio
 
 **Qué hace.** Crear un repositorio que **nace gobernado**: con su clasificación, su

@@ -7,6 +7,7 @@ from . import test_rules
 from . import test_policy
 from . import test_ruleset_payload
 from . import test_ramas_pantalla
+from . import test_drift
 from . import test_sync
 from . import test_audit_launch
 from . import test_avance_vivo

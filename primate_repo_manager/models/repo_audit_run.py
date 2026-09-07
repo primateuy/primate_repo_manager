@@ -397,6 +397,10 @@ class RepoAuditRun(models.Model):
 		self.backend_id.last_sync = fields.Datetime.now()
 		# Los hallazgos se calculan al cerrar: recién ahí están todos los datos.
 		self.env["repo.audit.engine"].evaluate(self)
+		# Y la foto de las métricas, por el mismo motivo y en el mismo momento. La
+		# tendencia no se reconstruye hacia atrás: si esto empezara con el panel que las
+		# muestra, ese panel abriría con un solo punto.
+		self.env["repo.metric"].registrar_corrida(self)
 		self.message_post(body=_(
 			"Auditoría terminada: %(ok)s repositorio(s) recorridos, %(mal)s con error. "
 			"%(hallazgos)s hallazgo(s)."

@@ -611,3 +611,95 @@ class RepoAuditLog(models.Model):
 		for entrada in self:
 			entrada.display_name = "[%s] %s" % (
 				etiquetas.get(entrada.event_type, entrada.event_type), entrada.summary)
+
+
+class RepoAuditLogDrift(models.Model):
+	"""La bitácora como REFERENCIA, no sólo como registro — B4.
+
+	Hasta acá la bitácora contestaba «qué pasó». Desde B4 contesta además «contra qué se
+	mide lo que hay»: la última escritura aplicada sobre un ruleset ES la referencia del
+	desvío. Que sea inmutable deja de ser sólo una virtud de auditoría y pasa a ser una
+	garantía de la detección — si la referencia viviera en el plan, quien edita el plan
+	movería el punto contra el cual se mide el incidente.
+
+    Y EL ESTADO DEL DESVÍO SE DERIVA, NO SE GUARDA. No hay bandera de «tiene drift» que
+	alguien tenga que mantener sincronizada: se mira la última entrada `drift_*` de ese
+	objeto y eso ES el estado. Es el mismo patrón que el avance del plan y los contadores
+	de la corrida — un hecho no puede desfasarse de sí mismo.
+	"""
+	_inherit = "repo.audit.log"
+
+	# Los tipos de operación cuyo payload es una definición de ruleset completa.
+	ESCRITURAS_DE_RULESET = ("ruleset_create", "ruleset_update")
+
+	@api.model
+	def _ultimas_escrituras_de_ruleset(self, repo):
+		"""Lo último que este módulo aplicó sobre cada ruleset de un repositorio.
+
+		Returns:
+			list: un dict por ruleset con ``target`` y ``payload`` —la definición que se
+			aplicó y se verificó por relectura—. La MÁS RECIENTE de cada uno: si un
+			ruleset se actualizó tres veces, la referencia es la tercera.
+		"""
+		entradas = self.search([
+			("repository_id", "=", repo.id),
+			("event_type", "=", "write_applied"),
+		], order="id desc")
+		ultimas = {}
+		for entrada in entradas:
+			datos = entrada._payload() or {}
+			destino = datos.get("target")
+			if (datos.get("kind") not in self.ESCRITURAS_DE_RULESET
+					or not destino or destino in ultimas):
+				continue
+			definicion = datos.get("payload")
+			if not isinstance(definicion, dict):
+				continue
+			ultimas[destino] = {"target": destino, "payload": definicion}
+		return list(ultimas.values())
+
+	def _payload(self):
+		self.ensure_one()
+		try:
+			return json.loads(self.payload_json or "{}")
+		except ValueError:
+			return {}
+
+	@api.model
+	def _estado_de_drift(self, repo, nombre):
+		"""¿Hay un desvío abierto sobre este ruleset? Se deriva de la última entrada."""
+		ultima = self.search([
+			("repository_id", "=", repo.id),
+			("event_type", "in", ("drift_detected", "drift_resolved")),
+		], order="id desc").filtered(
+			lambda e: (e._payload() or {}).get("ruleset") == nombre)[:1]
+		return ultima.event_type if ultima else False
+
+	@api.model
+	def _abrir_drift(self, repo, nombre, resumen, esperado, observado, donde=None):
+		"""Anota el desvío SÓLO si no estaba ya anotado.
+
+		Una entrada por corrida convertiría la bitácora en ruido —la misma línea repetida
+		cada vez que alguien audita— y además rompería la regla de no escribir lo que no
+		cambió. Lo que se registra es el CAMBIO DE ESTADO, no la persistencia del estado.
+		"""
+		if self._estado_de_drift(repo, nombre) == "drift_detected":
+			return self.browse()
+		return self.registrar(
+			"drift_detected", resumen,
+			backend=repo.backend_id, repository=repo,
+			payload={"ruleset": nombre, "difiere_en": donde,
+					 "esperado": esperado, "observado": observado},
+			previous_state=esperado)
+
+	@api.model
+	def _cerrar_drift(self, repo, nombre):
+		"""Cierra el desvío SÓLO si había uno abierto."""
+		if self._estado_de_drift(repo, nombre) != "drift_detected":
+			return self.browse()
+		return self.registrar(
+			"drift_resolved",
+			_("El ruleset «%(nombre)s» de «%(repo)s» volvió a coincidir con lo aplicado")
+			% {"nombre": nombre, "repo": repo.full_name},
+			backend=repo.backend_id, repository=repo,
+			payload={"ruleset": nombre})
