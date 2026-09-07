@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 - PrimateUY / License AGPL-3.0 or later -->
+<templates xml:space="preserve">
+
+	<t t-name="primate_repo_manager.ChecksPropuestos">
+		<div class="rm-checks">
+			<div class="rm-checks-titulo">Candidatos, según lo que corre hoy</div>
+
+			<div t-if="!hayCandidatos" class="rm-checks-vacio"
+				 t-esc="explicacionDelVacio"/>
+
+			<table t-else="" class="rm-tabla">
+				<thead>
+					<tr>
+						<th>Check, tal como GitHub lo reporta</th>
+						<th class="rm-num">Corre en</th>
+						<th class="rm-num">Cobertura</th>
+						<th></th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr t-foreach="state.datos.candidatos" t-as="fila" t-key="fila.nombre">
+						<td><span class="rm-mono" t-esc="fila.nombre"/></td>
+						<td class="rm-num" t-esc="cobertura(fila)"/>
+						<td class="rm-num"><t t-esc="fila.cobertura"/> %</td>
+						<td>
+							<span t-if="fila.ya_exigido" class="rm-chip rm-chip-done">
+								ya exigido</span>
+							<span t-elif="fila.es_excepcion" class="rm-chip rm-chip-medium"
+								  title="Corre en pocos: exigirlo a todos bloquearía al resto">
+								excepción</span>
+							<span t-else="" class="rm-chip rm-chip-quiet">candidato</span>
+						</td>
+					</tr>
+				</tbody>
+			</table>
+		</div>
+	</t>
+
+</templates>

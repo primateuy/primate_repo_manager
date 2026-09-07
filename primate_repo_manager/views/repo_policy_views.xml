@@ -122,8 +122,14 @@
 								nombre de check inventado es peor que no comparar — un
 								nombre equivocado en un ruleset bloquea todos los merges del
 								repositorio. Poder definirlos y proponerlos a partir de los
-								workflows relevados es el ítem <b>B3</b>.
+								workflows relevados es lo que trajo <b>B2</b>, acá abajo.
 							</div>
+							<!-- B2.3 · la propuesta. Abre vacía y la pantalla vacía ES el
+								 argumento: dice cuántos declaran CI y cuántos corrieron,
+								 que es lo que separa «no hay candidatos» de «no miramos». -->
+							<field name="status_checks_defined"
+								   widget="repo_checks_propuestos" nolabel="1"
+								   readonly="1"/>
 							<field name="required_check_ids">
 								<list string="Checks requeridos" editable="bottom">
 									<field name="name"/>

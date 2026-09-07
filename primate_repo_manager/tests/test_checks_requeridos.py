@@ -128,3 +128,33 @@ class TestPropuestaDeChecks(TransactionCase):
 		self.assertEqual(propuesta["repositorios"], 2)
 		self.assertEqual(propuesta["con_workflows"], 1)
 		self.assertEqual(propuesta["con_checks"], 0)
+
+
+class TestPantallaDeChecks(TransactionCase):
+	"""B2.3 · la pantalla que abre vacía, y explica por qué.
+
+	La regla 2 del marco: el producto completo se ve. Una pantalla que sólo dijera «no
+	hay datos» dejaría a quien mira sin saber si el módulo no miró; ésta pone los dos
+	números que lo separan.
+	"""
+
+	def setUp(self):
+		super().setUp()
+		self.env["repo.policy.template"].search([
+			("classification_default", "=", "cliente")]).classification_default = False
+		self.env.flush_all()
+		self.plantilla = self.env["repo.policy.template"].create({
+			"name": "Clientes", "code": "pan-%s" % uuid.uuid4().hex[:6],
+			"classification_default": "cliente",
+		})
+
+	def test_la_pestana_muestra_la_propuesta_y_no_promete_otro_bloque(self):
+		"""El cartel decía «llega con B3». B2 llegó: el cartel no puede seguir prometiendo."""
+		vista = self.env.ref("primate_repo_manager.view_repo_policy_template_form")
+		arch = vista.arch_db
+		self.assertIn("repo_checks_propuestos", arch)
+
+	def test_los_datos_del_vacio_estan_ahi_para_que_la_pantalla_los_diga(self):
+		propuesta = self.plantilla.candidatos_de_check()
+		for clave in ("repositorios", "con_workflows", "con_checks", "candidatos"):
+			self.assertIn(clave, propuesta)

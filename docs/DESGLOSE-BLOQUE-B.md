@@ -217,6 +217,12 @@ declaran, 0 corrieron—, que es lo que distingue «no hay candidatos» de «no 
 
 **La decisión que queda sobre la mesa no es cuál check exigir: es que la CI no corre.**
 
+**Y la pantalla abre vacía a propósito, con su explicación** (B2.3): «Sin candidatos
+todavía: N de M repositorios declaran workflows en un archivo, y 0 han reportado un
+check». Es la regla 2 del marco —el producto completo se ve— y de paso el argumento de la
+decisión de CI servido en una pantalla: quien la mira entiende en dos renglones por qué no
+hay nada que elegir y qué tiene que pasar para que lo haya.
+
 ## B3 · CODEOWNERS generado
 
 **Qué hace.** Genera el archivo `CODEOWNERS` a partir del responsable del repositorio y de

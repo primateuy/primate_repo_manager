@@ -1,0 +1,49 @@
+/* Copyright 2026 - PrimateUY / License AGPL-3.0 or later */
+
+.rm-checks {
+	background: var(--rm-surface);
+	color: var(--rm-ink);
+	margin-bottom: var(--rm-space-4);
+
+	.rm-checks-titulo {
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--rm-ink-3);
+		text-transform: uppercase;
+		letter-spacing: .04em;
+		margin-bottom: var(--rm-space-2);
+	}
+
+	/* La explicación del vacío NO es un mensaje de error ni una alarma: es el dato.
+	   Por eso va en tono de lectura y no con color de severidad. */
+	.rm-checks-vacio {
+		color: var(--rm-ink-2);
+		background: var(--rm-surface-2);
+		border: 1px solid var(--rm-border);
+		border-radius: var(--rm-radius);
+		padding: var(--rm-space-3);
+		line-height: 1.6;
+	}
+
+	.rm-tabla {
+		width: 100%;
+		border-collapse: collapse;
+
+		th {
+			text-align: left;
+			font-size: 12px;
+			font-weight: 600;
+			color: var(--rm-ink-3);
+			padding: var(--rm-space-2) var(--rm-space-3);
+			border-bottom: 1px solid var(--rm-border);
+		}
+
+		td {
+			padding: var(--rm-space-2) var(--rm-space-3);
+			border-bottom: 1px solid var(--rm-border);
+		}
+
+		tr:last-child td { border-bottom: 0; }
+		.rm-num { text-align: right; white-space: nowrap; }
+	}
+}

@@ -30,6 +30,26 @@ registry.category("web_tour.tours").add("prm_politica", {
 			trigger: ".alert:contains(no toca ningún repositorio)",
 		},
 		{
+			// B2.3 · la propuesta de checks. HOY ABRE VACÍA, y la pantalla vacía es el
+			// argumento: dice cuántos declaran CI y cuántos corrieron. Que este paso
+			// pase mirando el vacío no es una concesión — es lo que hay que ver.
+			content: "la pestaña de checks requeridos",
+			trigger: ".o_notebook a:contains(Checks requeridos)",
+			run: "click",
+		},
+		{
+			content: "la propuesta EXPLICA por qué está vacía, con sus dos números",
+			trigger: ".rm-checks-vacio:contains(Sin candidatos todavía)",
+		},
+		{
+			trigger: ".rm-checks-vacio:contains(han reportado un check)",
+		},
+		{
+			content: "volver a las exigencias",
+			trigger: ".o_notebook a:contains(Exigencias generales)",
+			run: "click",
+		},
+		{
 			// B1.5 · el número que convierte «qué exige» en «a cuántos les falta».
 			// Endurecer una exigencia sin esto es una decisión a ciegas.
 			content: "cada exigencia dice a cuántas ramas les falta HOY",
