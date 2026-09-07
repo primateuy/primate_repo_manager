@@ -335,6 +335,22 @@ tiene **ninguna** referencia a PCM y hay un test que lo verifica recorriendo los
 - **Flags de seguridad cross-proceso se leen frescos** (search/read en el momento de uso, no cacheados) — lección permanente de PCM.
 - **Defaults silenciosos de primitivos son el enemigo:** validá configuración explícitamente; un campo vacío no puede colapsar a un comportamiento peligroso.
 
+### `git checkout <archivo>` para deshacer una mutación BORRA lo no commiteado
+
+Pasó el 7-sep-2026 y llegó a estar pusheado. Una mutación tocó `repo_sync.py`; para
+restaurarlo usé `git checkout` en vez de una copia, y el archivo volvió a HEAD — llevándose
+puesta la integración del paso que estaba escribiendo y que todavía no estaba commiteada.
+La suite había pasado ANTES de la mutación, así que el commit salió con un agujero y los
+tests del paso quedaron rojos en el árbol publicado.
+
+**La restauración de una mutación sale de una copia hecha antes, nunca de git**:
+
+    cp <archivo> /tmp/<archivo>.orig     # antes de mutar
+    cp /tmp/<archivo>.orig <archivo>     # después
+
+Y **la suite se corre después de restaurar, no sólo antes de mutar.** El verde previo no
+dice nada sobre el árbol que se va a commitear.
+
 ### Con `--log-level=warn`, un verde NO IMPRIME NADA
 
 Y una mutación que **sobrevive** se ve exactamente igual que un run que no llegó a

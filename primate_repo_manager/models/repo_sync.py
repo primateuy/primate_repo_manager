@@ -33,6 +33,7 @@ from odoo import _, api, fields, models
 from .repo_ruleset import RULESET_PREFIX
 from .github_client import (
 	GithubError,
+	GithubFeatureDisabled,
 	GithubNotFound,
 	GithubPlanLimit,
 	GithubRateLimit,
@@ -160,6 +161,10 @@ class RepoRepositorySync(models.Model):
 			self._sync_pull_requests(client)
 			self._sync_commit_samples(client)
 			self._sync_workflows(client, no_legible)
+			# B6 · las alertas de seguridad, con sus tres estados. No entra en
+			# `no_legible`: ahí van las lecturas del repositorio que fallaron, y acá
+			# el estado de CADA fuente se guarda con su causa en su propia fila.
+			self._sync_security_alerts(client)
 
 			self.write({
 				"sync_state": "done",
@@ -329,6 +334,38 @@ class RepoRepositorySync(models.Model):
 		])
 		if desaparecidos:
 			desaparecidos.write({"present": False})
+
+	def _sync_security_alerts(self, client):
+		"""Las dos fuentes de alertas, cada una con su estado de lectura — B6.
+
+		LOS TRES ESTADOS SE CLASIFICAN ACÁ Y NO SE DEDUCEN DESPUÉS. Una lista vacía es
+		«miré y no hay», que es un dato; «apagado» es «existe la función y está
+		deshabilitada»; «no legible» es «no pude mirar». Deducir cualquiera de los tres a
+		partir de la ausencia de alertas los confundiría a los tres.
+
+		SE PIDEN TODAS, NO SÓLO LAS ABIERTAS. Con `state=open`, una alerta que se rotó y
+		se cerró allá simplemente desaparece de la respuesta, y el espejo se queda con la
+		última versión abierta que vio: el módulo seguiría gritando por un secreto que ya
+		no existe. El desenlace es un dato y hay que ir a buscarlo.
+		"""
+		Scan = self.env["repo.security.scan"]
+		Alerta = self.env["repo.security.alert"]
+		for fuente, ruta in (
+				("secret_scanning", "/repos/%s/secret-scanning/alerts"),
+				("dependabot", "/repos/%s/dependabot/alerts")):
+			try:
+				alertas = client.paginate(ruta % self.full_name) or []
+			except GithubFeatureDisabled as exc:
+				# Apagado en el repositorio. NO es «cero alertas» y no se cuenta como tal.
+				Scan.upsert(self, fuente, "apagado", cause=str(exc.message)[:200])
+				continue
+			except (GithubPlanLimit, GithubError) as exc:
+				Scan.upsert(self, fuente, "no_legible", cause=str(exc.message)[:200])
+				continue
+			for alerta in alertas:
+				Alerta.upsert(self, fuente, alerta)
+			abiertas = [a for a in alertas if (a.get("state") or "") == "open"]
+			Scan.upsert(self, fuente, "con_datos", alert_count=len(abiertas))
 
 	def _sync_collaborators(self, client, no_legible):
 		"""Permisos observados. Requiere push o más; sin eso se anota como no legible."""
