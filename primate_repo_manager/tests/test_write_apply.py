@@ -65,18 +65,27 @@ def _definicion(aprobaciones=1, nombre="primate/cliente-estandar/base"):
 			{"actor_id": 10, "actor_type": "Integration", "bypass_mode": "always"}],
 		"conditions": {"ref_name": {"include": ["refs/heads/19.0"], "exclude": []}},
 		"rules": [
+			# GITHUB COMPLETA EL OBJETO CON PARÁMETROS QUE NADIE MANDÓ. Medido contra la
+			# API real en el ensayo de B1.6: `allowed_merge_methods` aparece sola dentro
+			# de la regla de pull request. El doble lo imita a propósito — mientras
+			# devolvía exactamente lo que recibía, mentía en la mitad de la interfaz que
+			# no imitaba, y por eso ningún test vio que la verificación por igualdad
+			# rechazaba escrituras impecables.
 			{"type": "pull_request", "parameters": {
-				"required_approving_review_count": aprobaciones}},
+				"required_approving_review_count": aprobaciones,
+				"allowed_merge_methods": ["merge", "squash", "rebase"]}},
 			{"type": "non_fast_forward"},
 		],
 	}
 
 
 def _pedido(aprobaciones=2, nombre="primate/cliente-estandar/base"):
-	"""Lo que el plan quiere que quede. Sin los campos que son de GitHub."""
+	"""Lo que el plan quiere que quede. Sin nada de lo que GitHub pone por su cuenta."""
 	completo = _definicion(aprobaciones, nombre)
 	for suyo in ("id", "node_id", "created_at", "source", "current_user_can_bypass"):
 		completo.pop(suyo)
+	for regla in completo["rules"]:
+		regla.get("parameters", {}).pop("allowed_merge_methods", None)
 	return completo
 PROTECCION = {
 	"required_pull_request_reviews": {"required_approving_review_count": 1},
@@ -1089,6 +1098,56 @@ class TestRulesetUpdate(TransactionCase):
 		self.assertEqual(self.op.state, "failed")
 		self.assertIn("relectura", self.op.error)
 		self.assertTrue([c for c in transporte.cuerpos if c[0] == "PUT"])
+
+	# ------------------------------------------------------------------
+	# Lo que enseñó el ensayo contra GitHub real (B1.6)
+	# ------------------------------------------------------------------
+
+	def test_los_defaults_que_agrega_github_NO_cuentan_como_diferencia(self):
+		"""El defecto que el ensayo destapó, convertido en guarda.
+
+		GitHub completa la regla con `allowed_merge_methods`, que nadie mandó. Comparando
+		por igualdad, una escritura que salió EXACTAMENTE como se pidió se marcaba
+		fallida, con la aprobación gastada y un cambio real allá afuera.
+		"""
+		self._correr(self._plan(), gets=[
+			Respuesta(200, [PROPIO]), Respuesta(200, _definicion(1)),
+			Respuesta(200, [PROPIO]), Respuesta(200, _definicion(1)),
+			Respuesta(200, [PROPIO]), Respuesta(200, _definicion(2)),
+		])
+		self.assertEqual(self.op.state, "applied", self.op.error)
+
+	def test_un_parametro_QUE_SI_mandamos_con_otro_valor_sigue_fallando(self):
+		"""Aflojar la comparación no puede aflojar lo que la comparación existe para ver."""
+		self._correr(self._plan(payload=_pedido(3)), gets=[
+			Respuesta(200, [PROPIO]), Respuesta(200, _definicion(1)),
+			Respuesta(200, [PROPIO]), Respuesta(200, _definicion(1)),
+			Respuesta(200, [PROPIO]), Respuesta(200, _definicion(2)),
+		])
+		self.assertEqual(self.op.state, "failed")
+		self.assertIn("required_approving_review_count", self.op.error)
+
+	def test_una_regla_DE_MAS_en_github_es_una_diferencia_real(self):
+		con_regla_extra = _definicion(2)
+		con_regla_extra["rules"].append({"type": "required_signatures"})
+		self._correr(self._plan(), gets=[
+			Respuesta(200, [PROPIO]), Respuesta(200, _definicion(1)),
+			Respuesta(200, [PROPIO]), Respuesta(200, _definicion(1)),
+			Respuesta(200, [PROPIO]), Respuesta(200, con_regla_extra),
+		])
+		self.assertEqual(self.op.state, "failed")
+		self.assertIn("rules", self.op.error)
+
+	def test_el_atajo_de_NO_escribir_funciona_contra_la_forma_real_de_github(self):
+		"""Con igualdad exacta este atajo no se habría tomado nunca: el objeto de GitHub
+		trae sus defaults y jamás coincide con el nuestro. Idempotencia escrita y muerta."""
+		transporte = self._correr(self._plan(payload=_pedido(1)), gets=[
+			Respuesta(200, [PROPIO]), Respuesta(200, _definicion(1)),
+			Respuesta(200, [PROPIO]), Respuesta(200, _definicion(1)),
+			Respuesta(200, [PROPIO]), Respuesta(200, _definicion(1)),
+		])
+		self.assertEqual(self.op.state, "applied", self.op.error)
+		self.assertEqual(transporte.escrituras_hechas(), [])
 
 	# ------------------------------------------------------------------
 	# Guarda 1 · no se toca un ruleset ajeno

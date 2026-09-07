@@ -124,6 +124,55 @@ def _definicion_comparable(definicion):
 	return salida
 
 
+def _coincide_con_lo_pedido(deseada, actual):
+	"""¿Lo que quedó en GitHub es lo que se pidió?
+
+	NO ES IGUALDAD EXACTA, Y LO APRENDIMOS CONTRA GITHUB. El ensayo de B1.6 mostró que
+	GitHub **completa el objeto con parámetros que nadie mandó** —`allowed_merge_methods`
+	dentro de la regla de pull request, por ejemplo— y los devuelve al releer. Comparando
+	por igualdad, una escritura que salió EXACTAMENTE como se pidió se marcaba fallida:
+	«la relectura no lo confirma», con la aprobación ya gastada y un cambio real allá
+	afuera. Ningún test con doble lo vio, porque el doble devolvía lo mismo que recibía —
+	que es la mitad de la interfaz que el doble no imitaba.
+
+	Lo que se exige, entonces:
+
+	· los campos sueltos que mandamos, iguales;
+	· los MISMOS TIPOS de regla, ni uno más ni uno menos —una regla que aparece sola es
+	  una diferencia real y tiene que fallar—;
+	· y dentro de cada regla, cada parámetro QUE MANDAMOS con nuestro valor. Los que
+	  GitHub agrega por su cuenta no se miran: no los pedimos y no los gobernamos.
+
+	Sigue siendo una verificación fuerte: caza que GitHub haya guardado otra cosa de lo
+	pedido, que es para lo que existe. Lo que deja de cazar es que GitHub tenga defaults.
+	"""
+	deseada, actual = deseada or {}, actual or {}
+	for campo in ("name", "target", "enforcement"):
+		if deseada.get(campo) != actual.get(campo):
+			return False, campo
+
+	if _ordenado(deseada.get("bypass_actors")) != _ordenado(actual.get("bypass_actors")):
+		return False, "bypass_actors"
+	if (deseada.get("conditions") or {}) != (actual.get("conditions") or {}):
+		return False, "conditions"
+
+	reglas_deseadas = {r.get("type"): (r.get("parameters") or {})
+					   for r in (deseada.get("rules") or [])}
+	reglas_actuales = {r.get("type"): (r.get("parameters") or {})
+					   for r in (actual.get("rules") or [])}
+	if set(reglas_deseadas) != set(reglas_actuales):
+		return False, "rules"
+	for tipo, parametros in reglas_deseadas.items():
+		for clave, valor in parametros.items():
+			if reglas_actuales[tipo].get(clave) != valor:
+				return False, "%s.%s" % (tipo, clave)
+	return True, None
+
+
+def _ordenado(valor):
+	return sorted(valor or [], key=lambda v: json.dumps(v, sort_keys=True))
+
+
 PROTECCION_BASE = {
 	"required_status_checks": None,
 	"enforce_admins": False,
@@ -1036,7 +1085,13 @@ class RepoWriteOperationApply(models.Model):
 			raise UserError(_("El ruleset a actualizar necesita al menos un `name`."))
 
 		previo = self._leer_ruleset_propio(cliente)
-		if _definicion_comparable(deseada) == previo["definicion"]:
+		# Mismo criterio que la verificación, y por el mismo motivo: comparando por
+		# igualdad exacta, el objeto de GitHub NUNCA coincide con el nuestro —trae sus
+		# defaults— y este atajo no se tomaría jamás. La idempotencia habría quedado
+		# escrita y muerta.
+		ya_esta, _donde = _coincide_con_lo_pedido(
+			_definicion_comparable(deseada), previo["definicion"])
+		if ya_esta:
 			return SIN_CAMBIOS
 		return cliente.put(
 			"/repos/%s/rulesets/%s" % (self.repository_id.full_name, previo["id"]),
@@ -1046,8 +1101,10 @@ class RepoWriteOperationApply(models.Model):
 		"""Relee y compara. Lo que devolvió el PUT no cuenta como verdad."""
 		deseada = _definicion_comparable(_cargar(self.payload_json) or {})
 		actual = self._leer_ruleset_propio(cliente)
-		if actual["definicion"] != deseada:
-			return False, _("la definición releída no coincide con la que se pidió")
+		coincide, donde = _coincide_con_lo_pedido(deseada, actual["definicion"])
+		if not coincide:
+			return False, _(
+				"la definición releída no coincide con la que se pidió, en «%s»") % donde
 		return True, actual["definicion"]
 
 	def _revertir_ruleset_actualizado(self, cliente, previo):

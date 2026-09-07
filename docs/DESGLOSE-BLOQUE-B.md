@@ -93,7 +93,7 @@ configuración que no pusimos nosotros. *(Ya hay un test que cubre esto en el mo
 | **B1.3** | El apply: leer, aplicar el diff, verificar releyendo, registrar | **hecho** |
 | **B1.4** | «Exige … · Tiene …» por rama, en el formulario del repositorio | **hecho** |
 | **B1.5** | «Incumplen hoy» por exigencia, en la plantilla | **hecho** |
-| **B1.6** | Ensayo contra el sandbox y mutación de las guardas nuevas | |
+| **B1.6** | Ensayo contra el sandbox y mutación de las guardas nuevas | **hecho** — ver [`ENSAYO-B1.6.md`](ENSAYO-B1.6.md) |
 
 **Dos confirmaciones que se pidieron y quedan escritas acá para que no se pierdan:**
 
@@ -112,6 +112,15 @@ configuración que no pusimos nosotros. *(Ya hay un test que cubre esto en el mo
 **Y B1.4/B1.5 nacen visuales** —tokens y patrones desde el primer commit, regla 3—: son la
 tercera columna del checklist de cobertura volviéndose pantalla, no una lista sobre la
 cara vieja.
+
+#### Lo que el ensayo contra GitHub real agregó (B1.6)
+
+La primera corrida salió **en rojo, y con razón**: la verificación comparaba por igualdad
+exacta y GitHub **completa el objeto con parámetros que nadie mandó**
+(`allowed_merge_methods`), así que rechazó una escritura que había salido perfecta. El
+mismo criterio mataba el atajo de «si ya está como se pide, no se escribe»: contra la API
+real nunca se habría tomado. Ningún test lo vio porque el doble devolvía lo que recibía.
+Detalle completo en [`ENSAYO-B1.6.md`](ENSAYO-B1.6.md).
 
 #### Las dos guardas de B1.3, con su mutación hecha
 
