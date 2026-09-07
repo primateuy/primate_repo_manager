@@ -394,3 +394,79 @@ class TestEscrituraDeCodeowners(TransactionCase):
 			plan._huella(), huella_aprobada,
 			"prender la confirmación tiene que invalidar la huella: si no, se podría "
 			"prender DESPUÉS de aprobar")
+
+
+class TestEdicionesLegibles(TransactionCase):
+	"""B3.3 · la diferencia como «qué trabajo de otro se va», no como bytes.
+
+	La vara es la de D2.4: la pantalla que decide entre copias divergentes dice qué
+	desaparece si elegís, no qué hash cambió.
+	"""
+
+	def setUp(self):
+		super().setUp()
+		backend = self.env["repo.backend"].create({
+			"name": "Ed %s" % uuid.uuid4().hex[:6],
+			"owner_login": "org-%s" % uuid.uuid4().hex[:8],
+			"owner_type": "organization", "app_id": "1", "installation_id": "2"})
+		self.repo = self.env["repo.repository"].create({
+			"backend_id": backend.id, "github_id": uuid.uuid4().hex[:8],
+			"name": "sbx", "full_name": "org/sbx"})
+
+	def _cambios(self, nuestro, actual):
+		return self.repo.ediciones_manuales(nuestro, actual)
+
+	def test_una_linea_agregada_a_mano_se_nombra_como_tal(self):
+		cambios = self._cambios("* @lider\n", "* @lider\ndocs/ @alguien\n")
+		self.assertEqual(len(cambios), 1)
+		self.assertEqual(cambios[0]["tipo"], "agregada")
+		self.assertEqual(cambios[0]["patron"], "docs/")
+
+	def test_un_revisor_cambiado_dice_QUIÉN_estaba_antes(self):
+		"""«Qué trabajo de otro se va» incluye a quién le sacan la revisión."""
+		cambios = self._cambios("* @lider\n", "* @otro\n")
+		self.assertEqual(cambios[0]["tipo"], "cambiada")
+		self.assertEqual(cambios[0]["owners_antes"], ["@lider"])
+
+	def test_una_linea_quitada_a_mano_tambien_es_una_edicion(self):
+		cambios = self._cambios("* @lider\ndocs/ @otro\n", "* @lider\n")
+		self.assertEqual(cambios[0]["tipo"], "quitada")
+		self.assertEqual(cambios[0]["patron"], "docs/")
+
+	def test_la_CABECERA_que_reescribimos_nosotros_no_cuenta_como_edicion_ajena(self):
+		"""Lleva la fecha y la reescribimos en cada generación: mostrarla como cambio de
+		otro sería acusar a alguien del ruido que hacemos nosotros."""
+		nuestro = "%s\n# Generado el 2026-09-01\n\n* @lider\n" % MARCA
+		actual = "%s\n# Generado el 2026-09-07\n\n* @lider\n" % MARCA
+		self.assertEqual(self._cambios(nuestro, actual), [])
+
+	def test_los_comentarios_de_procedencia_tampoco_cuentan(self):
+		nuestro = "# declarado en la plantilla A\n* @lider\n"
+		actual = "# declarado en la plantilla B\n* @lider\n"
+		self.assertEqual(self._cambios(nuestro, actual), [])
+
+	def test_sin_ediciones_no_hay_nada_que_mostrar(self):
+		self.assertEqual(self._cambios("* @lider\n", "* @lider\n"), [])
+
+	# ------------------------------------------------------------------
+	# La frase, que es lo que va al payload y lo que alguien lee
+	# ------------------------------------------------------------------
+
+	def test_la_frase_dice_QUE_paso_y_no_que_bytes_cambiaron(self):
+		frase = self.repo.frase_de_ediciones(
+			self._cambios("* @lider\n", "* @lider\ndocs/ @alguien\n"))
+		self.assertIn("Alguien agregó a mano", frase)
+		self.assertIn("docs/", frase)
+		self.assertIn("@alguien", frase)
+
+	def test_la_frase_de_un_cambio_nombra_al_de_antes_y_al_de_ahora(self):
+		frase = self.repo.frase_de_ediciones(self._cambios("* @lider\n", "* @otro\n"))
+		self.assertIn("@lider", frase)
+		self.assertIn("@otro", frase)
+
+	def test_la_frase_es_TEXTO_para_que_sobreviva_a_la_pantalla(self):
+		"""Va dentro de la huella del plan y se lee en la bitácora seis meses después,
+		donde no hay un componente que la interprete."""
+		frase = self.repo.frase_de_ediciones(
+			self._cambios("* @lider\n", "* @lider\ndocs/ @x\n"))
+		self.assertIsInstance(frase, str)

@@ -145,3 +145,76 @@ class RepoRepositoryCodeowners(models.Model):
 			cuerpo.append("%s @%s" % (linea["patron"], linea["login"]))
 			cuerpo.append("")
 		return "\n".join(cabecera + cuerpo).rstrip("\n") + "\n"
+
+
+	# ------------------------------------------------------------------
+	# B3.3 · qué trabajo de otro se pierde, en castellano
+	# ------------------------------------------------------------------
+
+	def ediciones_manuales(self, nuestro, actual):
+		"""Las ediciones que alguien hizo a mano, legibles para quien decide.
+
+		LA PREGUNTA DE QUIEN MIRA NO ES «QUÉ BYTES DIFIEREN». Es «qué trabajo de otro se
+		va si aprieto». Un diff crudo contesta la primera y deja la segunda para que la
+		deduzca cada uno — y la vara es la de D2.4: la pantalla que decide entre copias
+		divergentes dice qué desaparece si elegís, no qué hash cambió.
+
+		Por eso se comparan las LÍNEAS DE OWNER, no el texto entero: la cabecera la
+		reescribimos nosotros en cada generación —lleva la fecha— y mostrarla como
+        «cambio de otro» sería acusar a alguien del ruido que hacemos nosotros.
+
+		Returns:
+			list: dicts con ``tipo`` (`agregada`, `cambiada`, `quitada`), ``patron``,
+			``owners`` y, en las cambiadas, ``owners_antes``.
+		"""
+		antes = self._owners_por_patron(nuestro)
+		ahora = self._owners_por_patron(actual)
+		cambios = []
+		for patron, owners in ahora.items():
+			if patron not in antes:
+				cambios.append({"tipo": "agregada", "patron": patron, "owners": owners})
+			elif owners != antes[patron]:
+				cambios.append({"tipo": "cambiada", "patron": patron,
+								"owners": owners, "owners_antes": antes[patron]})
+		for patron, owners in antes.items():
+			if patron not in ahora:
+				cambios.append({"tipo": "quitada", "patron": patron, "owners": owners})
+		return cambios
+
+	def _owners_por_patron(self, texto):
+		"""Las líneas de owner de un CODEOWNERS, sin comentarios ni vacías."""
+		salida = {}
+		for linea in (texto or "").splitlines():
+			limpia = linea.strip()
+			if not limpia or limpia.startswith("#"):
+				continue
+			partes = limpia.split()
+			if len(partes) < 2:
+				continue
+			salida[partes[0]] = partes[1:]
+		return salida
+
+	def frase_de_ediciones(self, cambios):
+		"""Las ediciones, en frases. Es lo que se guarda en el payload y lo que se lee.
+
+		Va como texto y no como estructura porque tiene que sobrevivir dentro de la
+		huella del plan y leerse en la bitácora seis meses después, donde no va a haber
+		un componente que la interprete.
+		"""
+		frases = []
+		for cambio in cambios:
+			owners = " ".join("@%s" % o.lstrip("@") for o in cambio["owners"])
+			if cambio["tipo"] == "agregada":
+				frases.append(_("Alguien agregó a mano: %(patron)s → %(owners)s") % {
+					"patron": cambio["patron"], "owners": owners})
+			elif cambio["tipo"] == "quitada":
+				frases.append(_("Alguien quitó a mano: %(patron)s (era %(owners)s)") % {
+					"patron": cambio["patron"], "owners": owners})
+			else:
+				antes = " ".join(
+					"@%s" % o.lstrip("@") for o in cambio["owners_antes"])
+				frases.append(_(
+					"Alguien cambió a mano quién revisa %(patron)s: %(antes)s → "
+					"%(owners)s") % {"patron": cambio["patron"], "antes": antes,
+									 "owners": owners})
+		return "\n".join(frases)

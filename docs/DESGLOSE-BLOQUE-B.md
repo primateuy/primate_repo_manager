@@ -265,8 +265,8 @@ trabajo de otro. Se exigen las dos cosas, la decisión **y** la diferencia que l
 ajeno en `.github/` no falla: aplica, verifica bien y **no gobierna nada**. Es la misma
 familia del owner que GitHub ignora — no falla al escribirse, falla en silencio después.
 
-| **B3.3** | La pantalla, desde el mockup | |
-| **B3.4** | Ensayo contra el sandbox | |
+| **B3.3** | La diferencia legible en el plan: «qué trabajo de otro se va» | **hecho** |
+| **B3.4** | Ensayo contra el sandbox, los cuatro estados | **hecho** — ver [`ENSAYO-B3.4.md`](ENSAYO-B3.4.md) |
 
 **Las cinco decisiones:**
 

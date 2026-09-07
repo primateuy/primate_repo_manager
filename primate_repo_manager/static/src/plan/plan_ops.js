@@ -201,6 +201,24 @@ export class PlanOps extends Component {
 	 * su contexto: `String(...)` allá adentro es `ctx.String`, que no existe, y la
 	 * pantalla entera muere en el render. Compila sin quejarse y revienta al abrirla.
 	 */
+	/**
+	 * Las ediciones manuales que esta operación pisa, ya en castellano.
+	 *
+	 * Vienen del payload —donde entraron al armar el plan, y por lo tanto viajan dentro
+	 * de la huella aprobada—: la pantalla no las calcula ni le pregunta a GitHub. Lo que
+	 * se ve es exactamente lo que se aprobó.
+	 */
+	edicionesPerdidas(op) {
+		let payload = {};
+		try {
+			payload = JSON.parse(op.data.payload_json || "{}");
+		} catch {
+			return null;
+		}
+		const texto = payload.ediciones_perdidas;
+		return texto ? String(texto).split("\n").filter(Boolean) : null;
+	}
+
 	numero(op) {
 		const posicion = this.operaciones.findIndex((o) => o.resId === op.resId) + 1;
 		return String(posicion).padStart(2, "0");

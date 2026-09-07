@@ -207,3 +207,26 @@
 		}
 	}
 }
+
+/* B3.3 · las ediciones manuales que una operación pisa. Tono de lectura, no de alarma:
+   la alarma la da la confirmación que hay que marcar; esto es la información con la que
+   se marca. */
+.rm-plan-ediciones {
+	margin-top: var(--rm-space-2);
+	padding: var(--rm-space-2) var(--rm-space-3);
+	background: var(--rm-sev-medium-tint);
+	border-left: 3px solid var(--rm-sev-medium);
+	border-radius: var(--rm-radius-sm);
+	font-size: 12px;
+
+	.rm-plan-ediciones-titulo {
+		font-weight: 600;
+		color: var(--rm-sev-medium-on-tint);
+		margin-bottom: var(--rm-space-1);
+	}
+
+	.rm-plan-edicion {
+		color: var(--rm-ink-2);
+		line-height: 1.6;
+	}
+}

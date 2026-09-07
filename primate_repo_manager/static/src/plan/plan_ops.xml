@@ -108,6 +108,18 @@
 								No se ejecutó: depende de
 								<t t-esc="op.data.dependency_blocked_by"/>
 							</div>
+							<!-- B3.3 · QUÉ TRABAJO DE OTRO SE VA. No un diff: las
+								 ediciones que alguien hizo a mano y que esta operación
+								 pisa. La pregunta de quien mira no es qué bytes
+								 difieren. -->
+							<div t-if="edicionesPerdidas(op)" class="rm-plan-ediciones">
+								<div class="rm-plan-ediciones-titulo">
+									Se pierden estas ediciones hechas a mano:
+								</div>
+								<div t-foreach="edicionesPerdidas(op)" t-as="frase"
+									 t-key="frase_index" class="rm-plan-edicion"
+									 t-esc="frase"/>
+							</div>
 						</div>
 
 						<div class="rm-plan-vuelta">
