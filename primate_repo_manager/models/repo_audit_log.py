@@ -24,6 +24,8 @@ import logging
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError
 
+from .repo_ruleset import RULESET_PREFIX
+
 _logger = logging.getLogger(__name__)
 
 EVENT_TYPES = [
@@ -703,3 +705,67 @@ class RepoAuditLogDrift(models.Model):
 			% {"nombre": nombre, "repo": repo.full_name},
 			backend=repo.backend_id, repository=repo,
 			payload={"ruleset": nombre})
+
+	# ------------------------------------------------------------------
+	# B4.2 · desde cuándo la política está sin reaplicar
+	# ------------------------------------------------------------------
+
+	@api.model
+	def _ultima_aplicacion_de_plantilla(self, repo, plantilla):
+		"""Cuándo se aplicó por última vez algo de esta plantilla en este repositorio.
+
+		Returns:
+			datetime | False. Falso cuando NUNCA se aplicó, que es una situación
+			distinta de «se aplicó y quedó atrás» y no se puede confundir con ella:
+			un repositorio donde la política nunca se escribió no tiene una deuda
+			CONTRA UN CAMBIO, tiene la política entera sin aplicar.
+		"""
+		prefijo = "%s/%s/" % (RULESET_PREFIX, plantilla.code)
+		entradas = self.search([
+			("repository_id", "=", repo.id),
+			("event_type", "=", "write_applied"),
+		], order="id desc")
+		for entrada in entradas:
+			datos = entrada._payload() or {}
+			if datos.get("kind") not in self.ESCRITURAS_DE_RULESET:
+				continue
+			if (datos.get("target") or "").startswith(prefijo):
+				return entrada.create_date
+		return False
+
+	@api.model
+	def _primer_cambio_sin_aplicar(self, plantilla, desde):
+		"""El PRIMER cambio de la plantilla posterior a la última aplicación.
+
+		El primero y no el último, y no uno por cambio: si la plantilla se tocó tres
+		veces sin reaplicarse, la deuda es UNA y empezó con la primera. Tres hallazgos
+		dirían que hay tres cosas que hacer, y hay una — **la deuda es contra la política
+		vigente, no contra cada versión intermedia**. Por eso tampoco importa qué decía la
+		plantilla en el medio: lo único que hay que reaplicar es lo que dice hoy.
+
+		Args:
+			plantilla: registro de `repo.policy.template`.
+			desde: datetime de la última aplicación, o False si nunca se aplicó.
+
+		Returns:
+			datetime | False
+		"""
+		if not desde:
+			return False
+		# La plantilla y todo lo que cuelga de ella: cambiar una regla por rol o un check
+		# requerido cambia la política tanto como tocar la plantilla misma.
+		alcance = {
+			"repo.policy.template": {plantilla.id},
+			"repo.policy.branch.rule": set(plantilla.branch_rule_ids.ids),
+			"repo.policy.status.check": set(plantilla.required_check_ids.ids),
+			"repo.policy.access.rule": set(plantilla.access_rule_ids.ids),
+		}
+		entradas = self.search([
+			("event_type", "=", "policy_changed"),
+			("create_date", ">", desde),
+		], order="id asc")
+		for entrada in entradas:
+			datos = entrada._payload() or {}
+			if datos.get("registro_id") in alcance.get(datos.get("modelo"), set()):
+				return entrada.create_date
+		return False

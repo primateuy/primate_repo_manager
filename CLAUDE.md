@@ -335,6 +335,17 @@ tiene **ninguna** referencia a PCM y hay un test que lo verifica recorriendo los
 - **Flags de seguridad cross-proceso se leen frescos** (search/read en el momento de uso, no cacheados) — lección permanente de PCM.
 - **Defaults silenciosos de primitivos son el enemigo:** validá configuración explícitamente; un campo vacío no puede colapsar a un comportamiento peligroso.
 
+### Con `--log-level=warn`, un verde NO IMPRIME NADA
+
+Y una mutación que **sobrevive** se ve exactamente igual que un run que no llegó a
+correr: las dos cosas son silencio. Pasó el 7-sep-2026 mutando B4.2 — tres mutaciones se
+dieron por cazadas mirando una salida vacía, y las tres estaban vivas.
+
+**Corré las mutaciones con `--log-level=info` y leé el renglón de `odoo.tests.result`
+siempre**, tanto para el rojo como para el verde. Un rojo se anuncia solo; un verde hay
+que ir a buscarlo, y es justo el que hay que ver cuando lo que se está probando es que
+algo se rompa.
+
 ### Quitar una guarda del código NO la quita de la base
 
 Medido el 7-sep-2026 mutando el índice único de plantillas. Odoo **no borra** un índice

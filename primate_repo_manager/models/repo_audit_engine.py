@@ -47,6 +47,7 @@ class RepoAuditEngine(models.AbstractModel):
 		self._evaluate_account(run, repos)
 		self._evaluate_members(run)
 		self._evaluate_templates(run, repos)
+		self._evaluate_policy_not_reapplied(run, repos)
 		return run.finding_ids
 
 	# ------------------------------------------------------------------
@@ -343,6 +344,64 @@ class RepoAuditEngine(models.AbstractModel):
 						 "cumple. La auditoría releva qué workflows corren hoy para "
 						 "poder proponer la lista."),
 				observed={"repositories": alcanzados.mapped("full_name")})
+
+	@api.model
+	def _evaluate_policy_not_reapplied(self, run, repos):
+		"""B4 · sentido 2: la política se movió acá y los repositorios quedaron atrás.
+
+		UN HALLAZGO POR PLANTILLA, con su fecha y con cuántos repositorios alcanza. Es la
+		misma razón que en `_evaluate_templates`: la deuda es de la plantilla, no de cada
+		repositorio, y emitirla noventa veces taparía lo que sí hay que mirar.
+
+		DESDE CUÁNDO, Y UNA SOLA VEZ. Si la plantilla se tocó tres veces sin reaplicarse,
+		el hallazgo lleva la fecha del PRIMER cambio sin aplicar y es uno solo. Tres
+		hallazgos dirían que hay tres cosas que hacer, y hay una: **la deuda es contra la
+		política vigente, no contra cada versión intermedia**. Lo que decía la plantilla en
+		el medio da igual — lo único que se va a reaplicar es lo que dice hoy.
+
+		NO DEJA ENTRADA EN LA BITÁCORA, y es deliberado. Que la política cambió acá **ya
+		está registrado** por A5 como `policy_changed`, con su antes y su después.
+		Anotarlo otra vez como «cambio detectado fuera de la app» sería mentir sobre dónde
+		pasó, que es justamente la distinción que este bloque existe para sostener.
+
+		Y «NUNCA SE APLICÓ» NO ES «QUEDÓ ATRÁS». Un repositorio donde la política nunca se
+		escribió no tiene una deuda contra un cambio: tiene la política entera sin aplicar,
+		que es otro hallazgo y otro trabajo. Contarlo acá inflaría la deuda con repos que
+		nadie prometió tener al día.
+		"""
+		Log = self.env["repo.audit.log"]
+		for plantilla in self.env["repo.policy.template"].search([]):
+			if not plantilla.classification_default:
+				continue
+			alcanzados = repos.filtered(
+				lambda r, p=plantilla: r.classification == p.classification_default)
+			atrasados, desde = [], None
+			for repo in alcanzados:
+				aplicado = Log._ultima_aplicacion_de_plantilla(repo, plantilla)
+				if not aplicado:
+					continue
+				cambio = Log._primer_cambio_sin_aplicar(plantilla, aplicado)
+				if not cambio:
+					continue
+				atrasados.append(repo)
+				desde = min(desde, cambio) if desde else cambio
+			if not atrasados:
+				continue
+			self._finding(
+				run, None, "policy_not_reapplied",
+				_("«%(plantilla)s» cambió el %(cuando)s y %(n)s repositorio(s) siguen "
+				  "con lo de antes") % {
+					"plantilla": plantilla.name,
+					"cuando": fields.Date.to_string(desde.date()),
+					"n": len(atrasados)},
+				detail=_(
+					"No es un incidente: nadie tocó GitHub por fuera. Es trabajo "
+					"pendiente — la política se movió acá y todavía no se escribió allá. "
+					"Si la plantilla cambió varias veces, la fecha es la del primer "
+					"cambio sin aplicar: la deuda es contra la política vigente, no "
+					"contra cada versión intermedia."),
+				expected={"plantilla": plantilla.code, "cambio_desde": str(desde)},
+				observed={"repositories": [r.full_name for r in atrasados]})
 
 	# ------------------------------------------------------------------
 	# A nivel cuenta

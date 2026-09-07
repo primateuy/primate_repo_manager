@@ -73,6 +73,7 @@ FINDING_TYPES = [
 	# fuera del embudo— y el segundo es TRABAJO PENDIENTE —la política se movió acá y los
 	# repositorios quedaron atrás—. Mostrarlos juntos convierte los dos en ruido.
 	("policy_drift_external", "Ruleset cambiado fuera de la aplicación"),
+	("policy_not_reapplied", "Política cambiada y no reaplicada"),
 ]
 
 BASE_SEVERITY = {
@@ -96,6 +97,10 @@ BASE_SEVERITY = {
 	"convention_adoption": "info",
 	"owner_account_admin": "info",
 	"institutional_account": "info",
+	# El incidente es alto; la deuda es media. La diferencia no es de matiz: uno pasó
+	# afuera del embudo y el otro es trabajo nuestro que falta hacer.
+	"policy_drift_external": "high",
+	"policy_not_reapplied": "medium",
 }
 
 # Acción de remediación que resolvería cada tipo. Se calcula en F1, se ejecuta en F2/F3.
@@ -117,6 +122,7 @@ REMEDIATION_ACTIONS = [
 	("review_manually", "Revisar a mano"),
 	("no_action_owner", "No requiere acción: es la cuenta dueña"),
 	("reapply_ruleset", "Volver a aplicar el ruleset como estaba"),
+	("reapply_policy", "Volver a aplicar la política de la plantilla"),
 ]
 
 REMEDIATION_BY_TYPE = {
@@ -143,6 +149,7 @@ REMEDIATION_BY_TYPE = {
 	# porque pone en duda todo lo demás que la bitácora afirma.
 	"audit_log_chain_broken": "review_manually",
 	"policy_drift_external": "reapply_ruleset",
+	"policy_not_reapplied": "reapply_policy",
 }
 
 # Las que quitan acceso o cambian algo que puede romper el trabajo de otro.
@@ -189,6 +196,13 @@ PLANIFICABLES = {
 # Por qué NO se puede planificar cada una de las otras. Se muestra en pantalla: un botón
 # ausente sin explicación se lee como un olvido del producto.
 POR_QUE_NO_PLANIFICABLE = {
+	"reapply_policy": (
+		"Reaplicar una plantilla no es volver a poner lo que había: es escribir la "
+		"política VIGENTE, traducida de nuevo, sobre todos los repositorios que gobierna. "
+		"Ese payload todavía no se aplicó nunca, así que no vale el argumento que hace "
+		"planificable al drift externo —«esto ya se ejecutó una vez y GitHub lo aceptó»—. "
+		"Va por la pantalla de aplicar política por plantilla, con su lectura y su "
+		"aprobación, que es donde una escritura sobre N repositorios tiene que decidirse."),
 	"apply_ruleset": (
 		"La configuración de protección sale de la plantilla de política del repositorio "
 		"—cuántas aprobaciones, si exige revisión de owner, si bloquea force-push—, no del "
