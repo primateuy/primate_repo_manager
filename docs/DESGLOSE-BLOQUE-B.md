@@ -236,6 +236,34 @@ las reglas de la plantilla, y lo escribe por el mismo embudo.
   silencio. Hay que detectarlo y decirlo: una línea ignorada es una revisión que nadie va a
   pedir nunca.
 
+### B3, en pasos — aprobado el 7-sep-2026
+
+| paso | qué deja hecho | estado |
+|---|---|---|
+| **B3.1** | El modelo de owners, el generador con su procedencia, y la validación contra el espejo | **hecho** |
+| **B3.2** | La operación de escritura, con la guarda del archivo ajeno y la de D2.1 | |
+| **B3.3** | La pantalla, desde el mockup | |
+| **B3.4** | Ensayo contra el sandbox | |
+
+**Las cinco decisiones:**
+
+1. **Un One2many en la plantilla**, no derivado de los grants: «quién puede escribir» y
+   «quién tiene que revisar» son cosas distintas, y atarlas haría imposible el caso normal
+   —el líder técnico revisa lo que no toca—.
+2. **Commit directo con la App exenta**; la variante por PR espera a F4. Y con la guarda
+   de D2.1 cubriendo esta operación: **destino que exige PR sin App exenta → el plan se
+   niega a armarse con el motivo**, nunca muere a mitad del apply.
+3. **Un CODEOWNERS ajeno no se pisa jamás.** Se reconoce por nuestra marca de procedencia,
+   que hace de prefijo. Es la guarda del ruleset ajeno, pero peor: el archivo es uno solo
+   y no se puede coexistir.
+4. **La relectura compara el CONTENIDO, byte a byte**, no el commit: GitHub puede aceptar
+   y dejar otra cosa.
+5. **Los owners se validan contra el espejo antes de generar.** Es el check-que-no-corrió
+   en versión personas: **un owner que GitHub va a ignorar no falla al escribirse, falla
+   en silencio después** — la línea se ignora, las PRs no piden esa revisión, y el
+   repositorio parece gobernado mientras nadie revisa nada. No se escribe lo que no se
+   verificó, y lo omitido se informa.
+
 ## B4 · Drift, en los dos sentidos
 
 **Qué es.** Detectar que la configuración de GitHub y la política se separaron. Los dos

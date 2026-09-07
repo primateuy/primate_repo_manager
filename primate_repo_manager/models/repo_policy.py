@@ -101,6 +101,11 @@ class RepoPolicyTemplate(models.Model):
 	required_check_ids = fields.One2many(
 		"repo.policy.status.check", "template_id", string="Checks requeridos")
 
+	# B3 · quién revisa qué. Separado de los grants a propósito: «quién puede escribir»
+	# y «quién tiene que revisar» son dos cosas distintas, y atarlas haría imposible el
+	# caso normal —el líder técnico revisa lo que no toca—.
+	codeowner_ids = fields.One2many(
+		"repo.policy.codeowner", "template_id", string="Quién revisa qué")
 	branch_rule_ids = fields.One2many(
 		"repo.policy.branch.rule", "template_id", string="Reglas por rol de rama")
 	access_rule_ids = fields.One2many(

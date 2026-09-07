@@ -8,6 +8,9 @@ from . import repo_backend
 from . import repo_policy
 from . import repo_ruleset
 from . import repo_repository
+# Después de `repo_repository`: hereda ese modelo, y el registro se arma en
+# el orden de estos imports.
+from . import repo_codeowners
 from . import repo_branch
 from . import repo_member
 from . import repo_collaborator
