@@ -362,7 +362,11 @@ class RepoRuleset(models.Model):
 			("github_id", "=", definicion.get("id")),
 		], limit=1)
 		if not fila:
-			return self.create(valores)
+			nueva = self.create(valores)
+			# También en el alta, y sobre todo en el alta: el homónimo aparece justo
+			# cuando GitHub da un id nuevo a un ruleset recreado.
+			nueva._retirar_homonimos()
+			return nueva
 		# No se reescribe lo que no cambió: un `write` con los mismos datos igual genera
 		# un UPDATE con su write_date, y sobre una fila que varios jobs tocan eso basta
 		# para matar al de al lado. `last_seen_at` sí cambia siempre —es el dato de
@@ -371,7 +375,34 @@ class RepoRuleset(models.Model):
 					  for campo in ("name", "enforcement", "definition_json", "present"))
 		fila.write({"last_seen_at": valores["last_seen_at"], "origin": origen}
 				   if iguales else valores)
+		fila._retirar_homonimos()
 		return fila
+
+	def _retirar_homonimos(self):
+		"""Da de baja las filas VIEJAS con el mismo nombre y otro id de GitHub.
+
+		LO ENCONTRÓ EL ENSAYO DE B4.4, CORRIENDO DOS VECES. Un ruleset borrado y vuelto a
+		crear con el mismo nombre es, para la política, el MISMO objeto gobernado — pero
+		GitHub le da un id nuevo, así que el espejo terminaba con dos filas homónimas: la
+		vieja en `present = False` y la nueva viva. Y como el drift busca por NOMBRE, le
+		tocaba la muerta y reportaba «el ruleset que aplicamos ya no está» sobre uno que
+		estaba ahí, con severidad crítica.
+
+		Es la peor forma del falso positivo: la que grita más fuerte. Una alarma crítica
+		sobre algo sano enseña a desconfiar de las alarmas críticas.
+
+		No se borran las filas viejas: dejan de estar presentes, que es lo que de verdad
+		pasó, y conservan cuándo se las vio por última vez.
+		"""
+		self.ensure_one()
+		homonimos = self.search([
+			("repository_id", "=", self.repository_id.id),
+			("name", "=", self.name),
+			("id", "!=", self.id),
+			("present", "=", True),
+		])
+		if homonimos:
+			homonimos.write({"present": False})
 
 	def definicion(self):
 		"""La definición observada, ya normalizada."""

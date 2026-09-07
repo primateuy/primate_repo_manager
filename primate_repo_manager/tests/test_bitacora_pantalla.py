@@ -137,6 +137,15 @@ class TestTourBitacora(HttpCase):
 					  previous_state={"required_reviews": None})
 		Log.registrar("write_failed", "No se pudo bajar el permiso", backend=backend,
 					  repository=repo, previous_state={"permission": "admin"})
+		# B4.3 · una entrada «Fuera de la app». Se produce por el método que la produce
+		# de verdad —el que llama el motor al detectar el desvío—, no con un `create` a
+		# mano: una entrada fabricada llevaría los campos que el test quiera y no los que
+		# el código pone.
+		Log._abrir_drift(
+			repo, "primate/cliente-estandar/base",
+			"Alguien quitó la protección de 17.0 directamente en GitHub",
+			{"required_reviews": 1}, {"required_reviews": None},
+			donde="rules", detectado_por="la auditoría #58")
 		# El tour necesita entrar. `base.user_admin` existe en toda base de Odoo; en ésta
 		# está desactivado, así que se lo despierta para el test. Todo vive dentro de la
 		# transacción y se deshace al terminar.

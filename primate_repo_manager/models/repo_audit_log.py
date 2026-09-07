@@ -297,6 +297,58 @@ class RepoAuditLog(models.Model):
 	# Inmutabilidad
 	# ------------------------------------------------------------------
 
+	# ------------------------------------------------------------------
+	# B4.3 · la cara de «Fuera de la app», como la dibujó el diseño
+	# ------------------------------------------------------------------
+
+	external_note = fields.Char(
+		string="Cómo se supo", compute="_compute_external",
+		help="Quién detectó el cambio, y la advertencia de que la app no sabe quién lo "
+			 "hizo. Sale del modelo y no del componente: es una afirmación sobre lo que "
+			 "el módulo puede y no puede saber, no una decoración de pantalla.")
+	external_audit_url = fields.Char(
+		string="Audit log de GitHub", compute="_compute_external")
+
+	@api.depends("event_type", "payload_json", "backend_id")
+	def _compute_external(self):
+		"""La frase y el enlace de las entradas de cambio externo.
+
+		LA FRASE DICE LO QUE NO SABEMOS, y es el punto entero de esta entrada. El módulo
+		detecta QUE algo cambió comparando; no tiene forma de saber QUIÉN lo hizo, porque
+		el cambio no pasó por acá. Callarlo dejaría que alguien lea la entrada como si el
+		módulo hubiera visto al autor, y a partir de ahí busque un nombre que no existe.
+
+		Quién lo detectó SÍ se dice, y no siempre es una auditoría: con los webhooks de F4
+		lo va a detectar un evento de GitHub. Por eso sale del payload y no se supone.
+		"""
+		for entrada in self:
+			entrada.external_note = False
+			entrada.external_audit_url = False
+			if entrada.entry_class != "externo":
+				continue
+			detector = (entrada._payload() or {}).get("detectado_por")
+			entrada.external_note = (
+				_("Lo detectó %(quien)s; la app no sabe quién lo hizo.")
+				% {"quien": detector} if detector
+				else _("La app no sabe quién lo hizo: el cambio no pasó por acá."))
+			entrada.external_audit_url = entrada._url_de_audit_log()
+
+	def _url_de_audit_log(self):
+		"""Dónde mirar quién fue, que es en GitHub y no acá.
+
+		Son dos lugares distintos y no uno: una organización tiene audit log propio; una
+		CUENTA DE USUARIO no —lo que hay es el registro de seguridad personal, que sólo ve
+		su dueño—. Mandar a todo el mundo al de organización daría un 404 a quien opera
+		sobre la cuenta `primateuy`, que es donde viven los repositorios hoy.
+		"""
+		self.ensure_one()
+		login = self.backend_id.owner_login
+		if not login:
+			return False
+		if self.backend_id.owner_type == "organization":
+			return "https://github.com/organizations/%s/settings/audit-log" % login
+		return "https://github.com/settings/security-log"
+
 	@api.depends("event_type")
 	def _compute_entry_class(self):
 		for entrada in self:
@@ -633,6 +685,10 @@ class RepoAuditLogDrift(models.Model):
 
 	# Los tipos de operación cuyo payload es una definición de ruleset completa.
 	ESCRITURAS_DE_RULESET = ("ruleset_create", "ruleset_update")
+	# Y el que la DA DE BAJA. Es parte del recorrido aunque su manejador todavía no
+	# exista: lo que decide si un ruleset es referencia es LO ÚLTIMO que el módulo le
+	# hizo, y si lo último fue borrarlo, dejó de serlo.
+	BAJAS_DE_RULESET = ("ruleset_delete",)
 
 	@api.model
 	def _ultimas_escrituras_de_ruleset(self, repo):
@@ -647,16 +703,36 @@ class RepoAuditLogDrift(models.Model):
 			("repository_id", "=", repo.id),
 			("event_type", "=", "write_applied"),
 		], order="id desc")
-		ultimas = {}
+		# LO ÚLTIMO QUE SE LE HIZO A CADA UNO, y no la última vez que se le escribió.
+		#
+		# La diferencia la destapó el ensayo de B4.4: un ruleset que el módulo aplicó y
+		# después DIO DE BAJA seguía siendo referencia, así que la auditoría lo reportaba
+		# como «lo aplicamos y ya no está» para siempre. La bitácora es inmutable y decía
+		# la verdad —lo aplicamos—; lo que faltaba era leer también que después lo
+		# sacamos. Un desvío que nadie puede cerrar es ruido permanente, y el ruido
+		# permanente enseña a ignorar la lista entera.
+		#
+		# `ruleset_delete` todavía no tiene manejador, así que hoy esto no se dispara por
+		# el embudo. Está igual porque la regla no depende del manejador: la referencia es
+		# lo último que hicimos, sea lo que sea.
+		ultimas, vistos = {}, set()
 		for entrada in entradas:
 			datos = entrada._payload() or {}
 			destino = datos.get("target")
-			if (datos.get("kind") not in self.ESCRITURAS_DE_RULESET
-					or not destino or destino in ultimas):
+			kind = datos.get("kind")
+			if not destino or destino in vistos:
+				continue
+			if kind in self.BAJAS_DE_RULESET:
+				# Lo último que hicimos fue sacarlo: deja de ser referencia, y que no
+				# esté en GitHub es exactamente lo que corresponde.
+				vistos.add(destino)
+				continue
+			if kind not in self.ESCRITURAS_DE_RULESET:
 				continue
 			definicion = datos.get("payload")
 			if not isinstance(definicion, dict):
 				continue
+			vistos.add(destino)
 			ultimas[destino] = {"target": destino, "payload": definicion}
 		return list(ultimas.values())
 
@@ -678,7 +754,8 @@ class RepoAuditLogDrift(models.Model):
 		return ultima.event_type if ultima else False
 
 	@api.model
-	def _abrir_drift(self, repo, nombre, resumen, esperado, observado, donde=None):
+	def _abrir_drift(self, repo, nombre, resumen, esperado, observado, donde=None,
+					 detectado_por=None):
 		"""Anota el desvío SÓLO si no estaba ya anotado.
 
 		Una entrada por corrida convertiría la bitácora en ruido —la misma línea repetida
@@ -691,6 +768,7 @@ class RepoAuditLogDrift(models.Model):
 			"drift_detected", resumen,
 			backend=repo.backend_id, repository=repo,
 			payload={"ruleset": nombre, "difiere_en": donde,
+					 "detectado_por": detectado_por,
 					 "esperado": esperado, "observado": observado},
 			previous_state=esperado)
 

@@ -106,6 +106,38 @@ class TestDriftExterno(TransactionCase):
 			ultimas[0]["payload"]["rules"][0]["parameters"]
 			["required_approving_review_count"], 2)
 
+	def test_un_ruleset_DADO_DE_BAJA_deja_de_ser_referencia(self):
+		"""Lo destapó el ensayo de B4.4 contra el sandbox.
+
+		Un ruleset que el módulo aplicó y DESPUÉS dio de baja seguía siendo referencia,
+		así que la auditoría lo reportaba como «lo aplicamos y ya no está» en cada
+		corrida, para siempre. La bitácora decía la verdad —lo aplicamos—; lo que faltaba
+		era leer también que después lo sacamos. Un desvío que nadie puede cerrar es
+		ruido permanente, y el ruido permanente enseña a ignorar la lista entera.
+		"""
+		Log = self.env["repo.audit.log"]
+		self.assertTrue(Log._ultimas_escrituras_de_ruleset(self.repo))
+		Log.registrar(
+			"write_applied", "Se dio de baja el ruleset",
+			backend=self.backend, repository=self.repo,
+			payload={"kind": "ruleset_delete",
+					 "target": "primate/cliente-estandar/base"})
+		self.assertFalse(
+			Log._ultimas_escrituras_de_ruleset(self.repo),
+			"tras darlo de baja no puede seguir siendo referencia de nada")
+
+	def test_darlo_de_baja_y_volver_a_aplicarlo_lo_vuelve_referencia(self):
+		"""Lo último que se hizo manda, en los dos sentidos."""
+		Log = self.env["repo.audit.log"]
+		Log.registrar("write_applied", "baja", backend=self.backend, repository=self.repo,
+					  payload={"kind": "ruleset_delete",
+							   "target": "primate/cliente-estandar/base"})
+		Log.registrar("write_applied", "alta", backend=self.backend, repository=self.repo,
+					  payload={"kind": "ruleset_create",
+							   "target": "primate/cliente-estandar/base",
+							   "payload": _pedido(2)})
+		self.assertTrue(Log._ultimas_escrituras_de_ruleset(self.repo))
+
 	# ------------------------------------------------------------------
 	# Los dos resultados de comparar
 	# ------------------------------------------------------------------
@@ -131,6 +163,20 @@ class TestDriftExterno(TransactionCase):
 		hallazgos = self._evaluar()
 		self.assertEqual(len(hallazgos), 1)
 		self.assertIn("required_approving_review_count", hallazgos.summary)
+
+	def test_un_ruleset_RECREADO_con_el_mismo_nombre_no_se_reporta_como_ausente(self):
+		"""Lo encontró el ensayo de B4.4 corriendo dos veces contra GitHub.
+
+		Borrado y vuelto a crear, GitHub le da un id nuevo: el espejo queda con dos filas
+		homónimas y la búsqueda por nombre tocaba la muerta. Resultado: alarma CRÍTICA
+		—«el ruleset que aplicamos ya no está»— sobre uno que estaba ahí. Es la peor
+		forma del falso positivo, la que grita más fuerte.
+		"""
+		vieja = self._espejo(dict(_definicion(2), id=111))
+		nueva = self._espejo(dict(_definicion(2), id=222))
+		self.assertFalse(vieja.present, "la homónima vieja tiene que quedar dada de baja")
+		self.assertTrue(nueva.present)
+		self.assertFalse(self._evaluar())
 
 	def test_si_el_ruleset_desaparecio_es_lo_mas_grave(self):
 		self._espejo(_definicion(2), present=False)
@@ -466,3 +512,58 @@ class TestPoliticaSinReaplicar(TransactionCase):
 		hallazgo = self._hallazgos()
 		self.assertFalse(hallazgo.can_be_planned)
 		self.assertTrue(hallazgo.why_not_planned)
+
+
+class TestCaraDeFueraDeLaApp(TransactionCase):
+	"""B4.3 · lo que la entrada de cambio externo dice, y lo que admite no saber."""
+
+	def setUp(self):
+		super().setUp()
+		self.backend = self.env["repo.backend"].create({
+			"name": "Cara %s" % uuid.uuid4().hex[:6],
+			"owner_login": "org-%s" % uuid.uuid4().hex[:8],
+			"owner_type": "organization", "app_id": "1", "installation_id": "2",
+		})
+		self.repo = self.env["repo.repository"].create({
+			"backend_id": self.backend.id, "github_id": uuid.uuid4().hex[:8],
+			"name": "sbx", "full_name": "org/sbx",
+		})
+
+	def _entrada(self, detectado_por="la auditoría #58"):
+		return self.env["repo.audit.log"]._abrir_drift(
+			self.repo, "primate/x/base", "cambió", {"a": 1}, {"a": 2},
+			donde="rules", detectado_por=detectado_por)
+
+	def test_la_entrada_admite_que_NO_sabe_quien_fue(self):
+		"""El módulo detecta QUE cambió comparando; quién lo hizo no pasó por acá.
+
+		Callarlo dejaría que alguien lea la entrada como si el módulo hubiera visto al
+		autor, y busque un nombre que no existe.
+		"""
+		self.assertIn("no sabe quién", self._entrada().external_note)
+
+	def test_dice_quien_lo_detecto_y_no_lo_supone(self):
+		self.assertIn("auditoría #58", self._entrada().external_note)
+
+	def test_sin_detector_la_frase_sigue_siendo_honesta(self):
+		"""Con los webhooks de F4 no va a haber corrida. La frase no puede inventar una."""
+		entrada = self._entrada(detectado_por=None)
+		self.assertIn("no sabe quién", entrada.external_note)
+		self.assertNotIn("auditoría", entrada.external_note)
+
+	def test_manda_al_audit_log_de_la_organizacion(self):
+		self.assertIn("/organizations/", self._entrada().external_audit_url)
+
+	def test_en_una_cuenta_de_usuario_manda_al_registro_personal(self):
+		"""Una cuenta de usuario NO tiene audit log de organización: mandar a todos al
+		mismo lugar daría un 404 justo donde viven los repositorios hoy."""
+		self.backend.owner_type = "user"
+		url = self._entrada().external_audit_url
+		self.assertIn("security-log", url)
+		self.assertNotIn("/organizations/", url)
+
+	def test_las_entradas_que_NO_son_externas_no_llevan_la_frase(self):
+		entrada = self.env["repo.audit.log"].registrar(
+			"sync", "una lectura", backend=self.backend, repository=self.repo)
+		self.assertFalse(entrada.external_note)
+		self.assertFalse(entrada.external_audit_url)

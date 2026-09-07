@@ -54,6 +54,19 @@
 											  t-esc="record.data.result_label"/>
 									</div>
 
+									<!-- «Fuera de la app»: la entrada dice lo que el
+										 módulo NO puede saber, y manda a donde sí se
+										 puede averiguar. -->
+									<div t-if="record.data.external_note"
+										 class="rm-bitacora-externo">
+										<span t-esc="record.data.external_note"/>
+										<a t-if="record.data.external_audit_url"
+										   class="rm-bitacora-enlace"
+										   t-att-href="record.data.external_audit_url"
+										   target="_blank" rel="noopener">
+											Ver en el audit log de GitHub</a>
+									</div>
+
 									<div t-if="abierta(record)"
 										 t-attf-class="rm-antes-despues{{esIrreversible(record) ? ' rm-ad-destructiva' : ''}}">
 										<div class="rm-ad-antes">

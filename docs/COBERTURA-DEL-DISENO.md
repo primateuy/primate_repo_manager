@@ -141,7 +141,7 @@ final cuenta cuáles eran y dónde fueron.
 | «Revertir esta operación» | ✅ | pasa por el mismo embudo |
 | Filtros nativos de Odoo | ✅ | el panel de control queda intacto |
 | «Exportar firmado (CSV + hash)» | 🔒 | llega con **E3** |
-| Entradas de cambio detectado fuera de la app | 🔒 | el tipo existe; la detección llega con **B4** |
+| Entradas de cambio detectado fuera de la app | ✅ | B4: la detección, la frase que admite no saber quién fue, y el enlace al audit log |
 
 ## 3b · Repositorios
 

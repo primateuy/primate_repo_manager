@@ -226,8 +226,8 @@ pendiente. Mostrarlos juntos convierte los dos en ruido.
 |---|---|---|
 | **B4.1** | Sentido 1: lo aplicado contra lo observado. Hallazgo planificable + bitácora sólo en el cambio de estado. Y el modelo de métricas, escribiendo desde ya | **hecho** |
 | **B4.2** | Sentido 2: la política se movió y no se reaplicó, leyendo `policy_changed` | **hecho** |
-| **B4.3** | La bitácora dibuja las entradas «Fuera de la app»; la cobertura pasa de 🔒 a ✅ | |
-| **B4.4** | Mutación y ensayo contra el sandbox, con las dos caras: el cambio externo apareciendo y resolviéndose por reversión externa **y** por reaplicación desde el plan | |
+| **B4.3** | La bitácora dibuja las entradas «Fuera de la app»; la cobertura pasa de 🔒 a ✅ | **hecho** |
+| **B4.4** | Mutación y ensayo contra el sandbox, con las dos caras | **hecho** — ver [`ENSAYO-B4.4.md`](ENSAYO-B4.4.md) |
 
 **Los cinco criterios, decididos:**
 

@@ -129,9 +129,15 @@ class RepoAuditEngine(models.AbstractModel):
 		for aplicado in self.env["repo.audit.log"]._ultimas_escrituras_de_ruleset(repo):
 			nombre = aplicado["target"]
 			esperado = aplicado["payload"]
+			# LA FILA VIVA MANDA. Un ruleset borrado y recreado con el mismo nombre deja
+			# una fila vieja dada de baja; buscar «la primera con ese nombre» podía tocar
+			# la muerta y gritar «ya no está» sobre uno que estaba. Lo encontró el ensayo.
 			fila = Espejo.search([
 				("repository_id", "=", repo.id), ("name", "=", nombre),
-			], limit=1)
+				("present", "=", True),
+			], limit=1) or Espejo.search([
+				("repository_id", "=", repo.id), ("name", "=", nombre),
+			], order="last_seen_at desc", limit=1)
 
 			if not fila or not fila.present:
 				self._drift(run, repo, nombre, esperado, _(
@@ -165,7 +171,10 @@ class RepoAuditEngine(models.AbstractModel):
 			# este módulo aplicó y verificó. Ver la nota en PLANIFICABLES.
 			remediation_payload=esperado)
 		self.env["repo.audit.log"]._abrir_drift(
-			repo, nombre, resumen, esperado, observado, donde)
+			repo, nombre, resumen, esperado, observado, donde,
+			# Quién lo detectó viaja como DATO y no se supone: hoy es una corrida, y con
+			# los webhooks de F4 va a ser un evento de GitHub sin corrida ninguna.
+			detectado_por=(_("la auditoría #%s") % run.id) if run else None)
 
 	@api.model
 	def _evaluate_permissions(self, run, repo, plantilla):

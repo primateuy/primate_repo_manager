@@ -156,3 +156,17 @@
 		}
 	}
 }
+
+	/* B4.3 · la entrada de cambio externo dice lo que no sabemos, y en tono bajo: es una
+	   aclaración honesta, no una alarma. La alarma ya la da el rombo de su clase. */
+	.rm-bitacora-externo {
+		margin-top: var(--rm-space-2);
+		font-size: 12px;
+		color: var(--rm-ink-2);
+	}
+
+	.rm-bitacora-enlace {
+		margin-left: var(--rm-space-2);
+		color: var(--rm-accent);
+		text-decoration: underline;
+	}

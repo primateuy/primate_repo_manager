@@ -70,6 +70,19 @@ registry.category("web_tour.tours").add("prm_bitacora", {
 			content: "el «antes» muestra su contenido, o DICE que no lo tiene",
 		},
 		{
+			// B4.3 · la entrada de cambio externo, con la cara que le dio el diseño.
+			content: "la entrada «fuera de la app» ADMITE que no sabe quién lo hizo",
+			trigger: ".rm-bitacora-externo:contains(no sabe quién)",
+		},
+		{
+			content: "y dice quién lo detectó, sin suponerlo",
+			trigger: ".rm-bitacora-externo:contains(auditoría #58)",
+		},
+		{
+			content: "y manda a donde sí se puede averiguar: el audit log de GitHub",
+			trigger: ".rm-bitacora-enlace[href*='audit-log']",
+		},
+		{
 			trigger: ".rm-apagado",
 			content: "lo que todavía no llegó se ve y no se toca",
 			run() {

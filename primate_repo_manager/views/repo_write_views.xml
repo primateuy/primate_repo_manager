@@ -199,6 +199,11 @@
 				<field name="operation_id" column_invisible="1"/>
 				<field name="previous_state_json" column_invisible="1"/>
 				<field name="payload_json" column_invisible="1"/>
+				<!-- B4.3 · lo que el diseño pide en las entradas «Fuera de la app»:
+					 quién lo detectó, la advertencia de que la app NO sabe quién lo hizo,
+					 y a dónde ir a averiguarlo. -->
+				<field name="external_note" column_invisible="1"/>
+				<field name="external_audit_url" column_invisible="1"/>
 				<field name="event_type" optional="show"/>
 				<field name="summary"/>
 				<field name="repository_name" class="rm-mono"/>
