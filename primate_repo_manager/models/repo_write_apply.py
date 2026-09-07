@@ -80,6 +80,7 @@ sobreviva al rollback de la transacción que se cae.
 REGLA PRÁCTICA: ¿el objeto que escribo ya existía y lo estoy modificando, o lo estoy
 haciendo nacer? Si nace, lleva el paso 2b.
 """
+import base64
 import json
 import logging
 
@@ -87,6 +88,7 @@ from odoo import _, api, fields, models
 from odoo.exceptions import UserError
 
 from .github_client import GithubError, GithubNotFound, GithubPlanLimit
+from .repo_codeowners import MARCA as MARCA_CODEOWNERS
 from .repo_ruleset import RULESET_PREFIX
 
 _logger = logging.getLogger(__name__)
@@ -936,6 +938,15 @@ class RepoWriteOperationApply(models.Model):
 			},
 			# B1.3 · IDEMPOTENTE POR DESTINO: el ruleset ya existe y tiene id propio, así
 			# que van los cuatro pasos y NO el 2b. Ver la taxonomía arriba.
+			# B3.2 · IDEMPOTENTE POR DESTINO: el destino es una ruta, y escribir dos
+			# veces deja el mismo archivo. Revertir es volver a poner el contenido
+			# anterior — o borrar el archivo, si antes no había ninguno.
+			"codeowners_write": {
+				"leer": "_leer_codeowners",
+				"ejecutar": "_escribir_codeowners",
+				"verificar": "_verificar_codeowners",
+				"revertir": "_revertir_codeowners",
+			},
 			"ruleset_update": {
 				"leer": "_leer_ruleset_propio",
 				"ejecutar": "_actualizar_ruleset",
@@ -1127,6 +1138,172 @@ class RepoWriteOperationApply(models.Model):
 			# cambia nada y que igual queda en la auditoría de la organización.
 			return True
 		cliente.put("/repos/%s/rulesets/%s" % (full, identidad), anterior)
+		return True
+
+	# --- CODEOWNERS: el archivo que NO admite coexistencia ---------------
+	#
+	# CUATRO ESTADOS, Y CADA UNO TIENE UNA RESPUESTA DISTINTA. Con los rulesets alcanzaba
+	# con «nuestro / ajeno» porque en un repositorio conviven muchos; acá el archivo es UNO
+	# y el que está tapa a cualquier otro.
+	#
+	#   ausente   → no hay ninguno: se escribe.
+	#   ajeno     → existe y NO lleva nuestra marca: NO SE PISA JAMÁS. El plan se niega.
+	#   editado   → lleva nuestra marca y el contenido NO es el que la bitácora dice que
+	#               escribimos: es DRIFT DE ARCHIVO. Se detecta, se muestra la diferencia,
+	#               y sobrescribir exige que quien aprueba vea qué ediciones manuales se
+	#               pierden. Pisar en silencio la línea que alguien agregó a mano es el
+	#               mismo daño que pisar el archivo entero de otro, servido en cuotas.
+	#   nuestro   → lleva la marca y coincide con lo aplicado: no se escribe nada.
+	#
+	# Y SE MIRAN LAS TRES UBICACIONES. GitHub busca CODEOWNERS en `.github/`, en la raíz y
+	# en `docs/`, y usa **la primera que encuentra**. Escribir el nuestro en la raíz
+	# mientras hay uno ajeno en `.github/` no falla: aplica, verifica bien, y no gobierna
+	# nada — el de `.github/` sigue mandando. Es la misma familia del owner que GitHub
+	# ignora: no falla al escribirse, falla en silencio después.
+
+	UBICACIONES_CODEOWNERS = (".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS")
+
+	def _leer_codeowners(self, cliente):
+		"""Estado previo: qué CODEOWNERS hay hoy, dónde, y de quién es."""
+		full = self.repository_id.full_name
+		rama = self._rama_de_destino()
+		encontrados = []
+		for ruta in self.UBICACIONES_CODEOWNERS:
+			datos = cliente.get(
+				"/repos/%s/contents/%s" % (full, ruta),
+				params={"ref": rama}, tolerar_404=True)
+			if not datos:
+				continue
+			contenido = base64.b64decode(datos.get("content") or "").decode(
+				"utf-8", "replace")
+			encontrados.append({
+				"ruta": ruta, "sha": datos.get("sha"), "contenido": contenido,
+				"es_nuestro": contenido.startswith(MARCA_CODEOWNERS),
+			})
+
+		# El que manda es el PRIMERO de la lista de precedencia de GitHub.
+		vigente = encontrados[0] if encontrados else None
+		return {
+			"rama": rama,
+			"vigente": vigente,
+			"todos": encontrados,
+			"estado": self._estado_de_codeowners(vigente),
+		}
+
+	def _estado_de_codeowners(self, vigente):
+		if not vigente:
+			return "ausente"
+		if not vigente["es_nuestro"]:
+			return "ajeno"
+		if vigente["contenido"] != (self._ultimo_codeowners_aplicado() or
+									vigente["contenido"]):
+			return "editado"
+		return "nuestro"
+
+	def _ultimo_codeowners_aplicado(self):
+		"""Lo que la bitácora dice que escribimos la última vez. La misma referencia
+		inmutable que usa el drift de rulesets: si viviera en el plan, quien edita el
+		plan movería la vara del desvío."""
+		self.ensure_one()
+		entradas = self.env["repo.audit.log"].search([
+			("repository_id", "=", self.repository_id.id),
+			("event_type", "=", "write_applied"),
+		], order="id desc")
+		for entrada in entradas:
+			datos = entrada._payload() or {}
+			if datos.get("kind") == "codeowners_write":
+				return (datos.get("payload") or {}).get("contenido")
+		return None
+
+	def _escribir_codeowners(self, cliente):
+		"""Commitea el archivo. Se niega sobre uno ajeno y sobre uno editado sin ver."""
+		previo = self._leer_codeowners(cliente)
+		deseado = (_cargar(self.payload_json) or {}).get("contenido")
+		if not deseado:
+			raise UserError(_("La operación no trae contenido para el CODEOWNERS."))
+
+		if previo["estado"] == "ajeno":
+			raise UserError(_(
+				"«%(repo)s» ya tiene un CODEOWNERS en «%(ruta)s» que no puso este "
+				"módulo, y el archivo es uno solo: escribirlo reemplazaría la lista de "
+				"revisores de otro. No se pisa."
+			) % {"repo": self.repository_id.full_name,
+				 "ruta": previo["vigente"]["ruta"]})
+
+		if previo["estado"] == "editado" and not self._confirmo_perder_ediciones():
+			raise UserError(_(
+				"El CODEOWNERS de «%s» lo escribimos nosotros pero fue editado a mano "
+				"después. Sobrescribirlo pierde esas ediciones, y quien aprueba tiene "
+				"que verlas antes: el plan trae la diferencia para eso."
+			) % self.repository_id.full_name)
+
+		if previo["estado"] == "nuestro" and previo["vigente"]["contenido"] == deseado:
+			return SIN_CAMBIOS
+
+		ruta = previo["vigente"]["ruta"] if previo["vigente"] else \
+			self.UBICACIONES_CODEOWNERS[0]
+		cuerpo = {
+			"message": "[IMP] CODEOWNERS generado por Primate Repo Manager",
+			"content": base64.b64encode(deseado.encode()).decode(),
+			"branch": previo["rama"],
+		}
+		if previo["vigente"]:
+			cuerpo["sha"] = previo["vigente"]["sha"]
+		return cliente.put(
+			"/repos/%s/contents/%s" % (self.repository_id.full_name, ruta), cuerpo)
+
+	def _confirmo_perder_ediciones(self):
+		"""¿Quien aprobó vio qué ediciones manuales se pierden?
+
+		LA CONFIRMACIÓN VIAJA EN EL PAYLOAD, Y ESO NO ES UN DETALLE DE IMPLEMENTACIÓN.
+		El payload entra en la huella que congela el plan al aprobarlo, así que «sí,
+		descarto estas ediciones» queda dentro de lo que se aprobó, con la diferencia al
+		lado. Una bandera fuera de la huella se podría prender después de aprobar, y
+		aprobar habría sido firmar un cheque en blanco sobre el trabajo de otro.
+
+		Y SE EXIGEN LAS DOS COSAS: la decisión y la diferencia que la fundamenta. Sin el
+		texto de lo que se pierde, la confirmación se podría marcar sin haber mirado
+		nada — que es exactamente lo que esta guarda existe para impedir.
+		"""
+		self.ensure_one()
+		payload = _cargar(self.payload_json) or {}
+		return bool(payload.get("perder_ediciones")
+					and payload.get("ediciones_perdidas"))
+
+	def _verificar_codeowners(self, cliente):
+		"""Relee el archivo y compara BYTE A BYTE. Lo que devolvió el PUT no cuenta."""
+		deseado = (_cargar(self.payload_json) or {}).get("contenido")
+		actual = self._leer_codeowners(cliente)
+		if not actual["vigente"]:
+			return False, _("el archivo no aparece al releer")
+		if actual["vigente"]["contenido"] != deseado:
+			return False, _("el contenido releído no es byte a byte el que se escribió")
+		return True, {"ruta": actual["vigente"]["ruta"]}
+
+	def _revertir_codeowners(self, cliente, previo):
+		"""Devuelve el archivo anterior. Si antes no había, borra el que creamos."""
+		full = self.repository_id.full_name
+		actual = self._leer_codeowners(cliente)
+		if not actual["vigente"]:
+			return True
+		ruta = actual["vigente"]["ruta"]
+		anterior = (previo or {}).get("vigente")
+		if not anterior:
+			# No había ninguno: lo creamos nosotros y se saca. Es la única baja de
+			# contenido de esta operación, y sólo ocurre sobre un archivo que no existía
+			# antes de que llegáramos.
+			cliente.delete("/repos/%s/contents/%s" % (full, ruta), {
+				"message": "[REM] se revierte el CODEOWNERS que este módulo creó",
+				"sha": actual["vigente"]["sha"],
+				"branch": (previo or {}).get("rama"),
+			})
+			return True
+		cliente.put("/repos/%s/contents/%s" % (full, anterior["ruta"]), {
+			"message": "[REV] se restaura el CODEOWNERS anterior",
+			"content": base64.b64encode(anterior["contenido"].encode()).decode(),
+			"sha": actual["vigente"]["sha"],
+			"branch": (previo or {}).get("rama"),
+		})
 		return True
 
 	# --- permisos directos de una persona -------------------------------

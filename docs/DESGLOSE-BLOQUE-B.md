@@ -241,7 +241,30 @@ las reglas de la plantilla, y lo escribe por el mismo embudo.
 | paso | qué deja hecho | estado |
 |---|---|---|
 | **B3.1** | El modelo de owners, el generador con su procedencia, y la validación contra el espejo | **hecho** |
-| **B3.2** | La operación de escritura, con la guarda del archivo ajeno y la de D2.1 | |
+| **B3.2** | La operación de escritura, con sus cuatro estados de archivo | **hecho** |
+#### Los CUATRO estados del archivo, definidos antes de escribir
+
+Con los rulesets alcanzaba con «nuestro / ajeno» porque en un repositorio conviven muchos.
+El CODEOWNERS es **uno solo**, y el que está tapa a cualquier otro:
+
+| estado | qué es | respuesta |
+|---|---|---|
+| **ausente** | no hay ninguno | se escribe |
+| **ajeno** | existe y NO lleva nuestra marca | **no se pisa jamás** |
+| **editado** | lleva la marca, y el contenido difiere de lo que la bitácora dice que escribimos | **drift de archivo**: se muestra la diferencia y sobrescribir exige confirmarla |
+| **nuestro** | lleva la marca y coincide | no se escribe nada |
+
+**Pisar en silencio la línea que alguien agregó a mano es el mismo daño que pisar el
+archivo entero de otro, servido en cuotas.** Por eso la confirmación viaja **dentro del
+payload** —y por lo tanto dentro de la huella que congela el plan—: fuera de ella se podría
+prender después de aprobar, y aprobar habría sido firmar un cheque en blanco sobre el
+trabajo de otro. Se exigen las dos cosas, la decisión **y** la diferencia que la fundamenta.
+
+**Y se miran las TRES ubicaciones.** GitHub busca CODEOWNERS en `.github/`, en la raíz y en
+`docs/`, y usa la primera que encuentra. Escribir el nuestro en la raíz mientras hay uno
+ajeno en `.github/` no falla: aplica, verifica bien y **no gobierna nada**. Es la misma
+familia del owner que GitHub ignora — no falla al escribirse, falla en silencio después.
+
 | **B3.3** | La pantalla, desde el mockup | |
 | **B3.4** | Ensayo contra el sandbox | |
 

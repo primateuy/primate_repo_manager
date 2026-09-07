@@ -62,6 +62,10 @@ OPERATION_KINDS = [
 	# verificada (D2.0). El peor caso permitido es duplicación benigna, jamás borrado sin
 	# copia.
 	("module_delete", "Retirar un módulo de un repositorio"),
+	# B3 · el archivo de revisores. Commitea contenido como las dos de arriba, pero su
+	# destino es UNO SOLO —el archivo— y no admite coexistencia: por eso su guarda del
+	# «ajeno» carga más peso que la del ruleset ajeno. Ver repo_write_apply.
+	("codeowners_write", "Escribir el archivo CODEOWNERS"),
 ]
 
 
@@ -330,14 +334,20 @@ class RepoWritePlan(models.Model):
 		mismo módulo aprobó.
 		"""
 		self.ensure_one()
-		copias = self.operation_ids.filtered(lambda o: o.kind == "module_copy")
-		if not copias:
+		# LA GUARDA ES DE LA FAMILIA, NO DE UN TIPO. Se escribió para `module_copy`, que
+		# fue la primera operación que commiteaba contenido; `codeowners_write` commitea
+		# igual y choca contra la misma rama protegida. Preguntarle a la operación cuál es
+		# su rama de destino —en vez de saberlo acá— hace que el tipo que venga después
+		# quede cubierto por existir, y no por acordarse de agregarlo a una lista.
+		escrituras = self.operation_ids.filtered(lambda o: o._rama_de_destino())
+		if not escrituras:
 			return True
 		cliente = self.backend_id.client()
-		for op in copias:
-			datos = op._datos_modulo()
+		for op in escrituras:
+			destino = op._rama_de_destino()
+			datos = {"destino_rama": destino}
 			rama = op.repository_id.branch_ids.filtered(
-				lambda b, r=datos["destino_rama"]: b.name == r)[:1]
+				lambda b, r=destino: b.name == r)[:1]
 			if not rama:
 				continue
 			if not rama.protected:
@@ -847,6 +857,32 @@ class RepoWriteOperation(models.Model):
 		for op in candidatas:
 			op.action_confirmar()
 		return len(candidatas)
+
+	def _rama_de_destino(self):
+		"""La rama donde esta operación va a commitear, o False si no commitea.
+
+		Existe para que la guarda del destino escribible cubra a la familia entera sin
+		una lista de tipos que alguien tenga que mantener al día. Un tipo nuevo que
+		commitee contenido queda cubierto por CONTESTAR acá, no por acordarse de sumarlo
+		a una lista en otro archivo.
+		"""
+		self.ensure_one()
+		# Se lee el payload CRUDO y no `_datos_modulo()`, que valida las claves de la
+		# copia y levanta sobre el borrado —cuyo payload usa otra—. Preguntar por la rama
+		# no puede depender de que el payload sea de un tipo en particular.
+		try:
+			datos = json.loads(self.payload_json or "{}")
+		except (TypeError, ValueError):
+			datos = {}
+		if self.kind == "module_copy":
+			return datos.get("destino_rama")
+		if self.kind == "module_delete":
+			# El borrado commitea en la rama del repositorio DEL QUE SE SACA, y también
+			# choca contra una rama protegida. No estaba cubierto: lo está desde acá.
+			return datos.get("rama")
+		if self.kind == "codeowners_write":
+			return self.target or self.repository_id.default_branch
+		return False
 
 	def _describir(self, datos):
 		"""La frase de esta operación. Un método por si un tipo nuevo necesita más."""
