@@ -74,6 +74,13 @@ FINDING_TYPES = [
 	# repositorios quedaron atrás—. Mostrarlos juntos convierte los dos en ruido.
 	("policy_drift_external", "Ruleset cambiado fuera de la aplicación"),
 	("policy_not_reapplied", "Política cambiada y no reaplicada"),
+	# B6 · seguridad. Tres tipos y no uno, porque son tres cosas distintas: un secreto
+	# filtrado es un incidente con nombre propio, las vulnerabilidades de dependencias
+	# son UN trabajo por repositorio, y una función apagada no es ninguna de las dos —
+	# es una casilla sin prender.
+	("secret_leaked", "Secreto filtrado"),
+	("dependency_vulnerabilities", "Vulnerabilidades de dependencias"),
+	("security_feature_disabled", "Función de seguridad apagada en el repositorio"),
 ]
 
 BASE_SEVERITY = {
@@ -101,6 +108,12 @@ BASE_SEVERITY = {
 	# afuera del embudo y el otro es trabajo nuestro que falta hacer.
 	"policy_drift_external": "high",
 	"policy_not_reapplied": "medium",
+	# CRÍTICO SIEMPRE, sin modulación: un secreto filtrado es riesgo hoy, y no hay
+	# contexto que lo baje. Los de dependencias se mapean de GitHub, que ya los
+	# clasificó con un análisis que no vamos a rehacer.
+	"secret_leaked": "critical",
+	"dependency_vulnerabilities": "medium",
+	"security_feature_disabled": "info",
 }
 
 # Acción de remediación que resolvería cada tipo. Se calcula en F1, se ejecuta en F2/F3.
@@ -123,6 +136,9 @@ REMEDIATION_ACTIONS = [
 	("no_action_owner", "No requiere acción: es la cuenta dueña"),
 	("reapply_ruleset", "Volver a aplicar el ruleset como estaba"),
 	("reapply_policy", "Volver a aplicar la política de la plantilla"),
+	("rotate_secret", "Rotar el secreto y cerrar la alerta en GitHub"),
+	("update_dependencies", "Actualizar las dependencias vulnerables"),
+	("enable_security_feature", "Encender la función en el repositorio"),
 ]
 
 REMEDIATION_BY_TYPE = {
@@ -150,6 +166,9 @@ REMEDIATION_BY_TYPE = {
 	"audit_log_chain_broken": "review_manually",
 	"policy_drift_external": "reapply_ruleset",
 	"policy_not_reapplied": "reapply_policy",
+	"secret_leaked": "rotate_secret",
+	"dependency_vulnerabilities": "update_dependencies",
+	"security_feature_disabled": "enable_security_feature",
 }
 
 # Las que quitan acceso o cambian algo que puede romper el trabajo de otro.
@@ -196,6 +215,17 @@ PLANIFICABLES = {
 # Por qué NO se puede planificar cada una de las otras. Se muestra en pantalla: un botón
 # ausente sin explicación se lee como un olvido del producto.
 POR_QUE_NO_PLANIFICABLE = {
+	"rotate_secret": (
+		"Rotar un secreto se hace donde ese secreto vive —el proveedor que lo emitió— y "
+		"cerrar la alerta se hace en GitHub. Ninguna de las dos cosas es una escritura "
+		"sobre el repositorio, así que el embudo no tiene nada que ofrecer acá."),
+	"update_dependencies": (
+		"Actualizar una dependencia es un cambio de código: va por una PR, no por una "
+		"escritura de configuración."),
+	"enable_security_feature": (
+		"Encender secret scanning o Dependabot es escribir configuración de seguridad "
+		"del repositorio, y B6 LEE. Habilitarlo desde acá pondría al módulo a cambiar "
+		"la postura de seguridad de una cuenta sin que eso haya pasado por ningún plan."),
 	"reapply_policy": (
 		"Reaplicar una plantilla no es volver a poner lo que había: es escribir la "
 		"política VIGENTE, traducida de nuevo, sobre todos los repositorios que gobierna. "

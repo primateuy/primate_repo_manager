@@ -194,3 +194,178 @@ class TestLecturaDeAlertas(TransactionCase):
 		estados = self._leer({"secret-scanning": Respuesta(200, [])})
 		self.assertTrue(estados["secret_scanning"].last_seen_at)
 		self.assertEqual(estados["secret_scanning"].origin, "sync")
+
+
+class TestHallazgosDeSeguridad(TransactionCase):
+	"""B6.2 · los dos tratamientos, el apagado, y el secreto que no viaja al hallazgo."""
+
+	def setUp(self):
+		super().setUp()
+		self.backend = self.env["repo.backend"].create({
+			"name": "Hallazgos %s" % uuid.uuid4().hex[:6],
+			"owner_login": "org-%s" % uuid.uuid4().hex[:8],
+			"owner_type": "organization", "app_id": "1", "installation_id": "2",
+		})
+		self.repo = self.env["repo.repository"].create({
+			"backend_id": self.backend.id, "github_id": uuid.uuid4().hex[:8],
+			"name": "sbx", "full_name": "org/sbx", "visibility": "public",
+		})
+		self.run = self.env["repo.audit.run"].create({
+			"name": "Corrida", "backend_id": self.backend.id, "state": "done"})
+
+	def _alerta(self, source, **datos):
+		base = {"number": datos.pop("number", 1), "state": datos.pop("state", "open")}
+		base.update(datos)
+		return self.env["repo.security.alert"].upsert(self.repo, source, base)
+
+	def _hallazgos(self, tipo):
+		self.env["repo.audit.engine"].evaluate(self.run)
+		return self.run.finding_ids.filtered(lambda h: h.finding_type == tipo)
+
+	# ------------------------------------------------------------------
+	# Secretos: uno por alerta, crítico siempre
+	# ------------------------------------------------------------------
+
+	def test_cada_secreto_es_un_hallazgo_propio(self):
+		"""Un secreto filtrado es un incidente con nombre propio: no se agrupa."""
+		self.env["repo.security.scan"].upsert(self.repo, "secret_scanning", "con_datos")
+		self._alerta("secret_scanning", number=1, secret_type="aws_key", html_url="u1")
+		self._alerta("secret_scanning", number=2, secret_type="github_pat", html_url="u2")
+		self.assertEqual(len(self._hallazgos("secret_leaked")), 2)
+
+	def test_la_seguridad_se_evalua_aunque_el_repo_NO_este_clasificado(self):
+		"""Esconderla detrás de la clasificación callaría lo más grave que el módulo sabe
+		decir, justo sobre los repositorios que nadie miró todavía."""
+		self.assertFalse(self.repo.classification)
+		self.env["repo.security.scan"].upsert(self.repo, "secret_scanning", "con_datos")
+		self._alerta("secret_scanning", secret_type="aws_key", html_url="u")
+		self.assertTrue(self._hallazgos("secret_leaked"))
+
+	def test_un_secreto_es_CRITICO_siempre(self):
+		self.env["repo.security.scan"].upsert(self.repo, "secret_scanning", "con_datos")
+		self._alerta("secret_scanning", secret_type="aws_key", html_url="u")
+		self.assertEqual(self._hallazgos("secret_leaked").severity, "critical")
+
+	def test_el_hallazgo_NO_contiene_el_secreto(self):
+		"""Ni el valor ni el fragmento: tipo, dónde y enlace. El módulo no replica la
+		filtración que reporta."""
+		secreto = "ghp_ESTONOPUEDEVIAJAR0987654321"
+		self.env["repo.security.scan"].upsert(self.repo, "secret_scanning", "con_datos")
+		self.env["repo.security.alert"].upsert(self.repo, "secret_scanning", {
+			"number": 9, "state": "open", "secret_type": "github_pat",
+			"secret": secreto, "fragment": secreto[:10],
+			"resolution_comment": "lo rotamos, era %s" % secreto,
+			"html_url": "https://github.com/org/sbx/security/secret-scanning/9"})
+		hallazgo = self._hallazgos("secret_leaked")
+		texto = " ".join(str(hallazgo[c] or "") for c in (
+			"summary", "detail", "observed_json", "expected_json",
+			"remediation_payload", "subject"))
+		self.assertNotIn(secreto, texto)
+		self.assertNotIn(secreto[:10], texto)
+		self.assertIn("secret-scanning/9", texto, "el enlace sí tiene que estar")
+
+	# ------------------------------------------------------------------
+	# EL CICLO DE VIDA SIGUE A LA ALERTA
+	# ------------------------------------------------------------------
+
+	def test_un_secreto_RESUELTO_alla_deja_de_gritar_aca(self):
+		"""Un secreto rotado y cerrado en GitHub no puede seguir siendo crítico acá: es
+		la fábrica de ruido permanente en el lugar más sensible."""
+		self.env["repo.security.scan"].upsert(self.repo, "secret_scanning", "con_datos")
+		self._alerta("secret_scanning", number=1, state="resolved",
+					 secret_type="aws_key", html_url="u")
+		self.assertFalse(self._hallazgos("secret_leaked"))
+
+	def test_un_secreto_DESCARTADO_alla_tampoco_grita(self):
+		self.env["repo.security.scan"].upsert(self.repo, "secret_scanning", "con_datos")
+		self._alerta("secret_scanning", number=1, state="dismissed",
+					 secret_type="aws_key", html_url="u")
+		self.assertFalse(self._hallazgos("secret_leaked"))
+
+	def test_el_desenlace_viaja_al_espejo_CODIFICADO(self):
+		"""`revoked` dice que se rotó. El comentario libre no viaja: puede tener el
+		secreto pegado, que es donde la gente lo pega."""
+		self.env["repo.security.alert"].upsert(self.repo, "secret_scanning", {
+			"number": 1, "state": "resolved", "resolution": "revoked",
+			"resolution_comment": "rotado, era ghp_SECRETO", "secret_type": "pat"})
+		fila = self.env["repo.security.alert"].search(
+			[("repository_id", "=", self.repo.id)])
+		self.assertEqual(fila.resolution, "revoked")
+		self.assertNotIn("resolution_comment", fila._fields)
+
+	# ------------------------------------------------------------------
+	# Dependencias: uno por repositorio
+	# ------------------------------------------------------------------
+
+	def test_cuarenta_vulnerabilidades_son_UN_hallazgo(self):
+		"""Son un trabajo —actualizar—, no cuarenta. Cuarenta filas taparían el informe."""
+		self.env["repo.security.scan"].upsert(self.repo, "dependabot", "con_datos")
+		for n in range(40):
+			self._alerta("dependabot", number=n,
+						 security_vulnerability={"severity": "medium",
+												 "package": {"name": "p%s" % n}})
+		hallazgos = self._hallazgos("dependency_vulnerabilities")
+		self.assertEqual(len(hallazgos), 1)
+		self.assertIn("40", hallazgos.summary)
+
+	def test_la_severidad_es_la_PEOR_y_la_mapea_github(self):
+		self.env["repo.security.scan"].upsert(self.repo, "dependabot", "con_datos")
+		self._alerta("dependabot", number=1, security_vulnerability={
+			"severity": "low", "package": {"name": "a"}})
+		self._alerta("dependabot", number=2, security_vulnerability={
+			"severity": "critical", "package": {"name": "b"}})
+		hallazgo = self._hallazgos("dependency_vulnerabilities")
+		self.assertEqual(hallazgo.severity, "critical")
+		self.assertIn("critical", hallazgo.summary)
+
+	def test_las_de_dependabot_cerradas_no_cuentan(self):
+		self.env["repo.security.scan"].upsert(self.repo, "dependabot", "con_datos")
+		self._alerta("dependabot", number=1, state="fixed", security_vulnerability={
+			"severity": "critical", "package": {"name": "a"}})
+		self.assertFalse(self._hallazgos("dependency_vulnerabilities"))
+
+	# ------------------------------------------------------------------
+	# Apagado: informativo, con la causa distinguida
+	# ------------------------------------------------------------------
+
+	def test_apagado_gratis_propone_encenderlo(self):
+		self.env["repo.security.scan"].upsert(
+			self.repo, "dependabot", "apagado", cause="Dependabot alerts are disabled")
+		hallazgo = self._hallazgos("security_feature_disabled")
+		self.assertEqual(hallazgo.remediation_action, "enable_security_feature")
+		self.assertIn("gratis", hallazgo.detail)
+
+	def test_apagado_en_privado_manda_a_advanced_security_y_no_a_una_casilla(self):
+		"""Mezclarlas mandaría a alguien a negociar una licencia para prender algo
+		gratis, o al revés: a buscar una casilla que no existe."""
+		self.repo.visibility = "private"
+		self.env["repo.security.scan"].upsert(
+			self.repo, "secret_scanning", "apagado", cause="Secret scanning is disabled")
+		hallazgo = self._hallazgos("security_feature_disabled")
+		self.assertEqual(hallazgo.remediation_action, "upgrade_plan")
+		self.assertIn("Advanced Security", hallazgo.detail)
+
+	def test_apagado_es_informativo_y_no_una_alarma(self):
+		self.env["repo.security.scan"].upsert(
+			self.repo, "dependabot", "apagado", cause="disabled")
+		self.assertEqual(self._hallazgos("security_feature_disabled").severity, "info")
+
+	def test_no_legible_no_afirma_nada_sobre_el_repositorio(self):
+		self.env["repo.security.scan"].upsert(
+			self.repo, "dependabot", "no_legible", cause="not accessible")
+		hallazgo = self._hallazgos("security_feature_disabled")
+		self.assertTrue(hallazgo, "tiene que haber un hallazgo que lo diga")
+		self.assertIn("No se pudo leer", hallazgo.summary)
+		self.assertIn("no se afirma nada", hallazgo.detail.lower())
+
+	def test_ninguno_de_los_tres_se_ofrece_planificable(self):
+		"""B6 lee. Encender seguridad desde acá cambiaría la postura de una cuenta sin
+		que eso pase por ningún plan."""
+		self.env["repo.security.scan"].upsert(self.repo, "secret_scanning", "con_datos")
+		self._alerta("secret_scanning", secret_type="aws", html_url="u")
+		self.env["repo.security.scan"].upsert(
+			self.repo, "dependabot", "apagado", cause="disabled")
+		for tipo in ("secret_leaked", "security_feature_disabled"):
+			for hallazgo in self._hallazgos(tipo):
+				self.assertFalse(hallazgo.can_be_planned, tipo)
+				self.assertTrue(hallazgo.why_not_planned, tipo)

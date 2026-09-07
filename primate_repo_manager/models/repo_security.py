@@ -117,6 +117,14 @@ class RepoSecurityAlert(models.Model):
 	source = fields.Selection(FUENTES, string="Fuente", required=True, index=True)
 	external_id = fields.Integer(string="Número en GitHub", required=True, index=True)
 	state = fields.Char(string="Estado en GitHub", index=True)
+	resolution = fields.Char(
+		string="Desenlace",
+		help="Por qué se cerró allá, en el vocabulario CODIFICADO de GitHub: "
+			 "`revoked`, `false_positive`, `used_in_tests`, `wont_fix`. "
+			 "El comentario libre que alguien escribe al cerrarla NO se copia: es texto "
+			 "que una persona tipeó, y puede contener el secreto — que es justo lo que "
+			 "este módulo no replica. El valor codificado alcanza para saber si se rotó.")
+	resolved_at = fields.Datetime(string="Cerrada el")
 	# Secret scanning.
 	secret_type = fields.Char(string="Tipo de secreto")
 	location = fields.Char(
@@ -140,7 +148,11 @@ class RepoSecurityAlert(models.Model):
 
 	# Los campos de la API que NO se copian, declarados para que la omisión sea una
 	# decisión visible y no un olvido. Hay un test que falla si alguno aparece como campo.
-	CAMPOS_PROHIBIDOS = ("secret", "secret_value", "raw_secret", "fragment", "match")
+	CAMPOS_PROHIBIDOS = ("secret", "secret_value", "raw_secret", "fragment", "match",
+						 # El comentario con el que alguien cierra la alerta es texto
+						 # libre: puede contener el secreto pegado, y de hecho es un
+						 # lugar donde la gente lo pega. Entra en la lista.
+						 "resolution_comment")
 
 	@api.model
 	def upsert(self, repo, source, alerta, origin="sync"):
@@ -155,6 +167,12 @@ class RepoSecurityAlert(models.Model):
 			"source": source,
 			"external_id": alerta.get("number"),
 			"state": alerta.get("state"),
+			# El desenlace CODIFICADO, nunca el comentario.
+			"resolution": (
+				alerta.get("resolution")
+				or (alerta.get("dismissed_reason") if source == "dependabot" else False)),
+			"resolved_at": (
+				alerta.get("resolved_at") or alerta.get("dismissed_at") or False),
 			"html_url": alerta.get("html_url"),
 			"last_seen_at": fields.Datetime.now(),
 			"origin": origin,

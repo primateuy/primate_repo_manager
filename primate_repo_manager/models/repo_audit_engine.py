@@ -71,6 +71,11 @@ class RepoAuditEngine(models.AbstractModel):
 
 	@api.model
 	def _evaluate_repository(self, run, repo):
+		# LA SEGURIDAD NO DEPENDE DE LA POLÍTICA, y por eso va ANTES de cualquier
+		# compuerta. Un repositorio sin clasificar igual puede tener un secreto filtrado,
+		# y esconderlo hasta que alguien lo clasifique sería callar lo más grave que el
+		# módulo sabe decir justo sobre los repositorios que nadie miró todavía.
+		self._evaluate_security(run, repo)
 		if not repo.classification:
 			self._finding(run, repo, "classification_missing",
 						  _("«%s» no coincide con ninguna regla de clasificación")
@@ -175,6 +180,113 @@ class RepoAuditEngine(models.AbstractModel):
 			# Quién lo detectó viaja como DATO y no se supone: hoy es una corrida, y con
 			# los webhooks de F4 va a ser un evento de GitHub sin corrida ninguna.
 			detectado_por=(_("la auditoría #%s") % run.id) if run else None)
+
+	# Cómo se ordenan las severidades de GitHub, para saber cuál es la peor. El
+	# vocabulario es suyo y no se traduce: GitHub ya clasificó con un análisis que no
+	# vamos a rehacer, y renombrarlo sólo agregaría una capa donde perder información.
+	SEVERIDAD_DEPENDABOT = {
+		"critical": "critical", "high": "high", "medium": "medium", "low": "info",
+	}
+	ORDEN_DEPENDABOT = ("critical", "high", "medium", "low")
+
+	@api.model
+	def _evaluate_security(self, run, repo):
+		"""B6.2 · las alertas de seguridad, con sus dos tratamientos y el apagado.
+
+		DOS TRATAMIENTOS PORQUE SON DOS OBJETOS DISTINTOS:
+
+		· **Un hallazgo por secreto.** Un secreto filtrado es un incidente con nombre
+		  propio: agruparlos escondería cuál es cuál, y son cosas que se rotan de a una.
+		· **Un hallazgo por repositorio en dependencias.** Cuarenta vulnerabilidades son
+		  UN trabajo —actualizar—, no cuarenta; emitir cuarenta filas taparía todo lo demás
+		  del informe.
+
+		EL CICLO DE VIDA SIGUE A LA ALERTA DE GITHUB. Si allá se resolvió o se descartó,
+		acá no se emite: un secreto que ya se rotó y se cerró no puede seguir gritando,
+		porque es la fábrica de ruido permanente otra vez y en el lugar más sensible. El
+		desenlace viaja en el espejo, con su valor CODIFICADO.
+
+		Y EL HALLAZGO NO CONTIENE EL SECRETO: tipo, dónde, y el enlace a GitHub.
+		"""
+		Scan = self.env["repo.security.scan"]
+		Alerta = self.env["repo.security.alert"]
+		for lectura in Scan.search([("repository_id", "=", repo.id)]):
+			if lectura.state == "apagado":
+				self._security_apagado(run, repo, lectura)
+				continue
+			if lectura.state == "no_legible":
+				self._finding(
+					run, repo, "security_feature_disabled",
+					_("No se pudo leer «%(que)s» en «%(repo)s»") % {
+						"que": dict(Scan._fields["source"].selection)[lectura.source],
+						"repo": repo.full_name},
+					subject=lectura.source, severity="medium",
+					detail=_("No se afirma nada sobre este repositorio en esa fuente: no "
+							 "se pudo mirar. Causa: %s") % (lectura.cause or "?"),
+					remediation_action="check_app_access",
+					observed={"causa": lectura.cause})
+				continue
+
+		abiertas = Alerta.search([
+			("repository_id", "=", repo.id), ("state", "=", "open")])
+		for alerta in abiertas.filtered(lambda a: a.source == "secret_scanning"):
+			self._finding(
+				run, repo, "secret_leaked",
+				_("Secreto filtrado en «%(repo)s»: %(tipo)s") % {
+					"repo": repo.full_name,
+					"tipo": alerta.secret_type or _("tipo no informado")},
+				subject=alerta.secret_type or str(alerta.external_id),
+				detail=_("Rotarlo donde se emitió y cerrar la alerta en GitHub. El valor "
+						 "no se copia acá a propósito: %s") % (alerta.html_url or ""),
+				# NUNCA el secreto: tipo, dónde y el enlace. Nada más.
+				observed={"tipo": alerta.secret_type, "donde": alerta.location,
+						  "enlace": alerta.html_url, "numero": alerta.external_id})
+
+		dependencias = abiertas.filtered(lambda a: a.source == "dependabot")
+		if dependencias:
+			self._finding_de_dependencias(run, repo, dependencias)
+
+	@api.model
+	def _security_apagado(self, run, repo, lectura):
+		"""La función está apagada. Las dos causas se resuelven distinto y se dicen así."""
+		etiqueta = dict(
+			self.env["repo.security.scan"]._fields["source"].selection)[lectura.source]
+		if lectura.needs_advanced_security:
+			detalle = _(
+				"Encenderlo en un repositorio privado exige GitHub Advanced Security, "
+				"que es una decisión comercial y no una casilla. Es la misma familia que "
+				"el techo de plan de las protecciones de rama.")
+			accion = "upgrade_plan"
+		else:
+			detalle = _("Se enciende gratis desde la configuración del repositorio.")
+			accion = "enable_security_feature"
+		self._finding(
+			run, repo, "security_feature_disabled",
+			_("«%(que)s» está apagado en «%(repo)s»") % {
+				"que": etiqueta, "repo": repo.full_name},
+			subject=lectura.source, detail=detalle, remediation_action=accion,
+			observed={"causa": lectura.cause,
+					  "exige_advanced_security": lectura.needs_advanced_security})
+
+	@api.model
+	def _finding_de_dependencias(self, run, repo, alertas):
+		"""UN hallazgo por repositorio, con la severidad PEOR y el desglose adentro."""
+		por_severidad = {}
+		for alerta in alertas:
+			clave = (alerta.severity or "low").lower()
+			por_severidad[clave] = por_severidad.get(clave, 0) + 1
+		peor = next((s for s in self.ORDEN_DEPENDABOT if s in por_severidad), "low")
+		self._finding(
+			run, repo, "dependency_vulnerabilities",
+			_("%(n)s vulnerabilidad(es) de dependencias en «%(repo)s», la peor "
+			  "%(peor)s") % {
+				"n": len(alertas), "repo": repo.full_name, "peor": peor},
+			subject=repo.full_name,
+			severity=self.SEVERIDAD_DEPENDABOT.get(peor, "medium"),
+			detail=_("La severidad es la que asigna GitHub: ya clasificó cada aviso con "
+					 "un análisis que este módulo no rehace."),
+			observed={"por_severidad": por_severidad,
+					  "paquetes": sorted(set(alertas.mapped("package_name")))[:20]})
 
 	@api.model
 	def _evaluate_permissions(self, run, repo, plantilla):
