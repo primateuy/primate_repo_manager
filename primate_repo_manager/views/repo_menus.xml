@@ -75,7 +75,7 @@
 			  parent="menu_repo_root"/>
 
 	<menuitem id="menu_repo_security_findings" name="Hallazgos de seguridad" sequence="10"
-			  parent="menu_repo_seguridad" action="action_pendiente_seguridad"/>
+			  parent="menu_repo_seguridad" action="action_repo_security_findings"/>
 	<menuitem id="menu_repo_hygiene" name="Higiene" sequence="20"
 			  parent="menu_repo_seguridad" action="action_pendiente_higiene"/>
 

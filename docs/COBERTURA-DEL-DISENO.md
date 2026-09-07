@@ -229,7 +229,7 @@ final cuenta cuáles eran y dónde fueron.
 | Paso 1 · elegir destino con su explicación por repo | ✅ | selector; la explicación por repositorio llega con B1 |
 | Aviso de despliegue (addons_path) | ✅ | queda en el plan, antes de aprobar |
 | Tarea manual «reconfigurar instancias» con lista de instancias | 📋 | ítem de plan, **F6** — nombrar instancias necesita el puente con PCM |
-| Hallazgos de seguridad (secretos, dependencias) | 🔒 | casillero, **bloque E** |
+| Hallazgos de seguridad (secretos, dependencias) | ✅ | B6: la de hallazgos filtrada, con los tres estados |
 | Higiene (ramas, repos a archivar) | 🔒 | casillero, **bloque E** |
 | Forks y su upstream | 🔒 | casillero, **bloque C** |
 

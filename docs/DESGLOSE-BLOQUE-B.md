@@ -278,11 +278,20 @@ El paso manual está hecho y verificado: la App 4805796 reporta `secret_scanning
 `vulnerability_alerts` en *read*, y **cero** respuestas «not accessible by integration».
 Pero el relevamiento sobre 25 repositorios mostró que «tengo permiso» no alcanza:
 
+**Censo completo sobre los 113 repositorios** (B6.4, 7-sep-2026). Un primer sondeo sobre
+25 dio «4 legibles» y **era un artefacto de la muestra**: los primeros 25 por orden de
+instalación son casi todos privados. Corregido contra el total:
+
 | respuesta de GitHub | secret scanning | dependabot | qué significa |
 |---|---|---|---|
-| 200 con la lista | 4 | 0 | **hay alertas** (o no hay ninguna, y eso es un dato) |
-| «disabled on this repository» | 21 | 25 | **apagado en el repo** — un interruptor, no un permiso |
+| 200 con la lista | **78** | 0 | **hay alertas** (o no hay ninguna, y eso es un dato) |
+| «disabled on this repository» | **35** | **113** | **apagado en el repo** — un interruptor, no un permiso |
 | «not accessible by integration» | 0 | 0 | **no se pudo leer** — sería el permiso |
+
+**Cero alertas abiertas** en los 78 legibles: GitHub no encontró secretos filtrados en
+ninguno. Y **Dependabot está apagado en los 113**, que es gratis de encender — el dato de
+gobernanza más accionable que salió de este bloque. De los 35 con secret scanning apagado,
+**31 son privados** y encenderlo ahí exige Advanced Security.
 
 **Los tres se dibujan distinto, y ninguno se colapsa con otro.** Un panel que diga «cero
 secretos filtrados» porque la función estaba apagada es la peor pantalla que este módulo
@@ -305,9 +314,9 @@ porque no pudo mirar es la peor pantalla que este módulo podría tener.
 | paso | qué deja hecho | estado |
 |---|---|---|
 | **B6.1** | El cliente y el espejo, con los tres estados y sin copiar el secreto | **hecho** |
-| **B6.2** | Los hallazgos, con sus dos tratamientos | |
-| **B6.3** | La pantalla, con los cuatro repos públicos como primer dato vivo | |
-| **B6.4** | Mutación y verificación contra la cuenta real (sólo lectura) | |
+| **B6.2** | Los hallazgos, con sus dos tratamientos | **hecho** |
+| **B6.3** | La pantalla: la de hallazgos filtrada a las tres clases de seguridad | **hecho** |
+| **B6.4** | Verificación contra la cuenta real, sólo lectura | **hecho** — censo de 113 |
 
 **Las tres decisiones:**
 

@@ -493,6 +493,24 @@
 		</field>
 	</record>
 
+	<!-- B6.3 · Hallazgos de seguridad. NO es una pantalla nueva: es la de hallazgos
+		 —la página 2c del entregable— filtrada a lo que GitHub encuentra por su cuenta.
+		 Inventarle una cara propia habría sido maquetar contra un mockup que no existe,
+		 y habría dado dos lugares distintos para leer lo mismo.
+
+		 Los TRES ESTADOS se ven acá porque son tres clases de hallazgo: el secreto y las
+		 dependencias son lo que se encontró; «apagado» y «no se pudo leer» son las dos
+		 formas de no haber mirado, y cada una dice cómo se resuelve. El domain va en UNA
+		 SOLA LÍNEA: el evaluador del navegador no acepta literales partidos. -->
+	<record id="action_repo_security_findings" model="ir.actions.act_window">
+		<field name="name">Hallazgos de seguridad</field>
+		<field name="res_model">repo.audit.finding</field>
+		<field name="view_mode">list,form</field>
+		<field name="domain">[('finding_type', 'in', ['secret_leaked', 'dependency_vulnerabilities', 'security_feature_disabled'])]</field>
+		<field name="context">{'search_default_group_by_finding_type': 1}</field>
+		<field name="help" type="html"><p class="o_view_nocontent_smiling_face">Todavía no hay hallazgos de seguridad</p><p>Aparecen después de una auditoría. Si una fuente está apagada en un repositorio o no se pudo leer, también se dice acá: no haber mirado no es lo mismo que no haber encontrado nada.</p></field>
+	</record>
+
 	<record id="action_repo_repository" model="ir.actions.act_window">
 		<field name="name">Repositorios</field>
 		<field name="res_model">repo.repository</field>

@@ -618,5 +618,17 @@ class RepoAuditFinding(models.Model):
 			"check_app_access": _(
 				"Revisar los permisos de la aplicación sobre este repositorio."),
 			"review_manually": _("Revisar a mano."),
+			# B6 · las tres de seguridad. Cada una dice DÓNDE se resuelve, que es lo que
+			# distingue un hallazgo accionable de una queja: ninguno de los tres se
+			# arregla en este módulo, y decirlo es la mitad del valor.
+			"rotate_secret": _(
+				"Rotar el secreto donde se emitió y cerrar la alerta en GitHub."),
+			"update_dependencies": _(
+				"Actualizar las dependencias vulnerables, por una PR."),
+			"enable_security_feature": _(
+				"Encenderlo en la configuración del repositorio. Es gratis."),
+			# `upgrade_plan` ya existe y dice «decisión sobre el plan», que es
+			# exactamente lo que es Advanced Security. Reusarla en vez de inventar una
+			# frase nueva mantiene juntas las dos cosas que se resuelven pagando.
 		}
 		return frases.get(self.remediation_action, "")

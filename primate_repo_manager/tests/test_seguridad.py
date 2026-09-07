@@ -369,3 +369,48 @@ class TestHallazgosDeSeguridad(TransactionCase):
 			for hallazgo in self._hallazgos(tipo):
 				self.assertFalse(hallazgo.can_be_planned, tipo)
 				self.assertTrue(hallazgo.why_not_planned, tipo)
+
+
+class TestPantallaDeSeguridad(TransactionCase):
+	"""B6.3 · la pantalla, y que cada estado diga dónde se resuelve."""
+
+	def setUp(self):
+		super().setUp()
+		self.accion = self.env.ref(
+			"primate_repo_manager.action_repo_security_findings")
+
+	def test_la_entrada_de_menu_ya_no_es_un_casillero_apagado(self):
+		"""Dejó de prometer y pasó a mostrar. El menú no cambia de forma: se habilita."""
+		menu = self.env.ref("primate_repo_manager.menu_repo_security_findings")
+		self.assertEqual(menu.action.id, self.accion.id)
+		self.assertNotEqual(self.accion.res_model, "repo.coming.soon")
+
+	def test_la_pantalla_muestra_los_TRES_estados_y_nada_mas(self):
+		tipos = self.accion.domain
+		for tipo in ("secret_leaked", "dependency_vulnerabilities",
+					 "security_feature_disabled"):
+			self.assertIn(tipo, tipos)
+
+	def test_el_domain_esta_en_UNA_sola_linea(self):
+		"""El evaluador del navegador no acepta literales partidos; el servidor guarda
+		ese texto sin mirarlo y la pantalla revienta recién al hacer clic."""
+		self.assertNotIn("\\n", self.accion.domain or "")
+		self.assertNotIn("\\n", self.accion.context or "")
+
+	def _frase(self, accion):
+		hallazgo = self.env["repo.audit.finding"].new({"remediation_action": accion})
+		return hallazgo._remediation_label()
+
+	def test_el_apagado_gratis_y_la_licencia_dicen_cosas_DISTINTAS(self):
+		"""Las dos causas del apagado no pueden leerse igual: una es una casilla y la
+		otra es plata."""
+		gratis = self._frase("enable_security_feature")
+		licencia = self._frase("upgrade_plan")
+		self.assertIn("gratis", gratis.lower())
+		self.assertIn("plan", licencia.lower())
+		self.assertNotEqual(gratis, licencia)
+
+	def test_cada_hallazgo_de_seguridad_dice_DONDE_se_resuelve(self):
+		"""Ninguno se arregla en este módulo, y decirlo es la mitad del valor."""
+		self.assertIn("rotar", self._frase("rotate_secret").lower())
+		self.assertIn("pr", self._frase("update_dependencies").lower())
