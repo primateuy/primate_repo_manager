@@ -89,7 +89,7 @@ configuración que no pusimos nosotros. *(Ya hay un test que cubre esto en el mo
 | paso | qué deja hecho | estado |
 |---|---|---|
 | **B1.1** | La traducción plantilla → JSON de ruleset, **pura**: no toca GitHub ni la base | **hecho** |
-| **B1.2** | `ruleset_update` entra al catálogo de operaciones | |
+| **B1.2** | `ruleset_update` entra al catálogo de operaciones | **hecho** |
 | **B1.3** | El apply: leer, aplicar el diff, verificar releyendo, registrar | |
 | **B1.4** | «Exige … · Tiene …» por rama, en el formulario del repositorio | |
 | **B1.5** | «Incumplen hoy» por exigencia, en la plantilla | |

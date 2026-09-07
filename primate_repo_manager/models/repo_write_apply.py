@@ -35,7 +35,7 @@ veces deja el mismo resultado, y revertir es volver a escribir el valor anterior
 MISMO destino, que sigue estando donde estaba.
 
     branch_protection_apply · collaborator_grant · collaborator_revoke
-    team_repo_grant · team_repo_revoke
+    team_repo_grant · team_repo_revoke · ruleset_update
 
 Estas van con el ciclo de cuatro pasos y nada más. Si el apply muere a mitad, no hay nada
 huérfano: o el destino tiene el valor viejo, o tiene el nuevo, y en los dos casos el
@@ -46,6 +46,17 @@ GitHub le asigna un id que sólo se conoce DESPUÉS de crearlo: un ruleset, un r
 un team, un webhook, una PR.
 
     ruleset_create · (F3: crear repositorio, crear team, alta de webhook)
+
+**`ruleset_create` y `ruleset_update` son tipos distintos, y la diferencia es esta
+taxonomía.** El primero hace nacer el ruleset y GitHub le pone un id que sólo se conoce
+después: lleva el paso 2b. El segundo escribe sobre un ruleset que YA existe y tiene id
+propio, así que su destino tiene nombre, escribir dos veces deja el mismo resultado, y
+revertir es volver a poner la definición anterior sobre el MISMO ruleset — cuatro pasos y
+nada más.
+
+Sin `ruleset_update`, reaplicar una política obligaba a borrar y crear, que cambia el id.
+Y con el id cambiado, el punto de retorno guardado en la bitácora apunta a un objeto que
+ya no existe: el rollback queda apuntando al vacío justo cuando hace falta.
 
 Estas llevan un paso extra, y va ANTES de verificar:
 

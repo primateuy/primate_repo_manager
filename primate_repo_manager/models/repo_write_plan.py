@@ -42,6 +42,11 @@ OPERATION_KINDS = [
 	("branch_protection_apply", "Aplicar protección de rama"),
 	("branch_protection_remove", "Quitar protección de rama"),
 	("ruleset_create", "Crear ruleset"),
+	# B1.2 · ACTUALIZAR un ruleset que ya existe, que no es crear ni borrar. Sin esto,
+	# reaplicar una política significa borrar y volver a crear, y eso destruye el id que
+	# GitHub asignó — que es exactamente por donde el rollback vuelve. Ver la taxonomía en
+	# repo_write_apply.py: es idempotente por destino y NO crea identidad.
+	("ruleset_update", "Actualizar un ruleset existente"),
 	("ruleset_delete", "Borrar ruleset"),
 	("collaborator_grant", "Dar permiso directo"),
 	("collaborator_revoke", "Quitar permiso directo"),

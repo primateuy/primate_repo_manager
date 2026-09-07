@@ -563,6 +563,31 @@ class TestReversibleVsIrreversible(BasePlan):
 				"«%s» quedó marcada como irreversible; si es a propósito, este test "
 				"tiene que actualizarse a propósito también" % kind)
 
+	def test_actualizar_un_ruleset_es_un_tipo_propio_y_no_crear_mas_borrar(self):
+		"""B1.2. Sin este tipo, reaplicar una política era borrar y crear.
+
+		Y eso cambia el id que GitHub asignó, que es por donde vuelve el rollback: el
+		punto de retorno guardado en la bitácora quedaría apuntando a un ruleset que ya
+		no existe, justo cuando hace falta.
+		"""
+		from ..models.repo_write_plan import OPERATION_KINDS
+
+		catalogo = dict(OPERATION_KINDS)
+		self.assertIn("ruleset_update", catalogo)
+		self.assertIn("ruleset_create", catalogo)
+		self.assertIn("ruleset_delete", catalogo)
+
+	def test_actualizar_un_ruleset_todavia_no_se_puede_aplicar_y_lo_dice(self):
+		"""Llega al catálogo antes que su manejador, y eso se ve: apagado, no roto.
+
+		«No implementado» no es «irreversible»: decir lo segundo mentiría en la dirección
+		tranquilizadora.
+		"""
+		op = self._op("ruleset_update", target="primate/cliente-estandar/base")
+		self.assertFalse(op.is_supported)
+		self.assertFalse(op.is_irreversible)
+		self.assertIn("NO ESTÁ IMPLEMENTADO", op.description)
+
 	def test_los_tipos_SIN_manejador_se_dicen_como_lo_que_son(self):
 		"""«No implementado» NO es «irreversible». Confundirlos mentiría en la dirección
 		tranquilizadora: diría «esto no tiene vuelta atrás» cuando la verdad es «esto ni
