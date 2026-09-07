@@ -12,6 +12,17 @@ testigo es un ruleset real que tiene que salir intacto del ensayo completo.
 
 NO TOCA PRODUCCIÓN. La conexión es la de `prm-sandbox`, y el chequeo de cierre se corre
 antes. Todo lo que este ensayo crea, lo borra al terminar.
+
+AL TERMINAR, ESTE ENSAYO DEJA UNA REFERENCIA ABIERTA — Y HAY QUE SABERLO.
+
+La limpieza borra los rulesets con una llamada suelta a la API, o sea POR FUERA del
+embudo. La bitácora queda diciendo «esto aplicamos» sin que exista un registro de la
+baja, así que la próxima auditoría reporta —con razón— «lo aplicamos y ya no está».
+
+No se arregla borrando entradas: son eslabones sellados de la cadena y `unlink` levanta
+incluso con `sudo`. Se cierra de una de dos maneras: volviendo a aplicar lo que la
+bitácora dice que aplicamos, o dando de baja por el embudo el día que `ruleset_delete`
+tenga manejador. Ver `docs/ENSAYO-B4.4.md`.
 """
 import json
 import time

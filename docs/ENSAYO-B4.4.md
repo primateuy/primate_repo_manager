@@ -72,3 +72,24 @@ búsqueda del drift **prefiere la fila viva**.
 corridas del ensayo porque el nombre se repite. Medido como **delta** dentro de la corrida
 —6 → 6— dice lo que tenía que decir. Es el mismo error de medición que ya se había comido
 tres mutaciones en B4.2: **el número que se mira tiene que ser el de esta corrida.**
+
+---
+
+## El ruido que dejaron los ensayos, y por qué NO se borró
+
+Al terminar, los ensayos borran sus rulesets con una llamada suelta a la API — por fuera
+del embudo. La bitácora queda diciendo «esto aplicamos» sin registro de la baja, así que
+la auditoría reportaba «lo aplicamos y ya no está». Verdadero, y molesto.
+
+**No se borró nada, y no se podía:** las nueve entradas de referencia están **selladas**
+—son eslabones de la cadena, íntegra desde el 5-sep con 59 entradas verificadas— y
+`unlink` levanta incluso con `sudo`: *«La bitácora de auditoría no se borra.»*
+
+Se cerró por el otro lado: **volviendo a aplicar lo que la bitácora dice que aplicamos**,
+que es exactamente la remediación que el módulo propone para ese hallazgo. La cadena sólo
+creció, con `drift_resolved` legítimos. Hallazgos de drift: **1 → 0**, cadena `ok`.
+
+Quedan en el sandbox dos rulesets de ensayo (`primate/ensayo-b16/base`,
+`primate/ensayo-b44/base`) apuntando a ramas que no existen: no gobiernan nada. Se van a
+dar de baja **por el embudo** cuando `ruleset_delete` tenga manejador — y esa baja va a
+cerrar sus referencias como corresponde, que es la prueba de que el arreglo 1 sirve.
