@@ -872,20 +872,24 @@ es el mismo que se eligió para arrancar: una génesis nueva que declare desde c
 sello nuevo. Recalcular los viejos en silencio sería, otra vez, fabricar confianza.
 
 
-## Validación visual pendiente
+## Validación visual — SALDADA el 7-sep-2026
 
-> **El guion está escrito:** [`RECORRIDO-DE-VALIDACION.md`](RECORRIDO-DE-VALIDACION.md).
-> Cubre el flujo completo de A4, la deuda de A5+A6+A8 y el asistente de A4.3, cada paso con
-> qué hacer, qué hay que ver y qué sería señal de problema.
+> **El guion:** [`RECORRIDO-DE-VALIDACION.md`](RECORRIDO-DE-VALIDACION.md). Cubre el flujo
+> completo de A4, la deuda de A5+A6+A8 y el asistente de A4.3, cada paso con qué hacer, qué
+> hay que ver y qué sería señal de problema.
 
-**A5 + A6 + A8 quedaron aprobados en forma provisoria**, sin recorrido visual: Daryl estaba
-fuera. No está salteado, está en deuda. Se suma al guion del recorrido de **A4**, que
-valida los dos bloques de una:
+**La deuda de A5 + A6 + A8 está pagada.** Se recorrió entera en la sesión grande de
+validación —**Parte 2 del guion**— y pasó. Los cuatro puntos que la definían quedaron
+comprobados **mirando la pantalla**, que era exactamente lo que faltaba:
 
-1. *Ajustes* abre —no tira Access Error— y el diagnóstico dice «Funcionando».
-2. Cambiar una plantilla aparece en la *Bitácora* con su nombre y el antes/después.
-3. El asistente de personas propone candidatos y no decide solo.
-4. Las reglas de clasificación se entienden mirándolas.
+1. *Ajustes* abre —no tira Access Error— y el diagnóstico dice «Funcionando». ✓
+2. Cambiar una plantilla aparece en la *Bitácora* con su nombre y el antes/después. ✓
+3. El asistente de personas propone candidatos y no decide solo. ✓
+4. Las reglas de clasificación se entienden mirándolas. ✓
+
+Con esto **A5, A6 y A8 dejan de estar aprobados en forma provisoria**: pasan a aprobados,
+sin asterisco. La nota de «aprobación provisoria» sobrevivió sin actualizarse a la sesión
+que la saldó — quedó corregida acá y en el guion el 7-sep-2026.
 
 ## FRENOs
 

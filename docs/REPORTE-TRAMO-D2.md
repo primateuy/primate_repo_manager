@@ -1,7 +1,10 @@
 # Reporte del tramo D2 — los tres asuntos, completos
 
 **Fecha:** 5 y 6 de septiembre de 2026 · **Contra:** el sandbox `prm-sandbox`, con la App
-de escritura cargada · **Estado de la suite al cierre:** 374 tests, 0 fallos, 0 errores.
+de escritura cargada · **Estado de la suite al cierre de ESTE tramo:** 374 tests, 0 fallos, 0 errores.
+> **No leer ese número como el de hoy.** Es de este tramo y quedó atrás: D2.4 y D3
+> sumaron tests después. Medido el 7-sep-2026 sobre base limpia: **426 tests, 0
+> fallos, 0 errores.** Un número de suite en un reporte fechado vale para su fecha.
 
 Tres asuntos, en el orden en que conviene leerlos:
 

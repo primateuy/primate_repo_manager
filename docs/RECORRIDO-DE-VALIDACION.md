@@ -5,7 +5,8 @@
 > el criterio de salida del flujo existente queda cerrado.
 
 **Para:** Daryl · **Con:** `desarrollo@primate.uy` · **Contra:** `prm-sandbox`
-**Escrito:** 4 de septiembre de 2026 · **Actualizado:** 5 de septiembre
+**Escrito:** 4 de septiembre de 2026 · **Actualizado:** 7 de septiembre
+**Estado:** la **Parte 2 se recorrió entera y pasó** — la deuda de A5+A6+A8 quedó saldada
 **Cubre:** A4 completo, la deuda visual de A5+A6+A8, y lo que trajo el entregable de
 diseño: la cadena de la bitácora y los cuatro tipos de entrada.
 
@@ -225,7 +226,12 @@ una que falla antes de escribir no ofrece revertir nada.
 
 ---
 
-## Parte 2 · La deuda de A5 + A6 + A8
+## Parte 2 · La deuda de A5 + A6 + A8 — RECORRIDA Y PASADA (7-sep-2026)
+
+> **Saldada.** Esta parte se recorrió completa en la sesión grande de validación y salió
+> bien. A5, A6 y A8 dejan de estar aprobados en forma provisoria. Lo que sigue se conserva
+> como guion —sirve para volver a correrlo cuando estas pantallas cambien—, no como deuda
+> abierta.
 
 Cuatro puntos, ninguno depende de la Parte 1.
 
