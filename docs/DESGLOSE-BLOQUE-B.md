@@ -242,6 +242,27 @@ si no se aplica, el repositorio queda marcado y visible, no a medias y en silenc
 | **Secret scanning** | **crítico, siempre** | un secreto filtrado es riesgo hoy, sin matices. No se mapea ni se modula |
 | **Dependabot** | **mapeada de GitHub** | GitHub ya clasifica (critical/high/medium/low) y esa clasificación tiene detrás un análisis que nosotros no vamos a rehacer |
 
+### Los TRES estados de una alerta — medidos el 7-sep-2026, no supuestos
+
+El paso manual está hecho y verificado: la App 4805796 reporta `secret_scanning_alerts` y
+`vulnerability_alerts` en *read*, y **cero** respuestas «not accessible by integration».
+Pero el relevamiento sobre 25 repositorios mostró que «tengo permiso» no alcanza:
+
+| respuesta de GitHub | secret scanning | dependabot | qué significa |
+|---|---|---|---|
+| 200 con la lista | 4 | 0 | **hay alertas** (o no hay ninguna, y eso es un dato) |
+| «disabled on this repository» | 21 | 25 | **apagado en el repo** — un interruptor, no un permiso |
+| «not accessible by integration» | 0 | 0 | **no se pudo leer** — sería el permiso |
+
+**Los tres se dibujan distinto, y ninguno se colapsa con otro.** Un panel que diga «cero
+secretos filtrados» porque la función estaba apagada es la peor pantalla que este módulo
+podría tener: afirma sobre algo que nunca miró.
+
+Y el apagado tiene dos causas que se resuelven distinto: Dependabot se enciende gratis;
+**secret scanning en repositorios privados necesita Advanced Security**, que es decisión
+comercial y cae en la familia `plan_limit` que el módulo ya modela — la misma que las
+protecciones de rama en repos privados de plan gratuito.
+
 **Lo que hay que cuidar:** si los permisos del paso manual no están, los endpoints devuelven
 403 y eso **no es «no hay alertas»**. Es «no se pudo leer», con su trama rayada y su causa
 — la regla de la casa aplicada a lo nuevo. Un panel que dice «cero secretos filtrados»
