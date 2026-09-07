@@ -335,6 +335,22 @@ corrección por el mismo embudo que todo lo demás.
 
 ## B5 · Wizard de crear repositorio
 
+### Lo medido antes de empezar: Dependabot SÍ se puede encender
+
+`PUT /repos/{o}/{r}/vulnerability-alerts` con la App de escritura del sandbox: **funciona**.
+Encender es PUT, apagar es DELETE, y el estado se consulta con un GET que devuelve **204
+cuando está encendido** y 404 cuando no.
+
+**Así que encenderlo es una operación más del wizard** —gratis, reversible— y el eslogan
+del mockup, «un repositorio creado así nace con cero hallazgos», queda **literal**: sin
+esa operación, el repositorio perfecto estrenaría un hallazgo informativo de B6 el día uno.
+
+*De paso, la sonda destapó un defecto del cliente:* `get()` hacía `response.json()` sobre
+un cuerpo vacío y levantaba un error de parseo, así que un **204 se leía como fallo** — la
+sonda reportó «apagado» sobre un repositorio que lo tenía encendido. Corregido, con test.
+
+
+
 **Qué hace.** Crear un repositorio que **nace gobernado**: con su clasificación, su
 plantilla, sus ramas, su ruleset y su CODEOWNERS, en un solo paso.
 

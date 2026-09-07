@@ -166,3 +166,45 @@ class TestGuardasDeEscritura(TransactionCase):
 		# Y desde A7, la habilitación explícita sobre producción.
 		self.assertIn("write_enabled", fuente)
 		self.assertIn("production", fuente)
+
+
+class TestRespuestaSinCuerpo(TransactionCase):
+	"""Un 204 es una respuesta, no un error — B5.
+
+	Lo destapó la sonda que preguntaba si Dependabot estaba encendido:
+	`GET /repos/{o}/{r}/vulnerability-alerts` devuelve **204 sin cuerpo** cuando la
+	función está ENCENDIDA y 404 cuando no. El cliente hacía `response.json()` sobre el
+	cuerpo vacío, levantaba un error de parseo, y quien llamaba lo leía como «falló» —
+	que es exactamente lo contrario de lo que había pasado. La sonda reportó «apagado»
+	sobre un repositorio que lo tenía encendido.
+	"""
+
+	def setUp(self):
+		super().setUp()
+		self.backend = self.env["repo.backend"].create({
+			"name": "204 %s" % uuid.uuid4().hex[:6],
+			"owner_login": "org-%s" % uuid.uuid4().hex[:8],
+			"owner_type": "organization", "app_id": "1", "installation_id": "2"})
+		self.backend.private_key = _clave_rsa_de_prueba()
+
+	def test_un_204_sin_cuerpo_NO_es_un_error(self):
+		class Sin204:
+			status_code, headers, text, content = 204, {}, "", b""
+
+			def json(self):
+				raise ValueError("sin cuerpo")
+
+		class Transporte:
+			def get(self, url, headers=None, timeout=None):
+				return Sin204()
+
+			def post(self, url, json=None, headers=None, timeout=None):
+				class R:
+					status_code, headers, content = 201, {}, b"x"
+
+					def json(self):
+						return {"token": "ghs_test"}
+				return R()
+
+		cliente = self.backend.client(transport=Transporte())
+		self.assertEqual(cliente.get("/repos/org/sbx/vulnerability-alerts"), {})

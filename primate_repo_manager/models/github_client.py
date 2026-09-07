@@ -272,6 +272,14 @@ class GithubReadClient:
 
 		if self._clasificar_error(response, path, tolerar_404=tolerar_404):
 			return None
+		# UN 204 NO ES UN ERROR NI UN CUERPO VACÍO MAL FORMADO: es la respuesta de los
+		# endpoints que contestan «sí» sin decir nada más —`/vulnerability-alerts`
+		# devuelve 204 cuando la función está ENCENDIDA y 404 cuando no—. Sin esto,
+		# `response.json()` levanta un error de parseo y el que llama lo lee como
+		# «falló», que es exactamente lo contrario de lo que pasó. Lo destapó la sonda de
+		# B5: el endpoint decía «encendido» y la sonda lo reportaba como apagado.
+		if response.status_code == 204 or not response.content:
+			return {}
 		return response.json()
 
 	def _clasificar_error(self, response, path, tolerar_404=False):
