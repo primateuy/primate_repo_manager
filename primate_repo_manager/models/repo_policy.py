@@ -17,7 +17,7 @@ from odoo import _, api, fields, models
 from odoo.exceptions import ValidationError
 
 from .repo_collaborator import PERMISSIONS
-from .repo_rules import BRANCH_ROLES, CLASSIFICATIONS
+from .repo_rules import BRANCH_ROLES, CLASSIFICATIONS, ROLES_GOBERNADOS
 
 MERGE_STRATEGIES = [
 	("squash", "Squash"),
@@ -265,3 +265,79 @@ class RepoPolicyAccessRule(models.Model):
 			if regla.max_permission == "admin" and not (regla.reason or "").strip():
 				raise ValidationError(_(
 					"Una excepción de administrador necesita un motivo escrito."))
+
+
+class RepoPolicyTemplateIncumplimientos(models.Model):
+	"""«Incumplen hoy», por exigencia — página 4a del entregable.
+
+	QUÉ AGREGA. El formulario dice qué exige la plantilla; esto dice A CUÁNTOS les falta.
+	Sin el número, endurecer una exigencia es una decisión a ciegas: subir las
+	aprobaciones de 1 a 2 puede no afectar a nadie o romperle el día a veinte equipos, y
+	desde el formulario las dos cosas se ven igual.
+
+	LO ILEGIBLE NO CUENTA COMO INCUMPLIMIENTO — NI COMO CUMPLIMIENTO. Es la misma
+	doctrina del panel de salud: meter lo que no se pudo leer en el numerador acusa a
+	repositorios sanos; dejarlo afuera sin decirlo los cuenta como sanos. Se cuenta
+	aparte y se muestra aparte.
+
+	Y SALE DEL MISMO COMPARADOR QUE LA PESTAÑA DE RAMAS. Dos implementaciones de «esta
+	rama cumple» darían dos números para la misma pregunta, y el día que difieran nadie
+	va a saber cuál mirar.
+	"""
+	_inherit = "repo.policy.template"
+
+	def incumplimientos_por_exigencia(self):
+		"""Cuántas ramas gobernadas incumplen cada exigencia, hoy.
+
+		Returns:
+			list: un dict por exigencia con ``clave``, ``etiqueta``, ``incumplen``,
+			``ilegibles`` y ``evaluadas``.
+		"""
+		self.ensure_one()
+		Rama = self.env["repo.branch"]
+		ramas = Rama.search([
+			("repository_id.classification", "=", self.classification_default),
+			("role", "in", list(ROLES_GOBERNADOS)),
+		]) if self.classification_default else Rama.browse()
+
+		# El catálogo de exigencias sale de una rama cualquiera de las gobernadas: es el
+		# mismo que usa la comparación. Sin ramas no hay nada que contar y tampoco nada
+		# que prometer.
+		conteo, ilegibles, evaluadas = {}, 0, 0
+		for rama in ramas:
+			comparacion = rama.comparacion_de_politica()
+			if comparacion["estado"] == "ilegible":
+				ilegibles += 1
+				continue
+			evaluadas += 1
+			for clave in comparacion["faltan"]:
+				conteo[clave] = conteo.get(clave, 0) + 1
+
+		return [
+			{
+				"clave": clave,
+				"etiqueta": etiqueta,
+				"incumplen": conteo.get(clave, 0),
+				"ilegibles": ilegibles,
+				"evaluadas": evaluadas,
+			}
+			for clave, etiqueta in self._catalogo_de_exigencias()
+		]
+
+	def _catalogo_de_exigencias(self):
+		"""Las exigencias que esta plantilla declara, en el orden en que se leen."""
+		self.ensure_one()
+		catalogo = []
+		if self.require_pr:
+			catalogo.append(("require_pr", _("Exige pull request")))
+		if self.require_codeowner_review:
+			catalogo.append(("require_codeowner_review", _("Exige revisión de owner")))
+		if self.block_force_push:
+			catalogo.append(("block_force_push", _("Bloquea force-push")))
+		if self.block_deletion:
+			catalogo.append(("block_deletion", _("Bloquea borrado de rama")))
+		if self.require_signed_commits:
+			catalogo.append(("require_signed_commits", _("Exige commits firmados")))
+		if self.status_checks_defined and self.required_check_ids:
+			catalogo.append(("required_status_checks", _("Exige checks de CI")))
+		return catalogo

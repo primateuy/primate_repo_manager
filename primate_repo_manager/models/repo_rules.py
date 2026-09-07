@@ -135,12 +135,23 @@ class RepoBranchRoleRule(models.Model):
 				) % {"nombre": regla.name, "error": exc}) from exc
 
 	@api.model
-	def role_for(self, nombre_rama):
-		"""Rol de una rama. Primera regla que matchea gana; 'other' si ninguna."""
+	def regla_para(self, nombre_rama):
+		"""La regla que le asigna el rol a esta rama, o vacío si ninguna.
+
+		La pantalla de ramas muestra el rol Y de dónde salió —«Producción · regla 1»—
+		porque un rol sin su origen es una afirmación que nadie puede discutir. Sale de
+		acá y no de una segunda pasada por las reglas: dos recorridos con el mismo orden
+		son dos hasta que alguien cambie uno.
+		"""
 		for regla in self.search([]):
 			try:
 				if re.search(regla.pattern, nombre_rama or ""):
-					return regla.role
+					return regla
 			except re.error:
 				_logger.warning("Repo Manager: regla de rol de rama inválida: %s", regla.name)
-		return "other"
+		return self.browse()
+
+	@api.model
+	def role_for(self, nombre_rama):
+		"""Rol de una rama. Primera regla que matchea gana; 'other' si ninguna."""
+		return self.regla_para(nombre_rama).role or "other"

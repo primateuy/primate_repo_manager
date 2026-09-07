@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 - PrimateUY / License AGPL-3.0 or later -->
+<templates xml:space="preserve">
+
+	<t t-name="primate_repo_manager.Ramas">
+		<div class="rm-ramas">
+			<div t-if="!state.filas.length" class="rm-ramas-vacio" t-esc="vacio"/>
+			<table t-else="" class="rm-tabla">
+				<thead>
+					<tr>
+						<th>Rama</th>
+						<th>Rol</th>
+						<th>Protección</th>
+						<th>Último commit</th>
+						<th>Atraso</th>
+						<th>Legibilidad</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr t-foreach="state.filas" t-as="fila" t-key="fila.id"
+						t-att-class="fila.comparacion.estado === 'ilegible' ? 'rm-fila-ilegible' : ''">
+						<td>
+							<span class="rm-mono" t-esc="fila.nombre"/>
+							<span t-if="fila.es_default" class="rm-etiqueta-default">por defecto</span>
+						</td>
+						<td>
+							<span t-esc="fila.rol"/>
+							<span class="rm-tenue"> · <t t-esc="fila.regla"/></span>
+						</td>
+						<td>
+							<span t-if="estado(fila).chip" class="rm-chip"
+								  t-att-class="estado(fila).chip"
+								  t-esc="estado(fila).etiqueta"/>
+							<!-- Lo ilegible no lleva color: lleva la trama. -->
+							<span t-else="" class="rm-no-legible"
+								  t-esc="estado(fila).etiqueta"/>
+							<div t-if="explica(fila)" class="rm-exige-tiene">
+								<span class="rm-exige">Exige:
+									<t t-esc="lista(fila.comparacion.exige)"/></span>
+								<span class="rm-separador"> · </span>
+								<span class="rm-tiene">Tiene:
+									<t t-if="fila.comparacion.tiene.length"
+									   t-esc="lista(fila.comparacion.tiene)"/>
+									<t t-else="">nada</t></span>
+							</div>
+						</td>
+						<td>
+							<t t-if="fila.commit.sha">
+								<span class="rm-mono" t-esc="fila.commit.sha"/>
+								<span class="rm-tenue"> · <t t-esc="fila.commit.cuando"/></span>
+							</t>
+							<t t-else="">—</t>
+						</td>
+						<td>
+							<span t-if="fila.atraso" class="rm-mono" t-esc="fila.atraso"/>
+							<t t-else="">—</t>
+						</td>
+						<td>
+							<span t-att-class="fila.comparacion.estado === 'ilegible' ? 'rm-no-legible' : ''"
+								  t-esc="fila.legibilidad"/>
+						</td>
+					</tr>
+				</tbody>
+			</table>
+		</div>
+	</t>
+
+</templates>

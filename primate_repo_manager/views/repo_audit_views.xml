@@ -373,22 +373,12 @@
 
 					<notebook>
 						<page string="Ramas" name="ramas">
-							<field name="branch_ids" readonly="1">
-								<list string="Ramas" create="false"
-									  decoration-warning="not protection_readable">
-									<field name="name"/>
-									<field name="role"/>
-									<field name="is_default"/>
-									<field name="protected" widget="boolean_toggle"
-										   readonly="1"/>
-									<field name="protection_readable"
-										   string="¿Se pudo leer?"/>
-									<field name="protection_cause"
-										   invisible="protection_readable"/>
-									<field name="ruleset_count" optional="hide"/>
-									<field name="last_commit_date" optional="hide"/>
-								</list>
-							</field>
+							<!-- B1.4 · la tabla de la página 3b. La columna
+								 «Protección» dice POR QUÉ incumple —«Exige … · Tiene …»—
+								 y distingue TRES estados: una rama que no se pudo leer va
+								 con su trama y su causa, nunca como «no tiene». -->
+							<field name="branch_ids" widget="repo_ramas" nolabel="1"
+								   readonly="1"/>
 						</page>
 						<page string="Colaboradores" name="colaboradores">
 							<field name="collaborator_ids" readonly="1">

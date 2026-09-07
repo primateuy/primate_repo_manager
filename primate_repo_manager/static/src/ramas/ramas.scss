@@ -1,0 +1,66 @@
+/* Copyright 2026 - PrimateUY / License AGPL-3.0 or later */
+
+/* La tabla de ramas — página 3b. Todo por token: ni un color literal. */
+.rm-ramas {
+	background: var(--rm-surface);
+	color: var(--rm-ink);
+	padding: var(--rm-space-3);
+
+	.rm-tabla {
+		width: 100%;
+		border-collapse: collapse;
+
+		th {
+			text-align: left;
+			font-size: 12px;
+			font-weight: 600;
+			color: var(--rm-ink-3);
+			text-transform: uppercase;
+			letter-spacing: .04em;
+			padding: var(--rm-space-2) var(--rm-space-3);
+			border-bottom: 1px solid var(--rm-border);
+			white-space: nowrap;
+		}
+
+		td {
+			padding: var(--rm-space-3);
+			border-bottom: 1px solid var(--rm-border);
+			vertical-align: top;
+		}
+
+		tr:last-child td { border-bottom: 0; }
+	}
+
+	/* La fila que no se pudo leer se apaga entera: lo que no se sabe no compite por la
+	   atención con lo que sí. */
+	.rm-fila-ilegible td { background: var(--rm-unread-bg); }
+
+	.rm-tenue { color: var(--rm-ink-3); }
+
+	.rm-etiqueta-default {
+		margin-left: var(--rm-space-2);
+		font-size: 11px;
+		color: var(--rm-accent-dark);
+		background: var(--rm-accent-tint);
+		border-radius: var(--rm-radius-sm);
+		padding: 1px 6px;
+	}
+
+	/* La línea que justifica la pantalla: por qué incumple, no sólo que incumple. */
+	.rm-exige-tiene {
+		margin-top: var(--rm-space-2);
+		font-size: 12px;
+		line-height: 1.5;
+		color: var(--rm-ink-2);
+	}
+
+	.rm-exige { color: var(--rm-ink-2); }
+	.rm-tiene { color: var(--rm-ink-2); }
+	.rm-separador { color: var(--rm-ink-3); }
+
+	.rm-ramas-vacio {
+		color: var(--rm-ink-3);
+		padding: var(--rm-space-4);
+		text-align: center;
+	}
+}

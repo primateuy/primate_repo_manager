@@ -1,0 +1,44 @@
+/* Copyright 2026 - PrimateUY / License AGPL-3.0 or later */
+
+.rm-exigencias {
+	background: var(--rm-surface);
+	color: var(--rm-ink);
+
+	.rm-tabla {
+		width: 100%;
+		border-collapse: collapse;
+
+		th {
+			text-align: left;
+			font-size: 12px;
+			font-weight: 600;
+			color: var(--rm-ink-3);
+			text-transform: uppercase;
+			letter-spacing: .04em;
+			padding: var(--rm-space-2) var(--rm-space-3);
+			border-bottom: 1px solid var(--rm-border);
+		}
+
+		td {
+			padding: var(--rm-space-2) var(--rm-space-3);
+			border-bottom: 1px solid var(--rm-border);
+		}
+
+		tr:last-child td { border-bottom: 0; }
+		.rm-num { text-align: right; white-space: nowrap; }
+	}
+
+	.rm-tenue { color: var(--rm-ink-3); }
+
+	.rm-exigencias-ilegibles {
+		margin-top: var(--rm-space-3);
+		padding: var(--rm-space-2) var(--rm-space-3);
+		border-radius: var(--rm-radius-sm);
+		font-size: 12px;
+	}
+
+	.rm-exigencias-vacio {
+		color: var(--rm-ink-3);
+		padding: var(--rm-space-4);
+	}
+}

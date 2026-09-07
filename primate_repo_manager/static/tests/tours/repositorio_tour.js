@@ -35,6 +35,25 @@ registry.category("web_tour.tours").add("prm_repositorio", {
 			trigger: ".o_field_widget[name=branch_ids] td:contains(19.0)",
 		},
 		{
+			content: "la rama sin protección dice POR QUÉ incumple, no sólo que incumple",
+			trigger: ".rm-ramas .rm-exige-tiene:contains(Exige)",
+		},
+		{
+			content: "y dice qué tiene — acá, nada",
+			trigger: ".rm-ramas .rm-tiene:contains(nada)",
+		},
+		{
+			// EL PASO QUE MÁS IMPORTA. Una rama ilegible dibujada como «sin protección»
+			// sería el defecto de F1 volviendo por la ventana de la interfaz. Se
+			// comprueba que lleve la trama del sistema y su causa.
+			content: "la rama que no se pudo leer va con su trama, no como «no tiene»",
+			trigger: ".rm-ramas .rm-fila-ilegible .rm-no-legible",
+		},
+		{
+			content: "y con su causa al lado, que es lo que dice cómo se resuelve",
+			trigger: ".rm-ramas .rm-fila-ilegible td:contains(administrador)",
+		},
+		{
 			content: "y sus colaboradores, con el ORIGEN del permiso y no sólo el permiso",
 			trigger: ".o_notebook a:contains(Colaboradores)",
 			run: "click",

@@ -108,10 +108,26 @@ class TestTourRepositorio(HttpCase):
 			"full_name": "%s/sbx-uno" % self.backend.owner_login,
 			"github_id": uuid.uuid4().hex[:8], "visibility": "private",
 			"default_branch": "19.0",
+			# Clasificado, y por eso gobernado: sin plantilla que lo gobierne la columna
+			# «Protección» diría «no exige protección» para todo y el tour estaría mirando
+			# una pantalla que no compara nada.
+			#
+			# «interno» y no «cliente» a propósito: más adelante el mismo tour clasifica a
+			# mano como «Cliente», y elegir el valor que ya estaba deja el formulario
+			# limpio — sin botón de guardar y sin nada que comprobar.
+			"classification": "interno",
 		})
 		self.env["repo.branch"].create({
 			"repository_id": self.repo.id, "name": "19.0", "role": "base",
 			"is_default": True, "protected": False, "protection_readable": True,
+		})
+		# La rama que NO se pudo leer. Está en el fixture del tour a propósito: el tercer
+		# estado sólo se puede comprobar si hay una rama que lo tenga, y es justo el que
+		# la pantalla no puede dibujar mal.
+		self.env["repo.branch"].create({
+			"repository_id": self.repo.id, "name": "release/2025-q4", "role": "base",
+			"protected": False, "protection_readable": False,
+			"protection_cause": "no_admin_permission",
 		})
 		miembro = self.env["repo.member"].create({"github_login": "alguien"})
 		self.env["repo.collaborator"].create({

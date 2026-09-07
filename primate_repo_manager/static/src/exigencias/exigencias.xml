@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 - PrimateUY / License AGPL-3.0 or later -->
+<templates xml:space="preserve">
+
+	<t t-name="primate_repo_manager.Exigencias">
+		<div class="rm-exigencias">
+			<div t-if="!state.filas.length" class="rm-exigencias-vacio" t-esc="vacio"/>
+			<t t-else="">
+				<table class="rm-tabla">
+					<thead>
+						<tr>
+							<th>Exigencia</th>
+							<th class="rm-num">Incumplen hoy</th>
+						</tr>
+					</thead>
+					<tbody>
+						<tr t-foreach="state.filas" t-as="fila" t-key="fila.clave">
+							<td t-esc="fila.etiqueta"/>
+							<td class="rm-num">
+								<span class="rm-chip" t-att-class="chip(fila)"
+									  t-esc="fila.incumplen"/>
+								<span class="rm-tenue"> de <t t-esc="evaluadas"/></span>
+							</td>
+						</tr>
+					</tbody>
+				</table>
+				<div t-if="ilegibles" class="rm-no-legible rm-exigencias-ilegibles"
+					 t-esc="avisoIlegibles"/>
+			</t>
+		</div>
+	</t>
+
+</templates>

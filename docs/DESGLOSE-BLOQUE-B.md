@@ -91,8 +91,8 @@ configuración que no pusimos nosotros. *(Ya hay un test que cubre esto en el mo
 | **B1.1** | La traducción plantilla → JSON de ruleset, **pura**: no toca GitHub ni la base | **hecho** |
 | **B1.2** | `ruleset_update` entra al catálogo de operaciones | **hecho** |
 | **B1.3** | El apply: leer, aplicar el diff, verificar releyendo, registrar | **hecho** |
-| **B1.4** | «Exige … · Tiene …» por rama, en el formulario del repositorio | |
-| **B1.5** | «Incumplen hoy» por exigencia, en la plantilla | |
+| **B1.4** | «Exige … · Tiene …» por rama, en el formulario del repositorio | **hecho** |
+| **B1.5** | «Incumplen hoy» por exigencia, en la plantilla | **hecho** |
 | **B1.6** | Ensayo contra el sandbox y mutación de las guardas nuevas | |
 
 **Dos confirmaciones que se pidieron y quedan escritas acá para que no se pierdan:**
@@ -128,6 +128,30 @@ hay que conciliar contra un efecto inexistente.
 La guarda del ruleset ajeno se comprueba **dos veces**, al leer y al revertir, y la
 segunda no es redundante: entre una y otra pasó una escritura, y pudo pasar cualquier otra
 cosa —incluido que alguien renombrara el ruleset—.
+
+#### B1.4 y B1.5: el tercer estado, y un defecto que la pantalla destapó
+
+Las dos pantallas salen del **mismo comparador** —`repo.branch.comparacion_de_politica()`—
+y eso es deliberado: dos implementaciones de «esta rama cumple» darían dos números para la
+misma pregunta y ninguna forma de saber cuál mirar.
+
+**El tercer estado manda en las dos.** Una rama ilegible no se dibuja como «no tiene» ni
+engrosa el número de «Incumplen hoy»: va con la trama del sistema y su causa, y las
+ilegibles se cuentan aparte. Es la distinción de F1 —GitHub devuelve el mismo 404 para «no
+está protegida» y para «no podés saberlo»— defendida ahora también en la interfaz, que es
+donde más caro sale perderla porque es lo que la gente mira.
+
+**Lo que la pantalla destapó al construirse:** el comparador daba por cumplidas
+«sin escritura directa» y «sin borrado» en una rama SIN protección, porque leía la ausencia
+de `allow_force_pushes` como si fuera la restricción puesta. Una rama sin ninguna
+protección habría aparecido como «Parcial», que es el estado más peligroso del sistema
+disfrazado del segundo mejor. Lo cazó un test antes de llegar a pantalla.
+
+| mutación | rojo |
+|---|---|
+| Lo ilegible se dibuja como «sin protección» | 🔴 3 |
+| La ausencia de protección vuelve a leerse como restricción puesta | 🔴 2 |
+| Lo ilegible se cuenta como incumplimiento en «Incumplen hoy» | 🔴 1 |
 
 #### Lo que B1.1 dejó decidido, y conviene saber antes de B1.3
 

@@ -30,6 +30,15 @@ registry.category("web_tour.tours").add("prm_politica", {
 			trigger: ".alert:contains(no toca ningún repositorio)",
 		},
 		{
+			// B1.5 · el número que convierte «qué exige» en «a cuántos les falta».
+			// Endurecer una exigencia sin esto es una decisión a ciegas.
+			content: "cada exigencia dice a cuántas ramas les falta HOY",
+			trigger: ".rm-exigencias th:contains(Incumplen hoy)",
+		},
+		{
+			trigger: ".rm-exigencias td:contains(Exige pull request)",
+		},
+		{
 			// Cuántos gobierna se prueba en Python —el número depende de lo que haya en la
 			// base—; lo que se prueba acá es que desde la plantilla se LLEGUE a ellos.
 			content: "la plantilla lleva a los repositorios que gobierna",
