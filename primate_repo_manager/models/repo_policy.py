@@ -341,3 +341,70 @@ class RepoPolicyTemplateIncumplimientos(models.Model):
 		if self.status_checks_defined and self.required_check_ids:
 			catalogo.append(("required_status_checks", _("Exige checks de CI")))
 		return catalogo
+
+
+class RepoPolicyTemplateChecks(models.Model):
+	"""La propuesta de checks requeridos — B2.
+
+	PROPONE, NO DECIDE. Qué checks quedan exigidos por plantilla es una decisión humana
+	que se toma UNA vez con los datos delante; esto arma los datos. Por eso no hay nada
+	acá que escriba `required_check_ids` ni que encienda `status_checks_defined`.
+
+	ORDENADA POR COBERTURA, y la cobertura es lo que separa un candidato de una excepción:
+	un check que corre en 20 de 21 repositorios de la plantilla es lo que esa plantilla
+	hace; uno que corre en 2 es de esos dos, y exigirlo a los 21 bloquearía 19.
+
+	NUNCA UN CHECK QUE NO SE HAYA VISTO CORRER. Los nombres salen de `repo.check.context`
+	—lo que GitHub reportó— y no de los workflows declarados: el nombre del workflow no es
+	el que el ruleset exige, y el equivocado bloquea todos los merges. Si nada corrió, la
+	lista sale vacía, y eso es una respuesta.
+	"""
+	_inherit = "repo.policy.template"
+
+	# Debajo de esta cobertura, un check es una excepción de unos pocos repositorios y no
+	# una convención de la plantilla. No es un umbral de calidad: es el punto donde
+	# exigirlo a todos rompe a más de los que ordena.
+	COBERTURA_DE_EXCEPCION = 50.0
+
+	def candidatos_de_check(self):
+		"""Qué checks se podrían exigir en esta plantilla, con sus números.
+
+		Returns:
+			dict: ``repositorios`` (cuántos gobierna), ``con_workflows`` (cuántos declaran
+			CI en un archivo), ``con_checks`` (cuántos produjeron algún check de verdad),
+			y ``candidatos``: por nombre, en cuántos corre, su cobertura y si es una
+			excepción. La diferencia entre `con_workflows` y `con_checks` es la que
+			explica una lista vacía sin que nadie tenga que adivinar.
+		"""
+		self.ensure_one()
+		Repo = self.env["repo.repository"]
+		repos = Repo.search([
+			("classification", "=", self.classification_default),
+			("archived", "=", False),
+		]) if self.classification_default else Repo.browse()
+
+		conteo = {}
+		for repo in repos:
+			for nombre in set(repo.check_context_ids.mapped("name")):
+				conteo[nombre] = conteo.get(nombre, 0) + 1
+
+		total = len(repos)
+		candidatos = [
+			{
+				"nombre": nombre,
+				"en_cuantos": cuantos,
+				"de_cuantos": total,
+				"cobertura": round(100.0 * cuantos / total, 1) if total else 0.0,
+				"es_excepcion": (100.0 * cuantos / total) < self.COBERTURA_DE_EXCEPCION
+				if total else True,
+				"ya_exigido": nombre in self.required_check_ids.mapped("name"),
+			}
+			for nombre, cuantos in conteo.items()
+		]
+		candidatos.sort(key=lambda c: (-c["en_cuantos"], c["nombre"]))
+		return {
+			"repositorios": total,
+			"con_workflows": len(repos.filtered("workflow_ids")),
+			"con_checks": len(repos.filtered("check_context_ids")),
+			"candidatos": candidatos,
+		}

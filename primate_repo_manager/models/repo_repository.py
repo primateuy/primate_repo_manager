@@ -32,6 +32,8 @@ class RepoRepository(models.Model):
 	pushed_at = fields.Datetime(string="Último push")
 
 	is_fork = fields.Boolean(string="Es fork")
+	check_context_ids = fields.One2many(
+		"repo.check.context", "repository_id", string="Checks que GitHub reportó")
 	upstream_full_name = fields.Char(
 		string="Upstream", help="Sólo forks. Ej: OCA/partner-contact")
 	governance_status = fields.Selection(

@@ -165,6 +165,9 @@ class RepoRepositorySync(models.Model):
 			# `no_legible`: ahí van las lecturas del repositorio que fallaron, y acá
 			# el estado de CADA fuente se guarda con su causa en su propia fila.
 			self._sync_security_alerts(client)
+			# B2 · los nombres de check que GitHub reporta, para poder proponer
+			# checks requeridos con strings que existen.
+			self._sync_check_contexts(client)
 
 			self.write({
 				"sync_state": "done",
@@ -334,6 +337,30 @@ class RepoRepositorySync(models.Model):
 		])
 		if desaparecidos:
 			desaparecidos.write({"present": False})
+
+	def _sync_check_contexts(self, client):
+		"""Los nombres de check que GitHub REPORTA en la rama por defecto — B2.
+
+		No los workflows: los check runs. Ver el docstring de `repo.check.context` — el
+		nombre del workflow no es el que el ruleset exige, y exigir el equivocado bloquea
+		todos los merges del repositorio.
+
+		Se mira la rama por defecto porque es donde la CI de verdad corre; lo que pase en
+		una rama de trabajo no dice qué se le puede exigir a la principal.
+		"""
+		rama = self.default_branch
+		if not rama:
+			return
+		Contexto = self.env["repo.check.context"]
+		try:
+			datos = client.get(
+				"/repos/%s/commits/%s/check-runs" % (self.full_name, rama),
+				tolerar_404=True) or {}
+		except GithubError:
+			# No se pudo leer. No se inventa nada: sin dato, no hay candidato.
+			return
+		for check in datos.get("check_runs") or []:
+			Contexto.upsert(self, check.get("name"), check.get("conclusion"))
 
 	def _sync_security_alerts(self, client):
 		"""Las dos fuentes de alertas, cada una con su estado de lectura — B6.

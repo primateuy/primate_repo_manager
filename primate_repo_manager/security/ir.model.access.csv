@@ -61,3 +61,5 @@ access_repo_security_scan_reader,repo.security.scan.reader,model_repo_security_s
 access_repo_security_scan_lead,repo.security.scan.lead,model_repo_security_scan,group_repo_lead,1,1,1,1
 access_repo_security_alert_reader,repo.security.alert.reader,model_repo_security_alert,group_repo_reader,1,0,0,0
 access_repo_security_alert_lead,repo.security.alert.lead,model_repo_security_alert,group_repo_lead,1,1,1,1
+access_repo_check_context_reader,repo.check.context.reader,model_repo_check_context,group_repo_reader,1,0,0,0
+access_repo_check_context_lead,repo.check.context.lead,model_repo_check_context,group_repo_lead,1,1,1,1

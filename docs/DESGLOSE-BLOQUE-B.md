@@ -191,6 +191,32 @@ haya visto correr.
 **La propuesta se ordena por cobertura**, no por nombre: un workflow que corre en 20 de 21
 repositorios es candidato; uno que corre en 2 es una excepción y se dice.
 
+### B2 · lo que la medición cambió, antes de escribir una línea
+
+**El hueco no se cierra eligiendo de una lista, porque la lista está vacía — y está vacía
+por el motivo correcto.** Medido contra la cuenta real el 7-sep-2026:
+
+| | |
+|---|---|
+| Repositorios | 113 |
+| Con workflows **declarados** en un archivo yml | **17** |
+| Con **check runs de verdad** en su rama por defecto | **0** |
+
+**La propuesta que dejó F1 era incorrecta por construcción.** Salía de los nombres de
+workflow —`pre-commit`, `tests`— y un ruleset exige el nombre del **check run**, que no es
+el mismo: un workflow `CI` con dos jobs produce checks con el nombre de los jobs. Exigir el
+equivocado **no falla al aplicar**: aplica bien, y después ningún merge de ese repositorio
+vuelve a pasar, porque GitHub espera para siempre un check que nadie reporta. Era
+exactamente la advertencia por la que el hueco se dejó abierto — y esa propuesta la habría
+desoído. Quedó desactivada, levantando con el motivo escrito.
+
+**Lo que hay ahora:** `repo.check.context` guarda **verbatim** los nombres que GitHub
+reportó, y `candidatos_de_check()` los ordena por cobertura marcando las excepciones. Con
+cero checks observados, la propuesta sale vacía **con sus dos números al lado** —17
+declaran, 0 corrieron—, que es lo que distingue «no hay candidatos» de «no miramos».
+
+**La decisión que queda sobre la mesa no es cuál check exigir: es que la CI no corre.**
+
 ## B3 · CODEOWNERS generado
 
 **Qué hace.** Genera el archivo `CODEOWNERS` a partir del responsable del repositorio y de

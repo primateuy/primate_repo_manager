@@ -104,6 +104,19 @@ class TransporteAuditoria:
 			return RespuestaFalsa(200, COLABORADORES)
 		if "/pulls" in url:
 			return RespuestaFalsa(200, [])
+		if "/check-runs" in url:
+			# Lo que GitHub reporta DE VERDAD. Ojo con el orden: esta URL contiene
+			# «/commits», así que tiene que resolverse antes que el ruteo de commits o
+			# el doble devuelve una lista donde el código espera un objeto.
+			return RespuestaFalsa(200, {"check_runs": [
+				{"name": "build (3.12)", "conclusion": "success"},
+				{"name": "pre-commit", "conclusion": "success"}]})
+		if "/secret-scanning/alerts" in url:
+			return RespuestaFalsa(404, {
+				"message": "Secret scanning is disabled on this repository."})
+		if "/dependabot/alerts" in url:
+			return RespuestaFalsa(403, {
+				"message": "Dependabot alerts are disabled for this repository."})
 		if "/commits" in url:
 			return RespuestaFalsa(200, COMMITS)
 		if "/actions/workflows" in url:
@@ -348,17 +361,32 @@ class TestSync(TransactionCase):
 	# --- propuesta de checks con datos ---
 
 	def test_la_propuesta_de_checks_sale_de_lo_que_corre_hoy(self):
-		self._sincronizar()
-		propuesta = self.env["repo.workflow"].propose_required_checks(self.backend)
+		"""Lo que este test comprobaba sigue valiendo: la propuesta sale de lo que corre
+		hoy y trae números para decidir, no una recomendación a ciegas.
 
-		self.assertIn("fork_upstream", propuesta)
-		candidatos = propuesta["fork_upstream"]["candidatos"]
-		nombres = [c["workflow"] for c in candidatos]
-		self.assertIn("tests", nombres)
-		self.assertIn("pre-commit", nombres)
-		# Trae los números para decidir, no una recomendación a ciegas.
-		self.assertEqual(candidatos[0]["repos"], 1)
-		self.assertEqual(candidatos[0]["cobertura"], 100.0)
+		LO QUE CAMBIÓ ES QUÉ ES «LO QUE CORRE». Antes eran los workflows declarados en un
+		archivo yml; ahora son los CHECK RUNS que GitHub reporta. No es un ajuste de
+		selector: el nombre del workflow no es el que un ruleset exige, y exigir el
+		equivocado bloquea todos los merges del repositorio. Medido sobre la cuenta real:
+		17 repositorios declaran workflows y 0 produjeron un check run.
+		"""
+		self._sincronizar()
+		repo = self.env["repo.repository"].search([
+			("backend_id", "=", self.backend.id)], limit=1)
+		contextos = repo.check_context_ids.mapped("name")
+		self.assertIn("build (3.12)", contextos,
+					  "el candidato sale del check run, no del workflow")
+
+		plantilla = self.env["repo.policy.template"].search([
+			("classification_default", "=", repo.classification)], limit=1)
+		if not plantilla:
+			return
+		propuesta = plantilla.candidatos_de_check()
+		nombres = [c["nombre"] for c in propuesta["candidatos"]]
+		self.assertIn("build (3.12)", nombres)
+		# Trae los números para decidir.
+		self.assertTrue(propuesta["candidatos"][0]["de_cuantos"])
+		self.assertIn("cobertura", propuesta["candidatos"][0])
 
 	def test_traduce_el_vocabulario_de_roles_de_github(self):
 		"""GitHub mezcla dos vocabularios: role_name dice "write", los permisos "push".

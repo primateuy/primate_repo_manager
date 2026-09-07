@@ -6,9 +6,8 @@ Existe para cerrar con datos el hueco de los checks requeridos: la spec los hace
 obligatorios pero no nombra ninguno, y hay que saber qué corre de verdad antes de exigir
 nada. Un check inexistente en un ruleset bloquea todos los merges del repo.
 """
-from collections import defaultdict
-
-from odoo import api, fields, models
+from odoo import _, api, fields, models
+from odoo.exceptions import UserError
 
 
 class RepoWorkflow(models.Model):
@@ -29,40 +28,26 @@ class RepoWorkflow(models.Model):
 
 	@api.model
 	def propose_required_checks(self, backend=None):
-		"""Propuesta de checks requeridos por plantilla, a partir de lo que corre hoy.
+		"""OBSOLETA A PROPÓSITO. Proponía nombres que bloquean merges.
 
-		Devuelve, por clasificación, los workflows ordenados por cuántos repos los usan.
-		Es el insumo para cerrar el hueco en UNA decisión: "estos N workflows corren en X
-		repos de clasificación Y, candidatos a check requerido".
+		Se escribió en F1 con lo único que había —los workflows declarados en un archivo
+		yml— y la idea era cerrar el hueco de los checks con esos nombres. **Es
+		incorrecta, y la corrección es de fondo**: un ruleset exige checks por el nombre
+		del CHECK RUN, que no es el del workflow. Un workflow `CI` con dos jobs produce
+		checks con el nombre de los jobs.
 
-		No decide nada por su cuenta: propone con números y el humano elige.
+		Exigir el nombre equivocado no falla al aplicar: aplica bien, y después **ningún
+		merge del repositorio vuelve a pasar**, porque GitHub espera para siempre un check
+		que nadie va a reportar. Es la advertencia original por la que este hueco se dejó
+		abierto en vez de llenarse con defaults razonables — y la propuesta de F1 la
+		habría desoído.
+
+		La buena es `repo.policy.template.candidatos_de_check()`, que sale de lo que
+		GitHub reportó de verdad.
 		"""
-		dominio = [("repository_id.archived", "=", False)]
-		if backend:
-			dominio.append(("repository_id.backend_id", "=", backend.id))
-
-		por_clasificacion = defaultdict(lambda: defaultdict(set))
-		repos_por_clasificacion = defaultdict(set)
-		for workflow in self.search(dominio):
-			repo = workflow.repository_id
-			clasificacion = repo.classification or "sin_clasificar"
-			repos_por_clasificacion[clasificacion].add(repo.id)
-			por_clasificacion[clasificacion][workflow.name].add(repo.id)
-
-		propuesta = {}
-		for clasificacion, workflows in por_clasificacion.items():
-			total = len(repos_por_clasificacion[clasificacion])
-			filas = [
-				{
-					"workflow": nombre,
-					"repos": len(repo_ids),
-					"cobertura": round(len(repo_ids) / total * 100, 1) if total else 0.0,
-				}
-				for nombre, repo_ids in workflows.items()
-			]
-			filas.sort(key=lambda f: (-f["repos"], f["workflow"]))
-			propuesta[clasificacion] = {
-				"repos_en_la_clasificacion": total,
-				"candidatos": filas,
-			}
-		return propuesta
+		raise UserError(_(
+			"Esta propuesta salía de los workflows declarados, y un ruleset exige el "
+			"nombre del check run, que no es el mismo. Exigir el equivocado bloquea "
+			"todos los merges del repositorio.\n\n"
+			"La propuesta buena está en la plantilla de política: sale de los checks que "
+			"GitHub reportó de verdad."))

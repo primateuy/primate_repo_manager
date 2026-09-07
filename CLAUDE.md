@@ -348,6 +348,11 @@ tests del paso quedaron rojos en el árbol publicado.
     cp <archivo> /tmp/<archivo>.orig     # antes de mutar
     cp /tmp/<archivo>.orig <archivo>     # después
 
+Y hay una segunda forma de la misma trampa, que mordió el mismo día: sobre un archivo
+**sin trackear** —uno recién creado por el paso en curso— `git checkout` no falla ni
+restaura: **no hace nada**, y la mutación se queda puesta. El comando devuelve error
+silencioso y el árbol queda mutado. Con la copia, los dos casos se comportan igual.
+
 Y **la suite se corre después de restaurar, no sólo antes de mutar.** El verde previo no
 dice nada sobre el árbol que se va a commitear.
 
