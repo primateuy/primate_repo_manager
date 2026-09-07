@@ -53,6 +53,31 @@ TEAM_MAINTAIN = [{"slug": "desarrollo", "permission": "maintain"}]
 # Un ruleset preexistente que NO es nuestro y que ninguna reversión puede tocar.
 AJENO = {"id": 111, "name": "ajeno-no-tocar", "enforcement": "active"}
 NUESTRO = {"id": 999, "name": "sonda", "enforcement": "active"}
+# B1.3 · el que sí es nuestro, con el prefijo que le pone B1.1.
+PROPIO = {"id": 777, "name": "primate/cliente-estandar/base"}
+def _definicion(aprobaciones=1, nombre="primate/cliente-estandar/base"):
+	"""Un ruleset completo, con la forma que devuelve GitHub."""
+	return {
+		"id": 777, "name": nombre, "target": "branch", "enforcement": "active",
+		"node_id": "RRS_x", "created_at": "2026-09-01T00:00:00Z",
+		"source": "org/sbx", "current_user_can_bypass": "always",
+		"bypass_actors": [
+			{"actor_id": 10, "actor_type": "Integration", "bypass_mode": "always"}],
+		"conditions": {"ref_name": {"include": ["refs/heads/19.0"], "exclude": []}},
+		"rules": [
+			{"type": "pull_request", "parameters": {
+				"required_approving_review_count": aprobaciones}},
+			{"type": "non_fast_forward"},
+		],
+	}
+
+
+def _pedido(aprobaciones=2, nombre="primate/cliente-estandar/base"):
+	"""Lo que el plan quiere que quede. Sin los campos que son de GitHub."""
+	completo = _definicion(aprobaciones, nombre)
+	for suyo in ("id", "node_id", "created_at", "source", "current_user_can_bypass"):
+		completo.pop(suyo)
+	return completo
 PROTECCION = {
 	"required_pull_request_reviews": {"required_approving_review_count": 1},
 	"enforce_admins": {"enabled": False},
@@ -955,3 +980,180 @@ class TestApply(TransactionCase):
 		# Y si alguien lo aplicara igual, salteando la aprobación, el manejador también
 		# se niega: la defensa de abajo sigue en pie.
 		self.assertFalse(plan.operation_ids.is_supported)
+
+
+class TestRulesetUpdate(TransactionCase):
+	"""B1.3 · actualizar un ruleset existente, con sus dos guardas.
+
+	Las dos tienen nombre y las dos tienen que poder fallar solas:
+	NO SE TOCA UN RULESET AJENO · EL ROLLBACK DEVUELVE, NUNCA BORRA.
+	"""
+
+	@classmethod
+	def setUpClass(cls):
+		super().setUpClass()
+		cls.clave = _clave_rsa_de_prueba()
+
+	def setUp(self):
+		super().setUp()
+		self.env.user.group_ids |= self.env.ref("primate_repo_manager.group_repo_lead")
+		self.backend = self.env["repo.backend"].create({
+			"name": "Rulesets %s" % uuid.uuid4().hex[:6],
+			"owner_login": "org-%s" % uuid.uuid4().hex[:8],
+			"owner_type": "organization", "app_id": "1", "installation_id": "2",
+			"environment": "sandbox",
+		})
+		self.backend.private_key = self.clave
+		self.backend.write_app_id = "10"
+		self.backend.write_installation_id = "20"
+		self.backend.write_private_key = self.clave
+		self.repo = self.env["repo.repository"].create({
+			"backend_id": self.backend.id, "github_id": uuid.uuid4().hex[:8],
+			"name": "sbx", "full_name": "org/sbx",
+		})
+		sin_cursor_aparte(self)
+
+	def _plan(self, target="primate/cliente-estandar/base", payload=None):
+		plan = self.env["repo.write.plan"].create({
+			"name": "Actualizar ruleset", "backend_id": self.backend.id})
+		self.op = self.env["repo.write.operation"].create({
+			"plan_id": plan.id, "kind": "ruleset_update", "repository_id": self.repo.id,
+			"target": target,
+			"payload_json": json.dumps(payload if payload is not None else _pedido()),
+		})
+		return _aprobar_plan(plan)
+
+	def _con_transporte(self, transporte, accion):
+		"""La única puerta al cliente de escritura, como en el resto del archivo."""
+		Backend = type(self.backend)
+		original = Backend.write_client
+		Backend.write_client = lambda s, transport=None: original(
+			s, transport=transporte)
+		try:
+			return accion()
+		finally:
+			Backend.write_client = original
+
+	def _correr(self, plan, gets, escrituras=None):
+		transporte = Transporte(gets, escrituras)
+		self._con_transporte(transporte, plan.action_apply)
+		return transporte
+
+	def _revertir(self, plan, transporte):
+		return self._con_transporte(transporte, plan.action_rollback)
+
+	# ------------------------------------------------------------------
+	# El ciclo
+	# ------------------------------------------------------------------
+
+	def test_actualizar_escribe_sobre_el_id_y_verifica_releyendo(self):
+		transporte = self._correr(self._plan(), gets=[
+			Respuesta(200, [PROPIO]),			# lista, del estado previo
+			Respuesta(200, _definicion(1)),		# definición previa
+			Respuesta(200, [PROPIO]),			# lista, dentro de ejecutar
+			Respuesta(200, _definicion(1)),		# definición, dentro de ejecutar
+			Respuesta(200, [PROPIO]),			# lista, al verificar
+			Respuesta(200, _definicion(2)),		# ya actualizada
+		])
+		self.assertEqual(self.op.state, "applied", self.op.error)
+		escrituras = [c for c in transporte.cuerpos if c[0] == "PUT"]
+		self.assertEqual(len(escrituras), 1)
+		self.assertIn("/rulesets/777", escrituras[0][1])
+
+	def test_si_ya_esta_como_se_pide_NO_se_escribe(self):
+		"""Un PUT con los mismos valores gasta cuota y ensucia la auditoría de la org."""
+		transporte = self._correr(self._plan(payload=_pedido(1)), gets=[
+			Respuesta(200, [PROPIO]), Respuesta(200, _definicion(1)),
+			Respuesta(200, [PROPIO]), Respuesta(200, _definicion(1)),
+			Respuesta(200, [PROPIO]), Respuesta(200, _definicion(1)),
+		])
+		self.assertEqual(self.op.state, "applied", self.op.error)
+		self.assertEqual(transporte.escrituras_hechas(), [])
+
+	def test_sin_escritura_no_queda_una_emision_abierta(self):
+		"""La constancia dice «salió una escritura». Si no salió, no se anota."""
+		self._correr(self._plan(payload=_pedido(1)), gets=[
+			Respuesta(200, [PROPIO]), Respuesta(200, _definicion(1)),
+			Respuesta(200, [PROPIO]), Respuesta(200, _definicion(1)),
+			Respuesta(200, [PROPIO]), Respuesta(200, _definicion(1)),
+		])
+		self.assertFalse(self.op._emisiones_sin_desenlace())
+
+	def test_la_relectura_manda_sobre_lo_que_contesto_el_put(self):
+		transporte = self._correr(self._plan(), gets=[
+			Respuesta(200, [PROPIO]), Respuesta(200, _definicion(1)),
+			Respuesta(200, [PROPIO]), Respuesta(200, _definicion(1)),
+			# Al verificar, GitHub devuelve algo distinto de lo pedido.
+			Respuesta(200, [PROPIO]), Respuesta(200, _definicion(1)),
+		])
+		self.assertEqual(self.op.state, "failed")
+		self.assertIn("relectura", self.op.error)
+		self.assertTrue([c for c in transporte.cuerpos if c[0] == "PUT"])
+
+	# ------------------------------------------------------------------
+	# Guarda 1 · no se toca un ruleset ajeno
+	# ------------------------------------------------------------------
+
+	def test_un_ruleset_sin_nuestro_prefijo_no_se_toca(self):
+		"""Y corta el apply entero: apuntar a configuración ajena no es un tropiezo
+		de una operación, es un plan que hay que revisar antes de tocar nada."""
+		plan = self._plan(target="ajeno-no-tocar",
+						  payload=_pedido(nombre="ajeno-no-tocar"))
+		transporte = Transporte([Respuesta(200, [AJENO])])
+		with self.assertRaises(UserError) as capturado:
+			self._con_transporte(transporte, plan.action_apply)
+		self.assertIn("ajeno-no-tocar", str(capturado.exception))
+		self.assertEqual(
+			transporte.escrituras_hechas(), [],
+			"no puede haberse escrito nada sobre un ruleset que no es nuestro")
+
+	def test_un_ruleset_que_no_existe_no_se_crea_por_las_dudas(self):
+		"""Actualizar es sobre algo que existe; crearlo es otra operación."""
+		plan = self._plan()
+		transporte = Transporte([Respuesta(200, [AJENO])])
+		with self.assertRaises(UserError):
+			self._con_transporte(transporte, plan.action_apply)
+		self.assertEqual(transporte.escrituras_hechas(), [])
+
+	# ------------------------------------------------------------------
+	# Guarda 2 · el rollback devuelve, nunca borra
+	# ------------------------------------------------------------------
+
+	def _aplicado(self):
+		plan = self._plan()
+		self._correr(plan, gets=[
+			Respuesta(200, [PROPIO]), Respuesta(200, _definicion(1)),
+			Respuesta(200, [PROPIO]), Respuesta(200, _definicion(1)),
+			Respuesta(200, [PROPIO]), Respuesta(200, _definicion(2)),
+		])
+		self.assertEqual(self.op.state, "applied", self.op.error)
+		return plan
+
+	def test_revertir_devuelve_la_definicion_anterior_y_no_borra_nada(self):
+		plan = self._aplicado()
+		transporte = Transporte([
+			Respuesta(200, [PROPIO]), Respuesta(200, _definicion(2)),	# leer ahora
+			Respuesta(200, _definicion(2)),								# ¿ya está igual?
+			Respuesta(200, [PROPIO]), Respuesta(200, _definicion(1)),	# releer tras volver
+		])
+		self._revertir(plan, transporte)
+
+		self.assertEqual(
+			[c for c in transporte.llamadas if c[0] == "DELETE"], [],
+			"revertir una actualización NUNCA borra el ruleset")
+		puts = [c for c in transporte.cuerpos if c[0] == "PUT"]
+		self.assertEqual(len(puts), 1)
+		self.assertEqual(
+			puts[0][2]["rules"], _definicion(1)["rules"],
+			"tiene que restaurar la definición que había, no otra cosa")
+
+	def test_revertir_sin_definicion_guardada_no_adivina_ni_borra(self):
+		plan = self._aplicado()
+		entrada = self.op.audit_log_id
+		# Se simula un punto de retorno incompleto: lo que no se guardó, no se inventa.
+		self.op.audit_log_id = False
+		transporte = Transporte([Respuesta(200, [PROPIO]), Respuesta(200, _definicion(2))])
+		with self.assertRaises(UserError):
+			self._revertir(plan, transporte)
+		self.assertEqual([c for c in transporte.llamadas if c[0] == "DELETE"], [])
+		self.op.audit_log_id = entrada.id

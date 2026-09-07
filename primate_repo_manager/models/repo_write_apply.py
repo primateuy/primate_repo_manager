@@ -87,12 +87,43 @@ from odoo import _, api, fields, models
 from odoo.exceptions import UserError
 
 from .github_client import GithubError, GithubNotFound, GithubPlanLimit
+from .repo_ruleset import RULESET_PREFIX
 
 _logger = logging.getLogger(__name__)
 
 # Cuerpo mínimo que GitHub exige en el PUT de protección. El payload de la operación se
 # funde encima; lo que no venga, queda en el default explícito y no en lo que GitHub
 # decida suponer.
+# Lo que `ejecutar` devuelve cuando NO hizo falta escribir. No es un valor de GitHub y no
+# puede confundirse con uno: es un objeto único cuya identidad se compara con `is`.
+SIN_CAMBIOS = object()
+
+# Los campos de un ruleset que este módulo gobierna. GitHub devuelve además `id`,
+# `source`, `node_id`, `created_at`, `_links` y `current_user_can_bypass`, que son suyos y
+# cambian solos; compararlos haría que toda verificación fallara y que todo rollback
+# escribiera de más.
+CAMPOS_DE_RULESET = ("name", "target", "enforcement", "bypass_actors", "conditions",
+					 "rules")
+
+
+def _definicion_comparable(definicion):
+	"""Un ruleset reducido a lo que gobernamos, en orden estable.
+
+	El orden importa: GitHub no promete devolver las reglas ni los actores exentos en el
+	mismo orden en que se mandaron, y comparar listas ordenadas distinto daría «no
+	coincide» sobre dos definiciones idénticas — una verificación que falla sobre algo que
+	salió bien enseña a desconfiar de la verificación.
+	"""
+	definicion = definicion or {}
+	salida = {}
+	for campo in CAMPOS_DE_RULESET:
+		valor = definicion.get(campo)
+		if isinstance(valor, list):
+			valor = sorted(valor, key=lambda v: json.dumps(v, sort_keys=True))
+		salida[campo] = valor
+	return salida
+
+
 PROTECCION_BASE = {
 	"required_status_checks": None,
 	"enforce_admins": False,
@@ -341,7 +372,15 @@ class RepoWriteOperationApply(models.Model):
 		# La admisibilidad sale de los HECHOS —¿salió una escritura?— y no de un campo que
 		# describe cómo terminó el intento. Es la doctrina del paso 3e, aplicada al lugar
 		# donde se había esquivado.
-		self._persistir_emision(previo)
+		# SI NO HIZO FALTA ESCRIBIR, NO SE DEJA CONSTANCIA DE UNA EMISIÓN. La constancia
+		# afirma «salió una escritura hacia GitHub», y no salió ninguna: anotarla igual
+		# abriría una cuenta que después alguien tiene que conciliar contra un efecto que
+		# no existe, y la guarda de frenar se dispararía sobre una operación impecable.
+		# Un falso positivo en una guarda es la peor clase — la guarda que grita sin razón
+		# termina ignorada.
+		sin_cambios = resultado is SIN_CAMBIOS
+		if not sin_cambios:
+			self._persistir_emision(previo)
 
 		# --- 2b. persistir la identidad creada, ANTES de verificar --------
 		# Ver la taxonomía en el docstring del módulo. Si el ciclo muere entre acá y el
@@ -372,6 +411,10 @@ class RepoWriteOperationApply(models.Model):
 				# La huella del plan que autorizó esto.
 				"plan_fingerprint": self.plan_id.approval_fingerprint,
 				"resultado": detalle,
+				# Aplicada y sin escribir NO es lo mismo que aplicada: el estado deseado
+				# ya estaba. Queda dicho en la entrada para que la bitácora no afirme una
+				# escritura que no ocurrió.
+				"sin_cambios": sin_cambios,
 			},
 			previous_state=previo,
 			# EL ENLACE, que faltaba. La operación apuntaba a la entrada pero la entrada no
@@ -382,7 +425,9 @@ class RepoWriteOperationApply(models.Model):
 			extra={"operation_id": self.id})
 		self.write({
 			"state": "applied",
-			"result_json": json.dumps(resultado, default=str)[:8000],
+			"result_json": json.dumps(
+				"sin cambios: ya estaba como se pedía" if sin_cambios else resultado,
+				default=str)[:8000],
 			"error": False,
 			"audit_log_id": entrada.id,
 		})
@@ -840,6 +885,14 @@ class RepoWriteOperationApply(models.Model):
 				"verificar": "_verificar_ruleset_creado",
 				"revertir": "_revertir_ruleset_creado",
 			},
+			# B1.3 · IDEMPOTENTE POR DESTINO: el ruleset ya existe y tiene id propio, así
+			# que van los cuatro pasos y NO el 2b. Ver la taxonomía arriba.
+			"ruleset_update": {
+				"leer": "_leer_ruleset_propio",
+				"ejecutar": "_actualizar_ruleset",
+				"verificar": "_verificar_ruleset_actualizado",
+				"revertir": "_revertir_ruleset_actualizado",
+			},
 		}
 
 	# --- rulesets: la clase que crea identidad ---------------------------
@@ -902,6 +955,121 @@ class RepoWriteOperationApply(models.Model):
 		cliente.delete(
 			"/repos/%s/rulesets/%s" % (self.repository_id.full_name, identidad),
 			tolerar_404=True)
+		return True
+
+	# --- rulesets: actualizar el que ya existe ---------------------------
+	#
+	# DOS GUARDAS CON NOMBRE, Y LAS DOS TIENEN QUE PODER FALLAR SOLAS:
+	#
+	# 1. NO SE TOCA UN RULESET AJENO. Un repositorio puede tener rulesets que no pusimos
+	#    nosotros —de la organización, de otra herramienta, de alguien a mano— y una
+	#    escritura sobre uno de ésos no es un error nuestro: es pisarle la configuración a
+	#    otro. Se reconoce por el prefijo del nombre, que es lo que B1.1 fija justamente
+	#    para esto, y se verifica DOS VECES: al leer el estado previo y otra vez al
+	#    revertir. La segunda no es redundante — entre una y otra pasó una escritura y
+	#    pudo pasar cualquier cosa, incluido que alguien renombrara el ruleset.
+	#
+	# 2. EL ROLLBACK DEVUELVE, NUNCA BORRA. Revertir una actualización es volver a poner
+	#    la definición anterior sobre el MISMO ruleset. Borrarlo sería destruir un objeto
+	#    que existía antes de que llegáramos y que el plan sólo venía a modificar: el
+	#    rollback dejaría el repositorio PEOR que antes de aplicar, que es exactamente lo
+	#    contrario de para lo que existe. Por eso este manejador no tiene ningún `delete`.
+
+	def _exigir_ruleset_propio(self, nombre, cuando):
+		"""La guarda 1. Levanta si el ruleset no lo puso este módulo.
+
+		Args:
+			nombre: el nombre del ruleset tal como lo devuelve GitHub.
+			cuando: en qué momento se está comprobando, para que el mensaje lo diga.
+
+		Raises:
+			UserError: si el nombre no lleva el prefijo del módulo.
+		"""
+		if (nombre or "").startswith(RULESET_PREFIX + "/"):
+			return
+		raise UserError(_(
+			"«%(nombre)s» no es un ruleset de este módulo, así que no se toca (%(cuando)s). "
+			"Los nuestros llevan el prefijo «%(prefijo)s/»; el resto es configuración de "
+			"otro y modificarla desde acá sería pisarla."
+		) % {"nombre": nombre or "?", "cuando": cuando, "prefijo": RULESET_PREFIX})
+
+	def _leer_ruleset_propio(self, cliente):
+		"""Estado previo: la definición COMPLETA del ruleset que se va a actualizar.
+
+		Completa y no un resumen: es el punto de retorno. Un rollback que restaure «lo que
+		nos acordamos» en vez de lo que había deja el ruleset distinto de como estaba y
+		nadie se entera hasta el próximo merge bloqueado.
+		"""
+		full = self.repository_id.full_name
+		lista = cliente.paginate("/repos/%s/rulesets" % full)
+		encontrado = next(
+			(r for r in lista if (r.get("name") or "") == self.target), None)
+		if not encontrado:
+			raise UserError(_(
+				"No hay ningún ruleset llamado «%(nombre)s» en %(repo)s. Actualizar es "
+				"sobre algo que existe; crearlo es otra operación."
+			) % {"nombre": self.target or "?", "repo": full})
+		self._exigir_ruleset_propio(encontrado.get("name"), _("al leer el estado previo"))
+
+		definicion = cliente.get("/repos/%s/rulesets/%s" % (full, encontrado["id"]))
+		return {
+			"id": encontrado["id"],
+			"name": encontrado.get("name"),
+			"definicion": _definicion_comparable(definicion),
+			# La lista completa, por el mismo motivo que en `ruleset_create`: sin ella no
+			# hay cómo distinguir después lo nuestro de lo que ya estaba.
+			"rulesets": sorted(
+				[{"id": r.get("id"), "name": r.get("name")} for r in lista],
+				key=lambda r: r["id"] or 0),
+		}
+
+	def _actualizar_ruleset(self, cliente):
+		"""Escribe la definición nueva — salvo que ya sea la que está.
+
+		EL DIFF ES CONTRA LO EXISTENTE. Un PUT con los mismos valores igual cuenta como
+		escritura: genera un evento en GitHub, gasta cuota y aparece en la auditoría de la
+		organización como un cambio que nadie hizo. Y sobre todo, deja constancia de una
+		escritura emitida en la bitácora — que después alguien tiene que conciliar.
+		"""
+		deseada = _cargar(self.payload_json) or {}
+		if not deseada.get("name"):
+			raise UserError(_("El ruleset a actualizar necesita al menos un `name`."))
+
+		previo = self._leer_ruleset_propio(cliente)
+		if _definicion_comparable(deseada) == previo["definicion"]:
+			return SIN_CAMBIOS
+		return cliente.put(
+			"/repos/%s/rulesets/%s" % (self.repository_id.full_name, previo["id"]),
+			deseada)
+
+	def _verificar_ruleset_actualizado(self, cliente):
+		"""Relee y compara. Lo que devolvió el PUT no cuenta como verdad."""
+		deseada = _definicion_comparable(_cargar(self.payload_json) or {})
+		actual = self._leer_ruleset_propio(cliente)
+		if actual["definicion"] != deseada:
+			return False, _("la definición releída no coincide con la que se pidió")
+		return True, actual["definicion"]
+
+	def _revertir_ruleset_actualizado(self, cliente, previo):
+		"""La guarda 2: devuelve la definición anterior. NUNCA borra."""
+		identidad = (previo or {}).get("id")
+		anterior = (previo or {}).get("definicion")
+		if not identidad or not anterior:
+			raise UserError(_(
+				"No se guardó la definición anterior de este ruleset, así que no hay a "
+				"qué volver. No se borra para «dejarlo limpio»: el ruleset existía antes "
+				"de esta operación."))
+		# Segunda comprobación, con el nombre que tiene AHORA: entre leer y revertir pasó
+		# una escritura, y pudo pasar cualquier otra cosa.
+		self._exigir_ruleset_propio(previo.get("name"), _("al revertir"))
+
+		full = self.repository_id.full_name
+		if _definicion_comparable(cliente.get(
+				"/repos/%s/rulesets/%s" % (full, identidad))) == anterior:
+			# Ya está como estaba: escribir los mismos valores es una escritura que no
+			# cambia nada y que igual queda en la auditoría de la organización.
+			return True
+		cliente.put("/repos/%s/rulesets/%s" % (full, identidad), anterior)
 		return True
 
 	# --- permisos directos de una persona -------------------------------

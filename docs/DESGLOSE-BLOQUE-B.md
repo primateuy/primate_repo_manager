@@ -90,7 +90,7 @@ configuración que no pusimos nosotros. *(Ya hay un test que cubre esto en el mo
 |---|---|---|
 | **B1.1** | La traducción plantilla → JSON de ruleset, **pura**: no toca GitHub ni la base | **hecho** |
 | **B1.2** | `ruleset_update` entra al catálogo de operaciones | **hecho** |
-| **B1.3** | El apply: leer, aplicar el diff, verificar releyendo, registrar | |
+| **B1.3** | El apply: leer, aplicar el diff, verificar releyendo, registrar | **hecho** |
 | **B1.4** | «Exige … · Tiene …» por rama, en el formulario del repositorio | |
 | **B1.5** | «Incumplen hoy» por exigencia, en la plantilla | |
 | **B1.6** | Ensayo contra el sandbox y mutación de las guardas nuevas | |
@@ -112,6 +112,22 @@ configuración que no pusimos nosotros. *(Ya hay un test que cubre esto en el mo
 **Y B1.4/B1.5 nacen visuales** —tokens y patrones desde el primer commit, regla 3—: son la
 tercera columna del checklist de cobertura volviéndose pantalla, no una lista sobre la
 cara vieja.
+
+#### Las dos guardas de B1.3, con su mutación hecha
+
+| guarda | qué impide | mutación | rojo |
+|---|---|---|---|
+| **No se toca un ruleset ajeno** | escribir sobre configuración que no puso este módulo, reconocida por el prefijo del nombre | la guarda deja de comprobar | 🔴 1 |
+| **El rollback devuelve, nunca borra** | que revertir una actualización destruya un ruleset que existía antes del plan | el rollback borra en vez de restaurar | 🔴 1 |
+
+Y una tercera, del diff: **si ya está como se pide, no se escribe**. Mutación —escribir
+siempre— 🔴 1. Un PUT con los mismos valores gasta cuota, aparece en la auditoría de la
+organización como un cambio que nadie hizo y deja una constancia de emisión que después
+hay que conciliar contra un efecto inexistente.
+
+La guarda del ruleset ajeno se comprueba **dos veces**, al leer y al revertir, y la
+segunda no es redundante: entre una y otra pasó una escritura, y pudo pasar cualquier otra
+cosa —incluido que alguien renombrara el ruleset—.
 
 #### Lo que B1.1 dejó decidido, y conviene saber antes de B1.3
 

@@ -577,16 +577,20 @@ class TestReversibleVsIrreversible(BasePlan):
 		self.assertIn("ruleset_create", catalogo)
 		self.assertIn("ruleset_delete", catalogo)
 
-	def test_actualizar_un_ruleset_todavia_no_se_puede_aplicar_y_lo_dice(self):
-		"""Llega al catálogo antes que su manejador, y eso se ve: apagado, no roto.
+	def test_actualizar_un_ruleset_ya_se_puede_aplicar_y_es_reversible(self):
+		"""B1.3 encendió lo que B1.2 dejó apagado.
 
-		«No implementado» no es «irreversible»: decir lo segundo mentiría en la dirección
-		tranquilizadora.
+		En B1.2 este mismo test afirmaba lo contrario —`is_supported` en falso— y se puso
+		rojo al llegar el manejador. Ése es el rojo correcto: `is_supported` se deriva de
+		si hay manejador, así que el día que aparece, la pantalla se entera sola.
+
+		Y es REVERSIBLE, que en este tipo tiene un significado preciso: revertir devuelve
+		la definición anterior sobre el mismo ruleset. Nunca lo borra.
 		"""
 		op = self._op("ruleset_update", target="primate/cliente-estandar/base")
-		self.assertFalse(op.is_supported)
+		self.assertTrue(op.is_supported)
 		self.assertFalse(op.is_irreversible)
-		self.assertIn("NO ESTÁ IMPLEMENTADO", op.description)
+		self.assertNotIn("NO ESTÁ IMPLEMENTADO", op.description)
 
 	def test_los_tipos_SIN_manejador_se_dicen_como_lo_que_son(self):
 		"""«No implementado» NO es «irreversible». Confundirlos mentiría en la dirección
