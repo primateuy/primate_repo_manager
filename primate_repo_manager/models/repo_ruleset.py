@@ -132,6 +132,17 @@ class RepoRulesetBuilder(models.AbstractModel):
 		no_traducido = []
 		reglas = []
 
+		# UN ROL QUE LA POLÍTICA NO GOBIERNA NO LLEVA RULESET, NI SIQUIERA UNO FLACO.
+		# Sin esta salida, el patrón de mensaje de commit —que es de la plantilla y no
+		# del rol— alcanzaba para que la rama de trabajo de un repositorio recién nacido
+		# estrenara un ruleset propio: gobierno que nadie declaró, sobre una rama que el
+		# motor después no mide. La asimetría al revés de la que arreglamos, y del mismo
+		# tamaño. La respuesta sale de la plantilla, que es la única fuente.
+		if not regla.get("gobernado", True):
+			return {"role": rol, "name": nombre_de_ruleset(plantilla.code, rol),
+					"branches": list(nombres_de_rama), "payload": {},
+					"no_traducido": []}
+
 		if regla.get("require_pr"):
 			reglas.append({
 				"type": "pull_request",

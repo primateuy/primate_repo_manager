@@ -30,7 +30,6 @@ from odoo import _, api, fields, models
 from odoo.fields import Command
 from odoo.exceptions import UserError
 
-from .repo_rules import ROLES_GOBERNADOS
 
 _logger = logging.getLogger(__name__)
 
@@ -1071,6 +1070,36 @@ class RepoWritePlanNacimiento(models.Model):
 	SUFIJOS_DE_RAMA = ("prod", "support", "staging", "dev")
 
 	@api.model
+	def _rulesets_de_nacimiento(self, plantilla, ramas, bypass=None):
+		"""Qué rulesets le corresponden a un repositorio que nace con esas ramas.
+
+		Lo contestan la plantilla efectiva y nadie más: un rol que la política no
+		gobierna —o que gobierna sin exigir nada— no lleva ruleset. Devuelve una lista
+		de ``(rol, ramas_de_ese_rol, armado)`` en el orden en que se crean.
+
+		Existe para que el ARMADO y el RESUMEN no puedan divergir. Antes el resumen
+		contaba ramas gobernadas y el armado creaba un ruleset por ROL: con dos ramas del
+		mismo rol el número prometido habría sido uno más que el armado, y el número
+		prometido es el único que alguien mira antes de apretar.
+		"""
+		if not plantilla:
+			return []
+		Builder = self.env["repo.ruleset.builder"]
+		Roles = self.env["repo.branch.role.rule"]
+		vistos, salida = [], []
+		for rama in ramas:
+			rol = Roles.role_for(rama)
+			if rol in vistos:
+				continue
+			vistos.append(rol)
+			de_ese_rol = [r for r in ramas if Roles.role_for(r) == rol]
+			armado = Builder.payload_for_role(plantilla, rol, de_ese_rol, bypass or [])
+			if not armado["payload"]:
+				continue
+			salida.append((rol, de_ese_rol, armado))
+		return salida
+
+	@api.model
 	def armar_nacimiento(self, backend, valores):
 		"""Arma el plan de un repositorio nuevo.
 
@@ -1132,15 +1161,12 @@ class RepoWritePlanNacimiento(models.Model):
 		if plantilla:
 			Builder = self.env["repo.ruleset.builder"]
 			bypass = Builder._bypass_actors(backend)
-			for indice, rol in enumerate(ROLES_GOBERNADOS):
-				de_ese_rol = [
-					r for r in ramas
-					if self.env["repo.branch.role.rule"].role_for(r) == rol]
-				if not de_ese_rol:
-					continue
-				armado = Builder.payload_for_role(plantilla, rol, de_ese_rol, bypass)
-				if not armado["payload"]:
-					continue
+			# LOS ROLES SALEN DE LAS RAMAS QUE ESTE PLAN CREA y de lo que la plantilla
+			# exige para cada uno — no de una constante. El repositorio nace protegido en
+			# exactamente lo que la política pide: ni una rama de más, que sería gobierno
+			# que nadie declaró, ni una de menos, que sería un hallazgo el día uno.
+			armados = self._rulesets_de_nacimiento(plantilla, ramas, bypass)
+			for indice, (rol, de_ese_rol, armado) in enumerate(armados):
 				Operacion.create({
 					"plan_id": plan.id, "kind": "ruleset_create",
 					"sequence": 40 + indice, "target": armado["name"],
@@ -1202,9 +1228,8 @@ class RepoWritePlanNacimiento(models.Model):
 		ramas = ["%s-%s" % (version, s) for s in self.SUFIJOS_DE_RAMA]
 		plantilla = self.env["repo.policy.template"].search(
 			[("classification_default", "=", clasificacion)], limit=1)
-		gobernadas = [
-			r for r in ramas
-			if self.env["repo.branch.role.rule"].role_for(r) in ROLES_GOBERNADOS]
+		armados = self._rulesets_de_nacimiento(plantilla, ramas)
+		gobernadas = [r for _rol, de_ese_rol, _a in armados for r in de_ese_rol]
 		return {
 			"nombre": nombre,
 			"clasificacion": clasificacion,
@@ -1221,6 +1246,6 @@ class RepoWritePlanNacimiento(models.Model):
 				(r for r in ramas
 				 if self.env["repo.branch.role.rule"].role_for(r) == "prod"), ramas[0]),
 			"operaciones": (
-				1 + len(ramas) + 1 + len(gobernadas)
+				1 + len(ramas) + 1 + len(armados)
 				+ (1 if valores.get("responsable") else 0) + 1),
 		}

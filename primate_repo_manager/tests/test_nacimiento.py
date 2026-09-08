@@ -193,6 +193,47 @@ class TestNacimiento(TransactionCase):
 		self.assertTrue([c for c in transporte.llamadas if c[0] == "DELETE"])
 
 
+class TestRulesetsDerivadosDeLaPlantilla(TransactionCase):
+	"""Qué protege el nacimiento lo dice la plantilla efectiva, y nadie más."""
+
+	def setUp(self):
+		super().setUp()
+		self.plantilla = self.env["repo.policy.template"].search(
+			[("classification_default", "=", "cliente")], limit=1)
+		self.assertTrue(self.plantilla, "el módulo declara una plantilla de cliente")
+
+	def test_un_rol_que_la_politica_no_gobierna_no_lleva_ruleset(self):
+		"""`19.0-dev` es trabajo sobre una versión: ninguna política lo nombra.
+
+		Escribirle un ruleset sería gobierno que nadie declaró; reclamárselo sería un
+		hallazgo el día uno. Las dos preguntas se contestan con la misma llamada.
+		"""
+		armados = self.env["repo.write.plan"]._rulesets_de_nacimiento(
+			self.plantilla, ["19.0-prod", "19.0-staging", "19.0-support", "19.0-dev"])
+		roles = [rol for rol, _ramas, _a in armados]
+		self.assertNotIn("version", roles)
+		self.assertEqual(sorted(roles), ["prod", "staging", "support"])
+
+	def test_dos_ramas_del_MISMO_rol_son_UN_ruleset_y_el_resumen_lo_sabe(self):
+		"""El armado siempre creó un ruleset por ROL y el resumen contaba RAMAS.
+
+		Con las cuatro ramas de hoy los dos números coinciden por casualidad —una rama
+		por rol— y por eso nadie lo vio. En cuanto dos ramas comparten rol, el número
+		prometido queda uno arriba del armado, y el número prometido es el único que
+		alguien mira antes de apretar.
+		"""
+		armados = self.env["repo.write.plan"]._rulesets_de_nacimiento(
+			self.plantilla, ["19.0-prod", "19.0-produccion"])
+		self.assertEqual(len(armados), 1, "dos ramas del mismo rol son un solo ruleset")
+		_rol, ramas, _a = armados[0]
+		self.assertEqual(sorted(ramas), ["19.0-prod", "19.0-produccion"])
+
+	def test_sin_plantilla_no_se_inventa_gobierno(self):
+		armados = self.env["repo.write.plan"]._rulesets_de_nacimiento(
+			self.env["repo.policy.template"], ["19.0-prod"])
+		self.assertEqual(armados, [])
+
+
 class TestNombreYVuelta(TransactionCase):
 	"""B5.2 · el prefijo, y la guarda que hace imposible nacer mal clasificado."""
 

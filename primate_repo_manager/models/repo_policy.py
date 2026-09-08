@@ -151,12 +151,43 @@ class RepoPolicyTemplate(models.Model):
 		lambda env, diagnostics: _mensaje_de_clasificacion_ocupada(env, diagnostics),
 	)
 
+	# Un rol sin exigencias, escrito una sola vez. Es lo que devuelve la plantilla para
+	# una rama que la política no gobierna, y lo que hace que el plan no le escriba
+	# ruleset y el motor no le reclame nada: la misma respuesta para las dos preguntas.
+	SIN_EXIGENCIAS = {
+		"require_pr": False, "required_approvals": 0,
+		"require_codeowner_review": False, "block_force_push": False,
+		"block_deletion": False, "require_signed_commits": False,
+		"block_human_push": False, "heredada": False, "gobernado": False,
+	}
+
 	def rule_for_role(self, branch_role):
-		"""Reglas efectivas para un rol de rama: la específica si existe, o la general."""
+		"""Reglas efectivas para un rol de rama: la específica si existe, o la general.
+
+		SALVO QUE LA POLÍTICA NO GOBIERNE ESE ROL Y NADIE HAYA ESCRITO UNA FILA PARA ÉL. `ROLES_GOBERNADOS` dice contra qué
+		roles tiene sentido medir cumplimiento —una rama «otra», una de trabajo sobre una
+		versión, la espejo de un fork— y este método lo ignoraba: caía a la regla general
+		y terminaba exigiendo pull request en ramas que ninguna política nombra.
+
+		Se veía en el recién nacido del ensayo B5.4. El plan de nacimiento crea cuatro
+		ramas y le escribe ruleset a tres, porque la plantilla no exige nada para la
+		cuarta; el motor, cayendo a la general, reclamaba la cuarta y también `main` —la
+		que crea GitHub con el README—. El módulo se acusaba de no aplicar lo que la
+		política no pide.
+
+		Una sola fuente para las dos preguntas: qué hay que escribir y qué hay que
+		reclamar salen de acá.
+		"""
 		self.ensure_one()
 		especifica = self.branch_rule_ids.filtered(lambda r: r.branch_role == branch_role)
 		if especifica:
+			# UNA FILA PROPIA MANDA SIEMPRE, gobernado el rol o no. Alguien la escribió a
+			# propósito para ese rol —la rama espejo de un fork, por ejemplo, que no se
+			# gobierna pero sí se protege del push humano—, y una declaración explícita
+			# no se descarta por una lista general.
 			return especifica[0]._as_dict()
+		if branch_role not in ROLES_GOBERNADOS:
+			return dict(self.SIN_EXIGENCIAS)
 		return {
 			"require_pr": self.require_pr,
 			"required_approvals": self.required_approvals,
