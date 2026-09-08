@@ -28,10 +28,10 @@ oscuro (turno 7 del entregable).
 
 | columna | cuántos |
 |---|---|
-| ✅ Implementado | 80 |
+| ✅ Implementado | 88 |
 | 🔒 Apagado con su cartel | 18 |
 | 📋 Ítem de plan, con su bloque | 11 |
-| ↔️ Desvío deliberado, con su motivo | 1 |
+| ↔️ Desvío deliberado, con su motivo | 2 |
 | ⛔ Sin representación | **0** |
 
 **La tercera columna quedó vacía en esta revisión**, y así tiene que quedar cada vez: los
@@ -266,6 +266,14 @@ tramo: bundle oscuro servido, `--rm-bg` en `#14171C`, tarjetas en `#1C2027`, tex
 | Pull requests desde la app | 🔒 | casillero, **F4** |
 | Crear rama desde una tarea | 🔒 | casillero, **F4** |
 | Crear repositorio | ✅ | B5: asistente de tres pasos que arma un plan |
+| · Paso 1 · nombre derivado de la convención | ✅ | prefijo por clasificación, con su ida y vuelta probada |
+| · Paso 2 · lo que se va a crear, enumerado | ✅ | resumen que promete el mismo número de operaciones que arma |
+| · Paso 3 · revisión y salida al plan | ✅ | «Revisar el plan y crear» — no escribe: arma el plan |
+| · La creación es irreversible y lo dice | ✅ | tipeo del nombre; el rollback **jamás** borra un repositorio |
+| · Encadenamiento de las diez operaciones | ✅ | barrera `depends_on_ids` de D2.0; verificado aplicando contra el sandbox |
+| · Dependabot nace encendido | ✅ | operación propia; medido: la App de escritura puede |
+| · Rama por defecto puesta por el plan | ✅ | operación N+2, tras crear la rama de producción |
+| · «Nace con cero hallazgos» | ↔️ | **hoy nace con seis, todos legítimos**: dos ramas fuera del esquema sin ruleset, dos lecturas de seguridad que un repositorio de segundos no puede contestar. Documentado en `ENSAYO-B5.4.md`; tres decisiones pendientes |
 | Notificaciones (tres canales) | 🔒 | casillero, **E3** |
 
 ## 6d · Especificación de drag & drop

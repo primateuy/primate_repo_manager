@@ -142,6 +142,14 @@ finally:
 		except Exception as exc:
 			linea("NO se pudo borrar", str(exc)[:100])
 			linea("queda en el sandbox", creado)
+		# Y la fila del espejo, que si no queda de FANTASMA. El módulo no tiene hoy
+		# ninguna noción de «el repositorio ya no está»: `_sync_from_backend` upsertea
+		# lo que el listado trae y no marca lo que dejó de venir, así que un repo
+		# borrado en GitHub sigue en el espejo y sigue produciendo hallazgos sobre
+		# ramas que no existen. Lo dejó a la vista esta serie de ensayos: seis
+		# fantasmas, dieciocho hallazgos. Está anotado como hallazgo de producto; acá
+		# se limpia porque es basura del ENSAYO, no porque el módulo lo resuelva.
+		repo.unlink()
 	env.cr.commit()
 
 print("\n" + "=" * 78); print("VEREDICTO"); print("=" * 78)

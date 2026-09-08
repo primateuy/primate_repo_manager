@@ -22,6 +22,19 @@ Trabajás por fases chicas y verificables (F0–F6 del spec). Nunca ejecutes una
 
 Esta regla reemplaza al `FRENO` previo al commit: commitear en local es reversible y no necesita permiso; publicar sí.
 
+### Al cerrar un bloque: instalación desde CERO, siempre — decidido el 7-sep-2026
+
+Un bloque no cierra con la suite verde sobre la base de trabajo. Cierra creando una base
+nueva e instalando el módulo con `-i` y `--test-enable` sobre ella.
+
+Por qué es regla y no costumbre: la base de trabajo **arrastra**. Guarda filas que el
+módulo ya no declara —una regla de clasificación que un `git checkout` borró del XML, una
+ACL cuyo renglón desapareció del csv— y la suite las encuentra vivas y sale verde sobre
+un sistema que nadie va a instalar así jamás. Ya tapó dos defectos reales. La instalación
+limpia es la única que corre contra lo que el módulo **dice**, y no contra lo que la base
+**recuerda**.
+
+
 ## Reglas de construcción para B, C y D — leer antes de tocar el espejo
 
 Los webhooks llegan en F4, pero **B y D se construyen como si ya estuvieran**. Hoy el
@@ -164,6 +177,14 @@ odoo-bin -c <conf> -d <db> -u primate_repo_manager --test-enable --stop-after-in
 #  se lee como nombre de clase. Verificado el 7-sep-2026.)
 odoo-bin -c <conf> -d <db> -u primate_repo_manager --test-enable --stop-after-init \
          --test-tags post_install/primate_repo_manager
+
+# CIERRE DE BLOQUE · la instalación desde CERO (obligatoria, ver «Regla de oro»)
+# El --test-tags NO es opcional acá tampoco: sin él, una base nueva corre además la
+# suite JS de `web` entera y el cierre pasa de tres minutos a horas.
+createdb -h localhost -U odoo prm_fresh_<fecha>
+odoo-bin -c <conf> -d prm_fresh_<fecha> --db-filter='^prm_fresh_<fecha>$' \
+         -i primate_repo_manager --test-enable --test-tags /primate_repo_manager \
+         --stop-after-init
 
 # ¿producción sigue cerrada? consulta GitHub y la base, no la memoria de nadie
 odoo-bin shell -c <conf> -d <db> --no-http < primate_repo_manager/tools/chequeo_de_cierre.py
@@ -332,6 +353,21 @@ tiene **ninguna** referencia a PCM y hay un test que lo verifica recorriendo los
 - **Webhook controller:** `auth='public'`, `csrf=False`, verificación HMAC `X-Hub-Signature-256` con `hmac.compare_digest` ANTES de cualquier procesamiento; firma inválida → 403 y log de warning. El controller solo valida y encola; responde 200 inmediato.
 - **`repo.audit.log` es inmutable:** ACL sin write/unlink para ningún grupo; `create` solo desde código de sistema. No agregues botones de edición.
 - **Nada destructivo sin confirmación:** revocaciones masivas, reaplicación de política, offboarding → wizard con resumen de lo que va a pasar antes de ejecutar.
+- **El espejo es una copia; la bitácora es el registro.** Lo que se escribe en la conexión
+  durable —la que confirma aparte para que un apply interrumpido deje constancia— la
+  transacción principal **no lo ve**: Postgres corre en REPEATABLE READ y la foto del
+  cursor principal se tomó antes. Costó cuatro defectos del ensayo B5.4, todos con la
+  misma forma: escribir algo durable y después leerlo desde el hilo principal, que lo
+  encuentra vacío. La regla que sale de ahí:
+  - Lo que el paso siguiente necesita leer va en la transacción principal (y, si es del
+    espejo, por el upsert de siempre).
+  - Lo que tiene que sobrevivir a una caída va a la bitácora, que es durable e inmutable,
+    y se lee de ahí.
+  - Nunca las dos cosas por el mismo camino. Un `id` de repositorio recién creado se
+    guarda en la entrada de identidad de la bitácora **y** en el resultado de la
+    operación; el espejo se actualiza aparte, en la principal, y no es la fuente.
+  - Dos escritores sobre la misma fila desde conexiones distintas = *serialization
+    failure*. Si dos operaciones tocan la misma fila del espejo, escribe una sola.
 - **Flags de seguridad cross-proceso se leen frescos** (search/read en el momento de uso, no cacheados) — lección permanente de PCM.
 - **Defaults silenciosos de primitivos son el enemigo:** validá configuración explícitamente; un campo vacío no puede colapsar a un comportamiento peligroso.
 
@@ -397,6 +433,19 @@ Para mutar una guarda que vive en la base hay que sacarla **de los dos lados**:
 
 Con el índice realmente ausente aparecieron los cuatro rojos que tenían que aparecer. Sin
 ese paso, la mutación habría firmado una cobertura que no existía.
+
+### Un test `at_install` mira las filas huérfanas TODAVÍA VIVAS
+
+Medido el 8-sep-2026 mutando el csv de ACLs. Odoo borra los registros que el módulo dejó
+de declarar recién al terminar de cargar **todos** los módulos, y los tests `at_install`
+corren antes de eso. Resultado: se saca un renglón de `ir.model.access`, se corre con
+`-u`, y el test que barre permisos ve la fila vieja, da verde, y **después** Odoo la borra.
+El archivo mutado, la base mutada, y la mutación igual sobrevivió — por el momento, no por
+el contenido.
+
+Todo test que compruebe **la ausencia** de un dato declarativo —una ACL que falta, una
+regla que ya no está, un registro retirado— va `@tagged("post_install", "-at_install")`.
+Con el barrido de ACLs en `post_install` la misma mutación dio tres rojos.
 
 ## Dos formas en que un test tapa el defecto que buscaba
 
