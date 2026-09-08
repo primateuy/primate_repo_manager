@@ -340,9 +340,9 @@ corrección por el mismo embudo que todo lo demás.
 | paso | qué deja hecho | estado |
 |---|---|---|
 | **B5.1** | `repository_create` (irreversible), `branch_create` y `dependabot_enable` | **hecho** |
-| **B5.2** | El armado del plan, y el prefijo de nombres con su ida y vuelta | |
-| **B5.3** | La pantalla de tres pasos, desde el mockup 6b | |
-| **B5.4** | El ensayo: un repositorio que nace y la auditoría no le encuentra nada | |
+| **B5.2** | El armado del plan, y el prefijo de nombres con su ida y vuelta | **hecho** |
+| **B5.3** | La pantalla de tres pasos, desde el mockup 6b | **hecho** |
+| **B5.4** | El ensayo contra el sandbox | **corrido** — ver [`ENSAYO-B5.4.md`](ENSAYO-B5.4.md). Nace y se gobierna; el **cero hallazgos NO se logró** |
 
 **Tres desvíos del mockup, decididos:**
 

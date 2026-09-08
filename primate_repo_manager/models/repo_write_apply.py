@@ -105,7 +105,12 @@ import logging
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError
 
-from .github_client import GithubError, GithubNotFound, GithubPlanLimit
+from .github_client import (
+	GithubError,
+	GithubFeatureDisabled,
+	GithubNotFound,
+	GithubPlanLimit,
+)
 from .repo_codeowners import MARCA as MARCA_CODEOWNERS
 from .repo_ruleset import RULESET_PREFIX
 
@@ -347,6 +352,7 @@ class RepoWritePlanApply(models.Model):
 
 class RepoWriteOperationApply(models.Model):
 	_inherit = "repo.write.operation"
+
 
 	state = fields.Selection(
 		selection_add=[
@@ -614,15 +620,34 @@ class RepoWriteOperationApply(models.Model):
 			"target": self.target or "",
 		}
 		with self._cursor_durable() as cr:
-			self.env(cr=cr)["repo.audit.log"].sudo().registrar(
+			entorno = self.env(cr=cr)
+			entorno["repo.audit.log"].sudo().registrar(
 				"write_emitted",
 				_("Escritura emitida sobre %(repo)s/%(destino)s, sin verificar todavía")
 				% {"repo": datos["repo_name"], "destino": datos["target"]},
-				backend=self.env(cr=cr)["repo.backend"].browse(datos["backend_id"]),
-				repository=self.env(cr=cr)["repo.repository"].browse(datos["repo_id"]),
+				backend=entorno["repo.backend"].browse(datos["backend_id"]),
+				repository=self._repositorio_visible_en(entorno, datos["repo_id"]),
 				payload=datos,
 				previous_state=previo,
 				extra={"operation_id": self.id})
+
+	def _repositorio_visible_en(self, entorno, repo_id):
+		"""El repositorio, SÓLO si esa conexión puede verlo.
+
+		ODOO ABRE SUS TRANSACCIONES EN REPEATABLE READ, así que la conexión durable no ve
+		una fila que la transacción principal creó y todavía no confirmó. Pasa con el
+		nacimiento gobernado: el repositorio se acaba de crear en esta misma corrida, y
+		la constancia —que va por la conexión aparte— reventaba con «Record does not
+		exist» sobre una fila perfectamente existente.
+
+		Se pasa el enlace cuando se puede y se omite cuando no. **La entrada no pierde
+		nada importante**: la bitácora guarda el nombre del repositorio COMO TEXTO
+		justamente para sobrevivir a que el enlace no esté — es la misma previsión que la
+        hace resistir al borrado de lo que describe, usada acá para el caso inverso.
+		"""
+		if not repo_id:
+			return None
+		return entorno["repo.repository"].browse(repo_id).exists() or None
 
 	def _entrada_de_emision(self):
 		"""La constancia de que la escritura de esta operación salió, si la hubo."""
@@ -786,7 +811,15 @@ class RepoWriteOperationApply(models.Model):
 				"summary": (_("Creado %(que)s en %(repo)s") % {
 					"que": identidad, "repo": datos["repo_name"]})[:255],
 				"backend_id": datos["backend_id"],
-				"repository_id": datos["repo_id"],
+				# SÓLO SI ESTA CONEXIÓN LO VE. Con el nacimiento gobernado la fila del
+				# repositorio se acaba de crear en la transacción principal y todavía no
+				# está confirmada: en REPEATABLE READ la durable no la ve, y la clave
+				# foránea quedaría esperando a que la otra confirme —que a su vez espera
+				# a ésta—. El nombre en texto, que va siempre, es lo que hace que la
+				# entrada no pierda nada por omitir el enlace.
+				"repository_id": (
+					self._repositorio_visible_en(entorno, datos["repo_id"]).id
+					if self._repositorio_visible_en(entorno, datos["repo_id"]) else False),
 				"repository_name": datos["repo_name"],
 				"operation_id": self.id,
 				"payload_json": json.dumps({
@@ -796,6 +829,11 @@ class RepoWriteOperationApply(models.Model):
 				"previous_state_json": json.dumps(previo, default=str),
 			})
 			entorno.flush_all()
+		# Y SE ANOTA TAMBIÉN EN LA TRANSACCIÓN PRINCIPAL. La verificación que viene
+		# enseguida no puede leer lo que la conexión durable acaba de confirmar —
+		# REPEATABLE READ—, así que sin esto buscaría la identidad donde no la va a
+		# encontrar. Ver `_identidad_guardada`.
+		self.result_json = json.dumps({"identidad": identidad}, default=str)
 		# El estado va por la transacción NORMAL. La conexión durable sólo INSERTA filas
 		# nuevas: actualizar desde ella una fila que después toca la transacción
 		# principal provoca un fallo de serialización. Si una caída se lleva este estado,
@@ -850,6 +888,29 @@ class RepoWriteOperationApply(models.Model):
 			order="id desc", limit=1)
 
 	def _identidad_guardada(self):
+		"""La identidad que GitHub devolvió: primero la de esta corrida, después la
+		bitácora.
+
+		POR QUÉ HACEN FALTA LAS DOS. La entrada se escribe en la conexión durable —para
+		que sobreviva a una caída— y **Odoo abre sus transacciones en REPEATABLE READ**,
+		así que la transacción que está aplicando NO PUEDE LEER lo que esa conexión
+		acaba de confirmar. La verificación buscaba la identidad ahí mismo y no la
+		encontraba: la escritura salía bien, el objeto quedaba creado en GitHub, y la
+		operación se marcaba fallida.
+
+		Lo encontró el ensayo de B5.4, y hay que decir por qué recién ahora:
+		`ruleset_create` nunca se había ejercitado contra GitHub. El ensayo de B1.6 usó
+		`ruleset_update`, que no crea identidad. El defecto estaba desde que se escribió.
+
+		El campo de resultado sirve para ESTA corrida; la bitácora, para la que retoma
+		después de una caída. Ninguna reemplaza a la otra.
+		"""
+		try:
+			en_curso = json.loads(self.result_json or "{}")
+		except (TypeError, ValueError):
+			en_curso = {}
+		if isinstance(en_curso, dict) and en_curso.get("identidad"):
+			return en_curso["identidad"]
 		entrada = self._entrada_de_identidad()
 		if not entrada:
 			return None
@@ -1244,11 +1305,52 @@ class RepoWriteOperationApply(models.Model):
 		})
 
 	def _id_del_repositorio(self, resultado):
+		"""El paso 2b, que acá hace DOS cosas y las dos son de identidad.
+
+		Guarda el id que devolvió GitHub —sin eso, un apply que muera acá dejaría un
+		repositorio nuevo del que Odoo no sabe nada— y, además, **le da destino al resto
+		del plan**.
+
+		POR QUÉ ES ACÁ Y NO AL ARMAR EL PLAN. Cuando el plan se arma, el repositorio no
+		existe: las ramas, los rulesets y el grant se declaran sin `repository_id` porque
+		no hay fila del espejo a la cual apuntar. Recién en este instante la hay. Sin este
+		paso, las operaciones que siguen aplicarían sobre `repository_id` vacío y
+		pedirían `/repos//git/refs` — una URL sin repositorio, que GitHub contesta con un
+		404 que no explica nada.
+
+		El espejo se escribe por el MISMO upsert que usa el sync: dos caminos que escriben
+		el mismo objeto divergen, y el día del webhook habría tres.
+		"""
 		identidad = (resultado or {}).get("id")
 		if not identidad:
 			raise UserError(_(
 				"GitHub no devolvió el id del repositorio creado. Sin identidad no se "
 				"puede registrar qué se creó, y la operación no continúa."))
+
+		# EL ESPEJO SE ESCRIBE EN LA TRANSACCIÓN PRINCIPAL, Y NO EN LA DURABLE. Lo
+		# intenté al revés —el repositorio existe en GitHub, así que su fila «debería»
+		# sobrevivir a un rollback— y el ensayo mostró por qué no se puede: **Odoo abre
+		# sus transacciones en REPEATABLE READ**, de modo que una fila creada y
+		# confirmada por otra conexión es INVISIBLE para la transacción en curso. El
+		# apply enlazaba las operaciones a un id que no podía leer y todo lo que después
+		# tocara ese campo moría con «Record does not exist».
+		#
+		# Lo que garantiza que no perdamos de vista un repositorio recién creado NO es la
+		# fila del espejo: es la ENTRADA DE IDENTIDAD en la bitácora, que sí va por la
+		# conexión durable y guarda el id que devolvió GitHub. Si el apply se cae, el
+		# espejo lo vuelve a traer la próxima auditoría; la constancia de qué creamos ya
+		# está escrita y es inmutable. El espejo es una copia; la bitácora es el registro.
+		repo = self.env["repo.repository"]._upsert(self.plan_id.backend_id, resultado)
+		# El resto del plan ya tiene a dónde apuntar. Sólo las que no lo tienen: una
+		# operación que llegó con su repositorio puesto no se toca.
+		hermanas = self.plan_id.operation_ids.filtered(
+			lambda o: o.id != self.id and not o.repository_id)
+		if hermanas:
+			hermanas.write({"repository_id": repo.id})
+		identidad_repo = repo.id
+		_logger.info(
+			"Repo Manager: repositorio %s creado y espejado (id de espejo %s)",
+			resultado.get("full_name"), identidad_repo)
 		return identidad
 
 	def _verificar_repositorio_creado(self, cliente):
@@ -1265,7 +1367,17 @@ class RepoWriteOperationApply(models.Model):
 		full = self.repository_id.full_name
 		ref = cliente.get(
 			"/repos/%s/git/ref/heads/%s" % (full, nombre), tolerar_404=True)
+		# LA RAMA DE LA QUE NACE. En un repositorio recién creado el espejo puede no
+		# tenerla todavía: la respuesta de creación de GitHub no siempre trae
+		# `default_branch` con `auto_init`, porque la rama se materializa un instante
+		# después. Se le pregunta a GitHub en vez de suponer «main» — suponerlo haría
+		# nacer las cuatro ramas de un commit que quizá no es el que se cree.
 		desde = datos.get("desde") or self.repository_id.default_branch
+		if not desde:
+			ficha = cliente.get("/repos/%s" % full, tolerar_404=True) or {}
+			desde = ficha.get("default_branch")
+			if desde and not self.repository_id.default_branch:
+				self.repository_id.default_branch = desde
 		origen = cliente.get(
 			"/repos/%s/git/ref/heads/%s" % (full, desde), tolerar_404=True)
 		return {
@@ -1324,7 +1436,11 @@ class RepoWriteOperationApply(models.Model):
 		try:
 			cliente.get("/repos/%s/vulnerability-alerts" % full)
 			return {"encendido": True}
-		except GithubNotFound:
+		except (GithubNotFound, GithubFeatureDisabled):
+			# LAS DOS SON «apagado». El 404 puede venir con «Not Found» o con un mensaje
+			# que dice «disabled», y desde B6 el segundo levanta `GithubFeatureDisabled`.
+			# Atrapar sólo uno hacía fallar el paso previo del ciclo sobre un repositorio
+			# recién creado, que es justo donde Dependabot siempre está apagado.
 			return {"encendido": False}
 
 	def _encender_dependabot(self, cliente):

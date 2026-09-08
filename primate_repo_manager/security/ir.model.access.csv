@@ -65,3 +65,4 @@ access_repo_check_context_reader,repo.check.context.reader,model_repo_check_cont
 access_repo_check_context_lead,repo.check.context.lead,model_repo_check_context,group_repo_lead,1,1,1,1
 access_repo_policy_codeowner_reader,repo.policy.codeowner.reader,model_repo_policy_codeowner,group_repo_reader,1,0,0,0
 access_repo_policy_codeowner_lead,repo.policy.codeowner.lead,model_repo_policy_codeowner,group_repo_lead,1,1,1,1
+access_repo_repository_create_wizard,repo.repository.create.wizard,model_repo_repository_create_wizard,group_repo_lead,1,1,1,1

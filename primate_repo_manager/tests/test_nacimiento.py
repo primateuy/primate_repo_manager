@@ -125,7 +125,12 @@ class TestNacimiento(TransactionCase):
 			Respuesta(404, {"message": "Not Found"}),
 			Respuesta(404, {"message": "Not Found"}),
 			Respuesta(200, {"id": 9, "name": "nuevo"}),
-		], escrituras={"POST": Respuesta(201, {"id": 9, "name": "nuevo"})})
+		], escrituras={"POST": Respuesta(201, {
+			# LA FORMA REAL: GitHub devuelve `full_name`, y el espejo lo exige. El doble
+			# devolvía sólo id y name, y con eso el upsert reventaba contra un NOT NULL
+			# — un doble que imita media respuesta miente en la mitad que no imita.
+			"id": 9, "name": "nuevo", "full_name": "org/nuevo", "private": True,
+			"default_branch": "main"})})
 		cuerpos = [c for c in transporte.cuerpos if c[0] == "POST"]
 		self.assertTrue(cuerpos)
 		self.assertTrue(cuerpos[0][2]["auto_init"])
@@ -325,6 +330,11 @@ class TestAsistenteDeNacimiento(TransactionCase):
 		self.backend.write_app_id = "4808079"
 		self.responsable = self.env["repo.member"].create({
 			"github_login": "mrodriguez", "name": "Martín Rodríguez"})
+		# El paso de identidad escribe en la conexión durable, y en un test nada está
+		# confirmado: sin este reemplazo la conexión nueva no vería el plan y el test
+		# fallaría por la costura, no por lo que prueba. La durabilidad se comprueba
+		# contra el sandbox, en dos procesos.
+		sin_cursor_aparte(self)
 
 	def _asistente(self, **extra):
 		valores = {
@@ -404,6 +414,7 @@ class TestAsistenteDeNacimiento(TransactionCase):
 		prometidas = self.env["repo.write.plan"].resumen_de_nacimiento({
 			"base": asistente.base, "clasificacion": asistente.classification,
 			"version": asistente.version, "privado": asistente.private,
+			"responsable": asistente.member_id,
 		})["operaciones"]
 		plan = self.env["repo.write.plan"].browse(
 			asistente.action_armar_plan()["res_id"])
@@ -449,3 +460,88 @@ class TestAsistenteDeNacimiento(TransactionCase):
 			lambda o: o.is_destructive or o.is_irreversible)
 		plan._aprobar(confirmadas=exigen)
 		self.assertEqual(plan.state, "approved")
+
+	def test_al_crear_el_repositorio_el_resto_del_plan_recibe_su_destino(self):
+		"""Cuando el plan se arma el repositorio no existe: las ramas y los rulesets se
+		declaran sin `repository_id` porque no hay fila del espejo a la cual apuntar.
+
+		Sin este paso, esas operaciones pedirían `/repos//git/refs` — una URL sin
+		repositorio, que GitHub contesta con un 404 que no explica nada. Lo encontré
+		revisando el encadenamiento antes del ensayo, no aplicando.
+		"""
+		plan = self._plan()
+		creacion = plan.operation_ids.filtered(lambda o: o.kind == "repository_create")
+		self.assertFalse(plan.operation_ids.mapped("repository_id"),
+						 "al armar el plan todavía no hay repositorio")
+
+		creacion._id_del_repositorio({
+			"id": 4242, "name": "cliente-mutualista-casmu",
+			"full_name": "%s/cliente-mutualista-casmu" % self.backend.owner_login,
+			"private": True, "default_branch": "main"})
+
+		hermanas = plan.operation_ids - creacion
+		self.assertTrue(hermanas.mapped("repository_id"))
+		self.assertEqual(
+			set(hermanas.mapped("repository_id.full_name")),
+			{"%s/cliente-mutualista-casmu" % self.backend.owner_login})
+
+	def test_el_espejo_se_escribe_por_el_MISMO_upsert_que_el_sync(self):
+		"""Dos caminos que escriben el mismo objeto divergen, y el día del webhook
+		habría tres."""
+		import inspect
+
+		from ..models import repo_write_apply
+		fuente = inspect.getsource(repo_write_apply.RepoWriteOperationApply._id_del_repositorio)
+		self.assertIn('_upsert(', fuente)
+
+	def test_el_espejo_NO_se_escribe_en_la_conexion_durable(self):
+		"""Odoo abre sus transacciones en REPEATABLE READ: una fila confirmada por otra
+		conexión es INVISIBLE para la transacción en curso.
+
+		Lo intenté al revés —el repositorio existe en GitHub, así que su fila «debería»
+		sobrevivir a un rollback— y el apply enlazaba las operaciones a un id que no
+		podía leer. Lo que garantiza no perder de vista un repositorio recién creado no
+		es la fila del espejo sino la ENTRADA DE IDENTIDAD en la bitácora, que sí es
+		durable e inmutable. El espejo es una copia; la bitácora es el registro.
+		"""
+		import inspect
+
+		from ..models import repo_write_apply
+		fuente = inspect.getsource(repo_write_apply.RepoWriteOperationApply._id_del_repositorio)
+		self.assertNotIn("_cursor_durable", fuente)
+
+	def test_una_PERSONA_con_rol_de_lider_puede_usar_el_asistente(self):
+		"""Los tests corren como superusuario y la ACL no se ve: este lo hace como
+		persona.
+
+		Lo destapó el ensayo contra el sandbox, no la suite: el asistente no tenía ACL y
+		cualquiera que lo abriera se comía un «No group currently allows this
+		operation». Una pantalla sin permisos declarados es una pantalla que anda para
+		el que la escribió y para nadie más.
+		"""
+		lider = self.env["res.users"].create({
+			"name": "Líder de prueba", "login": "lider-%s" % uuid.uuid4().hex[:8],
+			"group_ids": [(4, self.env.ref("primate_repo_manager.group_repo_lead").id),
+						  (4, self.env.ref("base.group_user").id)],
+		})
+		asistente = self.env["repo.repository.create.wizard"].with_user(lider).create({
+			"backend_id": self.backend.id, "base": "Mutualista Casmu",
+			"classification": "cliente", "version": "19.0"})
+		self.assertTrue(asistente.nombre_previsto)
+
+	def test_SIN_responsable_el_numero_prometido_tambien_cierra(self):
+		"""El conteo contaba el grant siempre, y sin responsable el plan arma uno menos.
+
+		El test de arriba nunca lo vio porque siempre pasaba un responsable; lo destapó
+		el ensayo contra el sandbox corriendo sin él. El número prometido es el único que
+		alguien mira antes de apretar.
+		"""
+		asistente = self._asistente(member_id=False)
+		prometidas = self.env["repo.write.plan"].resumen_de_nacimiento({
+			"base": asistente.base, "clasificacion": asistente.classification,
+			"version": asistente.version, "privado": asistente.private,
+			"responsable": asistente.member_id,
+		})["operaciones"]
+		plan = self.env["repo.write.plan"].browse(
+			asistente.action_armar_plan()["res_id"])
+		self.assertEqual(prometidas, len(plan.operation_ids))

@@ -27,6 +27,7 @@
 		<field name="match_type">name_regex</field>
 		<field name="value">(?i)(localizacion|localización|l10n)</field>
 		<field name="classification">localizacion</field>
+		<field name="name_prefix">localizacion-</field>
 		<field name="note">Ej: LocalizacionUy. Es la plantilla más estricta de la spec.</field>
 	</record>
 
@@ -36,6 +37,7 @@
 		<field name="match_type">name_regex</field>
 		<field name="value">(?i)^(primate|pcm|prm)[-_]?</field>
 		<field name="classification">interno</field>
+		<field name="name_prefix">primate-</field>
 		<field name="note">primate_IA_hub, primate_repo_manager, Primate-Cloude-Manager…</field>
 	</record>
 
@@ -43,7 +45,28 @@
 		A propósito NO hay una regla catch-all a "cliente": un repo sin clasificar tiene
 		que quedar SIN clasificar, porque eso es un finding de la auditoría. Adivinar
 		"cliente" por descarte escondería justamente lo que hay que revisar.
+
+		LO QUE SÍ HAY, DESDE B5, ES UNA REGLA POR PREFIJO — y no es lo mismo. Un
+		catch-all clasifica por descarte, sobre repositorios que nadie nombró con una
+		convención; ésta clasifica por una convención que el módulo APLICA al crear. Un
+		repositorio llamado `cliente-casmu` es de cliente porque así se lo llamó a
+		propósito, y uno llamado `farmashop` sigue quedando sin clasificar, que es el
+		hallazgo que corresponde.
+
+		Y es la misma cara de la moneda que el prefijo del generador: el nombre que se
+		crea con `cliente-` tiene que volver a clasificar como cliente. Hay un test de
+		ida y vuelta que lo hace imposible de romper por un lado solo.
 	-->
+
+	<record id="classification_rule_cliente" model="repo.classification.rule">
+		<field name="name">Nombre con la convención de cliente</field>
+		<field name="sequence">40</field>
+		<field name="match_type">name_regex</field>
+		<field name="value">(?i)^cliente[-_]</field>
+		<field name="classification">cliente</field>
+		<field name="name_prefix">cliente-</field>
+		<field name="note">Los que nacen por el asistente. NO es un catch-all: un repo sin la convención sigue quedando sin clasificar.</field>
+	</record>
 
 	<!-- ================================================================
 	     Rol de las ramas

@@ -66,6 +66,7 @@ class RepoRepositoryCreateWizard(models.TransientModel):
 					"clasificacion": asistente.classification,
 					"version": asistente.version,
 					"privado": asistente.private,
+					"responsable": asistente.member_id,
 				})
 			except UserError as exc:
 				asistente.problema = str(exc)

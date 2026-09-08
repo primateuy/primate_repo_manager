@@ -1197,5 +1197,11 @@ class RepoWritePlanNacimiento(models.Model):
 			"ramas_gobernadas": gobernadas,
 			"privado": valores.get("privado", True),
 			"dependabot": True,
-			"operaciones": 1 + len(ramas) + len(gobernadas) + 1 + 1,
+			# EL GRANT SÓLO SI HAY RESPONSABLE. Contarlo siempre prometía una operación
+			# más de las que el plan arma, y el número prometido es el único que alguien
+			# mira antes de apretar. Lo destapó el ensayo de B5.4 corriendo SIN
+			# responsable — el test siempre le pasaba uno.
+			"operaciones": (
+				1 + len(ramas) + len(gobernadas)
+				+ (1 if valores.get("responsable") else 0) + 1),
 		}
