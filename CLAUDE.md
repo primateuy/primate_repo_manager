@@ -447,6 +447,23 @@ Todo test que compruebe **la ausencia** de un dato declarativo —una ACL que fa
 regla que ya no está, un registro retirado— va `@tagged("post_install", "-at_install")`.
 Con el barrido de ACLs en `post_install` la misma mutación dio tres rojos.
 
+### Una causa cómoda se MIDE antes de escribirla
+
+Encontrado el 8-sep-2026, cerrando B. Un hallazgo iba a decir «recién creado: GitHub
+todavía no expone su estado; se relee en la próxima corrida». Suena bien, explica lo
+observado, y era **falso**: la causa guardada decía «Resource not accessible by
+integration» —falta de permiso— y el mismo mensaje salía sobre un repositorio de meses.
+
+Lo que lo destapó no fue leer el código: fue que el texto afirmaba **sobre el futuro** y
+el ensayo lo midió en vez de creerle. Se esperó, se releyó, y no cambió nada.
+
+De haberlo escrito, la única causa accionable del grupo se habría mostrado en informativo
+durante la primera hora de vida de cada repositorio nuevo — justo cuando se lo mira.
+
+**Si un mensaje del producto afirma algo que todavía no pasó, el ensayo lo comprueba.** Y
+si una explicación es cómoda —«es pasajero», «ya se va a acomodar»— hay que ir a buscar
+el dato crudo que la confirme antes de ponerla en pantalla.
+
 ## Dos formas en que un test tapa el defecto que buscaba
 
 Las dos costaron un defecto real y las dos se ven bien mientras se escriben.

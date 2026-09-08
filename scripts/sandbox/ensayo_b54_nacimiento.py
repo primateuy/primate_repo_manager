@@ -129,7 +129,29 @@ try:
 		linea("hallazgos sobre el recién nacido", len(suyos))
 		for hallazgo in suyos:
 			print("   [%s] %s" % (hallazgo.severity.upper(), hallazgo.summary[:95]))
-		veredictos["cero_sin_asterisco"] = not suyos
+		# EL «CERO» HONESTO: cero hallazgos que pidan hacer algo. Los informativos del
+		# nacimiento se cuentan aparte porque no son deuda —nadie los va a ir a
+		# resolver—, pero tampoco se esconden.
+		accionables = suyos.filtered(lambda h: h.severity != "info")
+		linea("de los cuales piden acción", len(accionables))
+		veredictos["cero_accionables_al_nacer"] = not accionables
+
+		titulo("La SEGUNDA lectura — el hallazgo dice «se relee en la próxima corrida»")
+		print("   Eso es una afirmación sobre el futuro, así que se mide en vez de")
+		print("   escribirse. Se espera y se vuelve a leer contra GitHub.")
+		time.sleep(90)
+		repo._job_sync_repository(False)
+		env.cr.commit()
+		segunda = env["repo.audit.run"].create({
+			"name": "Segunda lectura de %s" % creado, "backend_id": backend.id,
+			"state": "done", "finished_at": fields.Datetime.now()})
+		env["repo.audit.engine"].evaluate(segunda)
+		env.cr.commit()
+		suyos_2 = segunda.finding_ids.filtered(lambda h: h.repository_id == repo)
+		linea("hallazgos en la segunda corrida", len(suyos_2))
+		for h in suyos_2:
+			print("   [%s] %s" % (h.severity.upper(), h.summary[:90]))
+		veredictos["la_segunda_lectura_no_empeora"] = len(suyos_2) <= len(suyos)
 
 finally:
 	titulo("Limpieza — la hace el ENSAYO, no el módulo")
@@ -142,14 +164,30 @@ finally:
 		except Exception as exc:
 			linea("NO se pudo borrar", str(exc)[:100])
 			linea("queda en el sandbox", creado)
-		# Y la fila del espejo, que si no queda de FANTASMA. El módulo no tiene hoy
-		# ninguna noción de «el repositorio ya no está»: `_sync_from_backend` upsertea
-		# lo que el listado trae y no marca lo que dejó de venir, así que un repo
-		# borrado en GitHub sigue en el espejo y sigue produciendo hallazgos sobre
-		# ramas que no existen. Lo dejó a la vista esta serie de ensayos: seis
-		# fantasmas, dieciocho hallazgos. Está anotado como hallazgo de producto; acá
-		# se limpia porque es basura del ENSAYO, no porque el módulo lo resuelva.
-		repo.unlink()
+		# LA FILA DEL ESPEJO NO LA TOCA EL ENSAYO. Antes sí —y por eso esta serie dejó
+		# seis fantasmas el día que me olvidé—, pero el módulo ya sabe qué hacer con un
+		# repositorio que dejó de venir en el listado: lo marca ausente con fecha y deja
+		# de auditarlo. Se comprueba acá, que es donde de verdad desaparece uno.
+		env["repo.repository"]._sync_from_backend(backend)
+		env.cr.commit()
+		linea("marcado ausente por el módulo", "SÍ" if not repo.present else "NO")
+		linea("ausente desde", repo.absent_since or "—")
+		linea("la fila se conservó", "SÍ" if repo.exists() else "NO (mal: es historia)")
+		veredictos["el_ausente_se_marca_solo"] = bool(
+			not repo.present and repo.absent_since and repo.exists())
+
+		corrida_final = env["repo.audit.run"].create({
+			"name": "Después de borrarlo", "backend_id": backend.id,
+			"state": "done", "finished_at": fields.Datetime.now()})
+		env["repo.audit.engine"].evaluate(corrida_final)
+		env.cr.commit()
+		suyos_ahora = corrida_final.finding_ids.filtered(
+			lambda h: h.repository_id == repo)
+		linea("hallazgos sobre el ausente", len(suyos_ahora))
+		for h in suyos_ahora:
+			print("   [%s] %s" % (h.severity.upper(), h.summary[:90]))
+		veredictos["el_ausente_deja_de_auditarse"] = (
+			suyos_ahora.mapped("finding_type") == ["repository_absent"])
 	env.cr.commit()
 
 print("\n" + "=" * 78); print("VEREDICTO"); print("=" * 78)

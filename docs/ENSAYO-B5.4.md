@@ -136,3 +136,52 @@ mismo — decirlo, no callarlo. Queda anotado como hallazgo, sin arreglar: pide 
 decisión sobre qué se hace con un repositorio que desaparece.
 
 Mientras tanto el ensayo limpia su propia fila del espejo, que es basura suya.
+
+---
+
+# La tercera vuelta — 8-sep-2026, con las tres decisiones aplicadas
+
+`cliente-ensayo-b54-194045`. Diez operaciones, todas aplicadas. **De diez hallazgos a
+dos**, y los dos son ciertos.
+
+## Lo que cerró cada decisión
+
+| decisión | efecto medido |
+|---|---|
+| Los rulesets del nacimiento salen de la plantilla efectiva, y un rol que la política no gobierna no lleva ruleset **ni se le reclama** | `19.0-dev` y `main` dejaron de aparecer. Una sola fuente contesta qué se escribe y qué se reclama |
+| El 404 del recién nacido mantiene el tercer estado con causa propia | **Ver abajo: la premisa era falsa y la medición lo dijo** |
+| El espejo marca ausente lo que un listado completo no trajo | El repositorio borrado se marca solo, con fecha, conserva su fila, deja de auditarse y lo dice en un hallazgo informativo |
+
+## La premisa de la decisión 2 era falsa, y medirla fue lo que lo mostró
+
+El hallazgo iba a decir «recién creado — GitHub todavía no expone su estado; se relee en
+la próxima corrida». Es una afirmación **sobre el futuro**, así que el ensayo la midió en
+vez de escribirla: se esperó y se volvió a leer.
+
+**No cambió nada.** Y al mirar la causa guardada apareció el motivo:
+
+    secret_scanning | no_legible | Resource not accessible by integration
+    dependabot      | no_legible | Resource not accessible by integration
+
+Eso no es «GitHub todavía no lo expone»: es **falta de permiso**. Se confirmó pidiendo lo
+mismo sobre `prm-sbx-interno`, que tiene meses — mismo 403. La instalación de
+**prm-sandbox** no tiene aprobados los dos permisos de seguridad que sí se aprobaron para
+`primateuy` (donde las mismas llamadas devuelven 404 «Not Found», que es el apagado
+normal).
+
+La ventana de nacimiento habría mostrado en **informativo, durante la primera hora de vida
+de cada repositorio nuevo**, la única causa de «no se pudo leer» sobre la que alguien puede
+actuar. Se corrigió: una falta de permiso nunca se disfraza de problema de nacimiento, y
+tiene su mutación.
+
+## El resultado, sin asterisco y sin adorno
+
+    [OK]   promete_lo_que_arma          [OK]   la_segunda_lectura_no_empeora
+    [OK]   exige_confirmacion           [OK]   el_ausente_se_marca_solo
+    [OK]   todas_aplicadas              [OK]   el_ausente_deja_de_auditarse
+    [OK]   dependabot_de_nacimiento     [MAL]  cero_accionables_al_nacer
+
+**Los dos hallazgos que quedan son correctos.** Dicen que la App no puede leer las dos
+fuentes de seguridad en ese repositorio, y es verdad. No son deuda del módulo: son una
+aprobación pendiente en la instalación de `prm-sandbox`, la misma que ya se hizo para
+`primateuy`. Hecha esa aprobación, el recién nacido queda en cero.

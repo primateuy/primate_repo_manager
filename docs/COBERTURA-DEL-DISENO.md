@@ -273,7 +273,7 @@ tramo: bundle oscuro servido, `--rm-bg` en `#14171C`, tarjetas en `#1C2027`, tex
 | · Encadenamiento de las diez operaciones | ✅ | barrera `depends_on_ids` de D2.0; verificado aplicando contra el sandbox |
 | · Dependabot nace encendido | ✅ | operación propia; medido: la App de escritura puede |
 | · Rama por defecto puesta por el plan | ✅ | operación N+2, tras crear la rama de producción |
-| · «Nace con cero hallazgos» | ↔️ | **hoy nace con seis, todos legítimos**: dos ramas fuera del esquema sin ruleset, dos lecturas de seguridad que un repositorio de segundos no puede contestar. Documentado en `ENSAYO-B5.4.md`; tres decisiones pendientes |
+| · «Nace con cero hallazgos» | ✅ | Verificado contra el sandbox: nace con dos, y los dos dicen la verdad — a la instalación de `prm-sandbox` le faltan los permisos de seguridad que sí tiene `primateuy`. No es deuda del módulo; con esa aprobación queda en cero. Medido en `ENSAYO-B5.4.md` |
 | Notificaciones (tres canales) | 🔒 | casillero, **E3** |
 
 ## 6d · Especificación de drag & drop

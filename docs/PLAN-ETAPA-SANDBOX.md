@@ -254,7 +254,30 @@ El arreglo de fondo tiene dos formas, y la elección no es obvia:
 
 ---
 
-## Bloque B — F3, política
+## Bloque B — F3, política · **CERRADO el 8-sep-2026**
+
+Los seis tramos (B1 rulesets · B4 drift · B6 seguridad · B2 checks · B3 CODEOWNERS ·
+B5 nacimiento) están en el producto, con sus ensayos contra `prm-sandbox` y la
+instalación desde cero al cierre.
+
+**El criterio de salida, medido y no supuesto:** un repositorio creado por el asistente
+nace con las cuatro ramas, la rama por defecto puesta, tres rulesets derivados de la
+plantilla efectiva, Dependabot encendido y **cero hallazgos accionables propios**. Lo que
+queda son dos «no se pudo leer» que dicen la verdad: a la instalación de `prm-sandbox` le
+faltan los dos permisos de seguridad que sí tiene la de `primateuy`. Ver `ENSAYO-B5.4.md`.
+
+**Lo que este bloque dejó como capacidad y no estaba en el desglose:**
+
+- El espejo distingue **presente de ausente**: un enumerado completo marca con fecha lo
+  que dejó de venir, no lo borra —es historia, y la bitácora lo referencia—, deja de
+  auditarlo y lo dice. Un listado parcial no declara ausencia jamás.
+- **Una sola fuente** contesta qué protege el módulo y qué reclama: la plantilla efectiva.
+  Un rol que la política no gobierna no lleva ruleset ni recibe hallazgo.
+
+---
+
+### El desglose original, para referencia
+
 
 **B1 · Aplicación de rulesets por plantilla**, no operación por operación: «aplicar la
 política de esta plantilla a este repositorio» como una acción.
