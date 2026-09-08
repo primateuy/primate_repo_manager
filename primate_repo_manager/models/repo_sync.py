@@ -219,10 +219,21 @@ class RepoRepositorySync(models.Model):
 		forks de la cuenta. El informe decía «es un fork sin estructura espejo+parches»
 		sin poder decir fork DE QUÉ, y la remediación viajaba con `{"upstream": false}`.
 		Detectado al revisar el criterio de salida de F2, no por un error visible.
+
+		Y LA RAMA POR DEFECTO. El detalle la trae y este método la tiraba, así que sólo
+		se refrescaba en un sync completo de la conexión. Entre medio, una operación
+		`default_branch_set` la cambiaba en GitHub y el espejo seguía diciendo la
+		anterior: la auditoría del ensayo B5.4 reportó «tiene main como rama por
+		defecto» sobre un repositorio cuya rama por defecto ya era `19.0-prod`, y la
+		verificación del apply lo había confirmado. Un hecho viejo presentado como
+		hecho. Este método es el dueño del dato —regla de «un objeto del espejo, un
+		método que lo actualiza»— así que se arregla acá y no en el manejador.
 		"""
 		self.ensure_one()
 		padre = detalle.get("parent") or {}
 		valores = {}
+		if detalle.get("default_branch") and detalle["default_branch"] != self.default_branch:
+			valores["default_branch"] = detalle["default_branch"]
 		if padre.get("full_name") and padre["full_name"] != self.upstream_full_name:
 			valores["upstream_full_name"] = padre["full_name"]
 		# `parent` también confirma la condición de fork con más autoridad que el listado.
@@ -403,20 +414,41 @@ class RepoRepositorySync(models.Model):
 			no_legible.append("collaborators")
 			return
 
+		# EL ORIGEN SE PREGUNTA, NO SE SUPONE. El espejo marcaba TODO como «directo» por
+		# defecto, y eso no es un detalle de registro: **el origen decide qué operación
+		# corrige un exceso**. Un permiso que llega por la organización no se baja
+		# tocando a la persona —la operación no tendría nada que revocar— y el plan se
+		# armaría a ciegas. Medido contra el sandbox: el dueño de la organización tiene
+		# admin sobre todos los repositorios y NO figura en `affiliation=direct`.
+		directos = set()
+		try:
+			directos = {
+				(c.get("login") or "").lower()
+				for c in client.paginate(
+					"/repos/%s/collaborators" % self.full_name,
+					params={"affiliation": "direct"})
+			}
+		except GithubError:
+			# Sin el dato no se inventa: se deja el origen que ya tuviera y se anota.
+			if "collaborators" not in no_legible:
+				no_legible.append("collaborators")
+
 		Colaborador = self.env["repo.collaborator"]
 		vistos = Colaborador.browse()
 		for item in datos:
 			miembro = self.env["repo.member"]._upsert(item)
 			permiso = Colaborador.permission_from_role_name(item.get("role_name"))
+			origen = ("direct" if (item.get("login") or "").lower() in directos
+					  else "organization")
 			existente = Colaborador.search([
 				("repository_id", "=", self.id), ("member_id", "=", miembro.id)], limit=1)
 			if existente:
-				existente.permission = permiso
+				existente.write({"permission": permiso, "source": origen})
 				vistos |= existente
 			else:
 				vistos |= Colaborador.create({
 					"repository_id": self.id, "member_id": miembro.id,
-					"permission": permiso,
+					"permission": permiso, "source": origen,
 				})
 		# A quien ya no figura en GitHub se le saca el registro: si no, un permiso
 		# revocado seguiría apareciendo como hallazgo para siempre.

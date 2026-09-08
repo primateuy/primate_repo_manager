@@ -223,6 +223,50 @@ class TestFindings(TransactionCase):
 		self.assertEqual(nota.remediation_action, "no_action_owner")
 		self.assertFalse(nota.is_destructive)
 
+	def test_el_admin_que_llega_POR_LA_ORGANIZACION_no_es_hallazgo(self):
+		"""Estructura de GitHub, no permiso otorgado — y por eso no es hallazgo.
+
+		Lo trajo el ensayo B5.4: sobre un repositorio recién nacido de la org sandbox,
+		la cuenta dueña aparecía con admin y el evaluador la marcaba como exceso. No hay
+		grant que revocar: quien posee la organización administra sus repositorios por
+		definición. La señal que lo distingue es `source`, que el sync saca de
+		`affiliation=direct` — quien no está en esa lista tiene el permiso por la
+		organización.
+
+		No se emite NADA. El dato vive en la pestaña Colaboradores con su columna
+		Origen; un hallazgo es algo sobre lo que se puede actuar, y una bandeja llena de
+		hallazgos que nadie puede resolver se ignora entera.
+		"""
+		repo = self._repo("de-la-org")
+		alguien = self.env["repo.member"].create({"github_login": "duena-de-la-org"})
+		self.env["repo.collaborator"].create({
+			"repository_id": repo.id, "member_id": alguien.id,
+			"permission": "admin", "source": "organization"})
+
+		self.env["repo.audit.engine"].evaluate(self.run)
+
+		tipos = self._tipos()
+		self.assertNotIn("permission_admin_exceeded", tipos)
+		self.assertNotIn("permission_exceeded", tipos)
+		self.assertNotIn("owner_account_admin", tipos,
+						 "no es un hallazgo: no hay nada que hacer con él")
+
+	def test_el_admin_DIRECTO_que_no_es_el_dueno_sigue_siendo_critico(self):
+		"""El eximido es el que llega por la organización, no cualquiera con admin.
+
+		Sin este test, cambiar la condición a «todo admin es estructura» pasaría en
+		verde y el módulo dejaría de ver el único exceso que de verdad importa.
+		"""
+		repo = self._repo("con-admin-directo")
+		otro = self.env["repo.member"].create({"github_login": "admin-directo"})
+		self.env["repo.collaborator"].create({
+			"repository_id": repo.id, "member_id": otro.id,
+			"permission": "admin", "source": "direct"})
+
+		self.env["repo.audit.engine"].evaluate(self.run)
+
+		self.assertEqual(self._hallazgo("permission_admin_exceeded").severity, "critical")
+
 	def test_un_colaborador_que_no_es_el_dueno_sigue_siendo_critico(self):
 		"""La exención es para la cuenta dueña y sólo para ella."""
 		repo = self._repo("de-otro")

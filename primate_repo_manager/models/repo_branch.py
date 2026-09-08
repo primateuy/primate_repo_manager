@@ -120,6 +120,67 @@ class RepoBranchComparacion(models.Model):
 			"Repo Manager: no se pudo interpretar la protección de %s", self.display_name)
 		return {}
 
+	def _rulesets_que_la_cubren(self):
+		"""Los rulesets del espejo cuyas condiciones nombran a esta rama."""
+		self.ensure_one()
+		ref = "refs/heads/%s" % self.name
+		cubren = self.env["repo.ruleset"]
+		for fila in self.env["repo.ruleset"].search([
+				("repository_id", "=", self.repository_id.id),
+				("present", "=", True)]):
+			condiciones = (fila.definicion() or {}).get("conditions") or {}
+			incluidas = (condiciones.get("ref_name") or {}).get("include") or []
+			if ref in incluidas or "~ALL" in incluidas:
+				cubren |= fila
+		return cubren
+
+	def _proteccion_efectiva(self):
+		"""Lo que protege esta rama HOY, venga de donde venga.
+
+		DOS MECANISMOS, UNA RESPUESTA. GitHub protege ramas de dos maneras —la protección
+		clásica y los rulesets— y el módulo aplica **rulesets**. La auditoría miraba sólo
+		el flag de la protección clásica, así que un repositorio gobernado por este mismo
+		módulo salía reportado como «sin protección»: **el informe acusaba al módulo de no
+		haber hecho lo que el módulo acababa de hacer**, sobre todos los repositorios de
+		B1. Lo destapó el ensayo del nacimiento (B5.4).
+
+		Los rulesets se traducen de vuelta al vocabulario de la protección clásica, que es
+		el que la comparación ya habla. Es la INVERSA de lo que hace `repo.ruleset`
+		—plantilla → ruleset— y las dos tienen que decir lo mismo: si una agrega una
+		exigencia y la otra no la reconoce, vuelve el falso «sin protección».
+		"""
+		self.ensure_one()
+		efectiva = dict(self._proteccion_observada())
+		for fila in self._rulesets_que_la_cubren():
+			for regla in (fila.definicion() or {}).get("rules") or []:
+				tipo = regla.get("type")
+				parametros = regla.get("parameters") or {}
+				if tipo == "pull_request":
+					revisiones = efectiva.get("required_pull_request_reviews") or {}
+					pedidas = parametros.get("required_approving_review_count") or 0
+					# El MÁXIMO de los dos mecanismos: si la protección clásica ya exige
+					# dos y el ruleset una, la rama sigue exigiendo dos.
+					revisiones["required_approving_review_count"] = max(
+						revisiones.get("required_approving_review_count") or 0, pedidas)
+					if parametros.get("require_code_owner_review"):
+						revisiones["require_code_owner_reviews"] = True
+					efectiva["required_pull_request_reviews"] = revisiones
+				elif tipo == "non_fast_forward":
+					efectiva["allow_force_pushes"] = {"enabled": False}
+				elif tipo == "deletion":
+					efectiva["allow_deletions"] = {"enabled": False}
+				elif tipo == "required_signatures":
+					efectiva["required_signatures"] = {"enabled": True}
+				elif tipo == "required_status_checks":
+					contextos = [
+						c.get("context") for c in
+						parametros.get("required_status_checks") or []]
+					previos = (efectiva.get("required_status_checks") or {}).get(
+						"contexts") or []
+					efectiva["required_status_checks"] = {
+						"contexts": sorted(set(previos) | set(filter(None, contextos)))}
+		return efectiva
+
 	def comparacion_de_politica(self):
 		"""Qué exige la política para esta rama y qué tiene de verdad.
 
@@ -149,7 +210,8 @@ class RepoBranchComparacion(models.Model):
 			return {"estado": "no_exige", "causa": False,
 					"exige": [], "tiene": [], "faltan": []}
 
-		observada = self._proteccion_observada()
+		# LA PROTECCIÓN EFECTIVA, no sólo la clásica: un ruleset protege igual.
+		observada = self._proteccion_efectiva()
 		cumplidas = [e for e in exigencias if e["cumple"](observada)]
 		faltantes = [e for e in exigencias if e not in cumplidas]
 		if not faltantes:

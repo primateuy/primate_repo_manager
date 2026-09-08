@@ -163,6 +163,40 @@ class TestSync(TransactionCase):
 		finally:
 			type(self.backend).client = original
 
+	# --- la rama por defecto es un dato que CAMBIA ---
+
+	def test_la_rama_por_defecto_se_refresca_en_el_sync_del_repositorio(self):
+		"""Si GitHub la cambió, el espejo tiene que seguirla — sin sync completo.
+
+		LO QUE ESTE TEST VIENE A IMPEDIR. `_completar_desde_el_detalle` leía el GET del
+		repositorio y se quedaba sólo con `parent`, tirando `default_branch`. Así que el
+		dato sólo se refrescaba en el enumerado de la conexión entera. En el medio, una
+		operación `default_branch_set` la cambiaba en GitHub, el apply lo verificaba
+		releyendo, y la auditoría inmediatamente posterior seguía reportando la
+		anterior: «tiene main como rama por defecto» sobre un repositorio cuya rama por
+		defecto ya era otra. Un hecho viejo presentado como hecho.
+
+		El cambio se hace en el FIXTURE —que es lo que hace GitHub— y se re-sincroniza
+		por el camino real. No se escribe el campo a mano: eso probaría que sabemos
+		escribirlo, no que el sync lo trae.
+		"""
+		repos = self._sincronizar()
+		fork = repos.filtered(lambda r: r.full_name == "primateuy/webOCA")
+		self.assertEqual(fork.default_branch, "17.0")
+
+		REPO_FORK["default_branch"] = "19.0-prod"
+		original = type(self.backend).client
+		type(self.backend).client = lambda s, transport=None: original(
+			s, transport=self.transporte)
+		try:
+			fork._job_sync_repository(False)
+			self.assertEqual(
+				fork.default_branch, "19.0-prod",
+				"el espejo se quedó con la rama por defecto vieja")
+		finally:
+			type(self.backend).client = original
+			REPO_FORK["default_branch"] = "17.0"
+
 	# --- idempotencia, criterio de aceptación del encargo ---
 
 	def test_auditar_dos_veces_no_duplica(self):

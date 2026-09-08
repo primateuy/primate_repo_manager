@@ -312,6 +312,20 @@ class RepoAuditEngine(models.AbstractModel):
 			maximo = plantilla.max_permission_for(colaborador.member_id)
 			if self._nivel(colaborador.permission) <= self._nivel(maximo):
 				continue
+			if colaborador.permission == "admin" and colaborador.source != "direct":
+				# EL ADMIN QUE NO ES DIRECTO ES ESTRUCTURA, NO EXCESO — Y NO ES HALLAZGO.
+				# En una organización, quien la posee tiene admin sobre todos sus
+				# repositorios por definición: no hay grant que revocar, y proponerlo
+				# mandaría a alguien a intentar una operación que GitHub no permite.
+				# Medido contra el sandbox: el dueño NO figura en `affiliation=direct`,
+				# y ésa es la señal que distingue estructura de permiso otorgado.
+				#
+				# No se emite nada. El dato no se pierde: la pestaña Colaboradores lo
+				# muestra con su columna Origen, que es donde vive el inventario de
+				# accesos. Un hallazgo es algo sobre lo que se puede actuar; esto no lo
+				# es, y una bandeja con hallazgos que nadie puede resolver se ignora
+				# entera.
+				continue
 			tipo = ("permission_admin_exceeded" if colaborador.permission == "admin"
 					else "permission_exceeded")
 			self._finding(
@@ -345,14 +359,24 @@ class RepoAuditEngine(models.AbstractModel):
 										else "reinstall_app"))
 				continue
 
-			if protegible and not rama.protected:
+			# LA COMPARACIÓN DE B1.4 ES LA QUE DECIDE, y no el flag de la protección
+			# clásica. GitHub protege de dos maneras y este módulo aplica rulesets: mirar
+			# sólo el flag hacía que el informe acusara al módulo de no haber protegido
+			# lo que acababa de proteger. Una sola definición de «esta rama cumple»,
+			# usada por la pantalla y por el motor.
+			comparacion = rama.comparacion_de_politica()
+			if protegible and comparacion["estado"] in ("sin_proteccion", "parcial"):
 				severidad, modulada = self._severidad_rama(repo)
 				self._finding(
 					run, repo, "branch_unprotected",
-					_("«%(rama)s» de «%(repo)s» no tiene protección") % {
-						"rama": rama.name, "repo": repo.full_name},
+					_("«%(rama)s» de «%(repo)s» no cumple: le falta %(falta)s") % {
+						"rama": rama.name, "repo": repo.full_name,
+						"falta": ", ".join(comparacion["exige"])},
 					subject=rama.name, severity=severidad, severity_modulated=modulada,
-					expected=regla, observed={"protected": False},
+					expected=regla,
+					observed={"protected": rama.protected,
+							  "tiene": comparacion["tiene"],
+							  "falta": comparacion["faltan"]},
 					remediation_payload={"repository": repo.full_name, "branch": rama.name})
 
 			if rama.role == "mirror" and rama.ahead_upstream:
@@ -375,9 +399,26 @@ class RepoAuditEngine(models.AbstractModel):
 				expected={"convention": "rama de versión, ej. 19.0"},
 				observed={"default_branch": repo.default_branch})
 
+	# Los mensajes que GitHub escribe por su cuenta al inicializar un repositorio. No
+	# los escribió nadie del equipo, así que exigirles el formato de ticket es ruido de
+	# nacimiento — y el ruido enseña a ignorar la lista. Es la misma familia que la rama
+	# «otra», que no incumple porque no hay convención contra la cual medirla.
+	COMMITS_FUNDACIONALES = ("initial commit", "create readme.md", "add .gitignore",
+							 "add license")
+
 	@api.model
 	def _evaluate_commits(self, run, repo, plantilla):
 		muestras = repo.commit_sample_ids
+		if not muestras:
+			return
+
+		# EL COMMIT FUNDACIONAL NO CUENTA. Lo escribe GitHub al crear el repositorio con
+		# README, y un repositorio recién nacido salía con «1 de 1 commits fuera de
+		# convención» por un commit que ninguna persona escribió. Lo destapó el ensayo
+		# del nacimiento.
+		muestras = muestras.filtered(
+			lambda c: (c.message_first_line or "").strip().lower()
+			not in self.COMMITS_FUNDACIONALES)
 		if not muestras:
 			return
 

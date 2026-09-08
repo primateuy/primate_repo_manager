@@ -226,3 +226,111 @@ class TestIncumplenHoy(TransactionCase):
 		self.assertNotIn("require_signed_commits", claves)
 		self.plantilla.require_signed_commits = True
 		self.assertIn("require_signed_commits", set(self._por_clave()))
+
+
+class TestProteccionPorRuleset(TransactionCase):
+	"""Un ruleset protege igual que la protección clásica — el falso «sin protección».
+
+	El módulo aplica RULESETS, y la auditoría miraba sólo el flag de la protección
+	clásica: el informe acusaba al módulo de no haber hecho lo que el módulo acababa de
+	hacer, sobre todos los repositorios de B1. Lo destapó el ensayo del nacimiento.
+	"""
+
+	def setUp(self):
+		super().setUp()
+		self.env["repo.policy.template"].search([
+			("classification_default", "=", "cliente")]).classification_default = False
+		self.env.flush_all()
+		self.plantilla = self.env["repo.policy.template"].create({
+			"name": "De prueba", "code": "rs-%s" % uuid.uuid4().hex[:6],
+			"classification_default": "cliente",
+			"require_pr": True, "required_approvals": 1,
+			"block_force_push": True, "block_deletion": True,
+		})
+		backend = self.env["repo.backend"].create({
+			"name": "RS %s" % uuid.uuid4().hex[:6],
+			"owner_login": "org-%s" % uuid.uuid4().hex[:8],
+			"owner_type": "organization", "app_id": "1", "installation_id": "2"})
+		self.repo = self.env["repo.repository"].create({
+			"backend_id": backend.id, "github_id": uuid.uuid4().hex[:8],
+			"name": "sbx", "full_name": "org/sbx", "classification": "cliente"})
+		self.rama = self.env["repo.branch"].create({
+			"repository_id": self.repo.id, "name": "19.0-prod", "role": "prod",
+			"protected": False})
+		self.run = self.env["repo.audit.run"].create({
+			"name": "Corrida", "backend_id": backend.id, "state": "done"})
+
+	def _ruleset(self, aprobaciones=1, ramas=("19.0-prod",), reglas=None):
+		definicion = {
+			"id": 777, "name": "primate/%s/prod" % self.plantilla.code,
+			"target": "branch", "enforcement": "active",
+			"conditions": {"ref_name": {
+				"include": ["refs/heads/%s" % r for r in ramas], "exclude": []}},
+			"rules": reglas if reglas is not None else [
+				{"type": "pull_request", "parameters": {
+					"required_approving_review_count": aprobaciones}},
+				{"type": "non_fast_forward"},
+				{"type": "deletion"},
+			],
+		}
+		return self.env["repo.ruleset"].upsert(self.repo, definicion)
+
+	def _hallazgos(self):
+		self.env["repo.audit.engine"].evaluate(self.run)
+		return self.run.finding_ids.filtered(
+			lambda h: h.finding_type == "branch_unprotected"
+			and h.subject == self.rama.name)
+
+	# ------------------------------------------------------------------
+
+	def test_una_rama_protegida_POR_RULESET_no_es_un_hallazgo(self):
+		"""El caso que el informe reportaba mal en todos los repos de B1."""
+		self._ruleset()
+		self.assertFalse(self._hallazgos())
+
+	def test_sin_ruleset_ni_proteccion_SIGUE_siendo_un_hallazgo(self):
+		"""Aflojar el criterio no puede aflojar lo que el criterio existe para ver."""
+		self.assertTrue(self._hallazgos())
+
+	def test_un_ruleset_que_NO_nombra_esta_rama_no_la_protege(self):
+		self._ruleset(ramas=("otra-rama",))
+		self.assertTrue(self._hallazgos())
+
+	def test_un_ruleset_dado_de_baja_no_protege(self):
+		fila = self._ruleset()
+		fila.present = False
+		self.assertTrue(self._hallazgos())
+
+	def test_un_ruleset_incompleto_deja_el_hallazgo_con_lo_que_FALTA(self):
+		"""Y el hallazgo dice qué falta, no sólo que algo falta."""
+		self._ruleset(reglas=[{"type": "non_fast_forward"}])
+		hallazgo = self._hallazgos()
+		self.assertTrue(hallazgo)
+		self.assertIn("require_pr", hallazgo.observed_json)
+
+	def test_los_DOS_mecanismos_se_suman(self):
+		"""La protección clásica exige la revisión y el ruleset el resto: entre los dos
+		cumplen, y ninguno solo alcanzaría."""
+		self.rama.write({
+			"protected": True,
+			"protection_json": str({
+				"required_pull_request_reviews": {
+					"required_approving_review_count": 1}}),
+		})
+		self._ruleset(reglas=[{"type": "non_fast_forward"}, {"type": "deletion"}])
+		self.assertFalse(self._hallazgos())
+
+	def test_se_toma_el_MAXIMO_de_aprobaciones_de_los_dos(self):
+		self.plantilla.required_approvals = 2
+		self.rama.write({
+			"protected": True,
+			"protection_json": str({
+				"required_pull_request_reviews": {
+					"required_approving_review_count": 2},
+				"allow_force_pushes": {"enabled": False},
+				"allow_deletions": {"enabled": False}}),
+		})
+		self._ruleset(aprobaciones=1)
+		self.assertFalse(self._hallazgos(),
+						 "el ruleset con menos aprobaciones no puede BAJAR lo que la "
+						 "protección clásica ya exige")
