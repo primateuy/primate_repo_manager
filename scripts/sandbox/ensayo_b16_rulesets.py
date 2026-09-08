@@ -130,7 +130,8 @@ try:
 		"target": NUESTRO,
 		"payload_json": json.dumps(definicion(NUESTRO, 2, RAMA_NUESTRA)),
 	})
-	plan._aprobar(confirmadas=plan.operation_ids.filtered("is_destructive"))
+	plan._aprobar(confirmadas=plan.operation_ids.filtered(
+		lambda o: o.is_destructive or o.is_irreversible))
 	env.cr.commit()
 	linea("plan", plan.name)
 	linea("huella de aprobación", (plan.approval_fingerprint or "")[:16] + "…")
@@ -166,7 +167,8 @@ try:
 		"plan_id": plan_ajeno.id, "kind": "ruleset_update", "repository_id": repo.id,
 		"target": AJENO, "payload_json": json.dumps(definicion(AJENO, 2, RAMA_AJENA)),
 	})
-	plan_ajeno._aprobar(confirmadas=plan_ajeno.operation_ids.filtered("is_destructive"))
+	plan_ajeno._aprobar(confirmadas=plan_ajeno.operation_ids.filtered(
+		lambda o: o.is_destructive or o.is_irreversible))
 	env.cr.commit()
 	try:
 		plan_ajeno.action_apply()

@@ -45,7 +45,7 @@
 	<menuitem id="menu_repo_branch_from_task" name="Crear rama desde tarea" sequence="50"
 			  parent="menu_repo_decidir" action="action_pendiente_rama_tarea"/>
 	<menuitem id="menu_repo_create_repo" name="Crear repositorio" sequence="60"
-			  parent="menu_repo_decidir" action="action_pendiente_crear_repo"/>
+			  parent="menu_repo_decidir" action="action_repo_repository_create"/>
 
 	<!-- ============ 3 · Política y personas ============ -->
 	<menuitem id="menu_repo_politica" name="Política y personas" sequence="30"

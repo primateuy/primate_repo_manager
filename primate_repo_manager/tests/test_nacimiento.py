@@ -260,6 +260,10 @@ class TestPlanDeNacimiento(TransactionCase):
 			"name": "Nacer %s" % uuid.uuid4().hex[:6],
 			"owner_login": "org-%s" % uuid.uuid4().hex[:8],
 			"owner_type": "organization", "app_id": "1", "installation_id": "2"})
+		# Con App de escritura: el plan de nacimiento arma rulesets, y un ruleset sin la
+		# App exenta frenaría la próxima escritura sobre esas ramas. La guarda de B1.1 se
+		# niega, y tiene razón — el fixture describía una conexión que no puede gobernar.
+		self.backend.write_app_id = "4808079"
 		self.valores = {"base": "Mutualista Casmu", "clasificacion": "cliente",
 						"version": "19.0", "privado": True}
 
@@ -305,3 +309,143 @@ class TestPlanDeNacimiento(TransactionCase):
 		"""Sin esa operación, el repositorio perfecto estrenaría un hallazgo el día uno."""
 		self.assertTrue(
 			self.env["repo.write.plan"].resumen_de_nacimiento(self.valores)["dependabot"])
+
+
+class TestAsistenteDeNacimiento(TransactionCase):
+	"""B5.3 · los tres pasos, el encadenamiento y lo que el resumen promete."""
+
+	def setUp(self):
+		super().setUp()
+		self.env.user.group_ids |= self.env.ref("primate_repo_manager.group_repo_lead")
+		self.backend = self.env["repo.backend"].create({
+			"name": "Asis %s" % uuid.uuid4().hex[:6],
+			"owner_login": "org-%s" % uuid.uuid4().hex[:8],
+			"owner_type": "organization", "app_id": "1", "installation_id": "2",
+			"state": "connected", "environment": "sandbox"})
+		self.backend.write_app_id = "4808079"
+		self.responsable = self.env["repo.member"].create({
+			"github_login": "mrodriguez", "name": "Martín Rodríguez"})
+
+	def _asistente(self, **extra):
+		valores = {
+			"backend_id": self.backend.id, "base": "Mutualista Casmu",
+			"classification": "cliente", "version": "19.0",
+			"member_id": self.responsable.id}
+		valores.update(extra)
+		return self.env["repo.repository.create.wizard"].create(valores)
+
+	# ------------------------------------------------------------------
+	# El asistente NO escribe
+	# ------------------------------------------------------------------
+
+	def test_el_boton_arma_un_plan_y_no_toca_GitHub(self):
+		"""«Revisar el plan y crear», no «Crear». Es la única escritura que crea objetos
+		nuevos: dejarla fuera del embudo sería la excepción más cara posible."""
+		accion = self._asistente().action_armar_plan()
+		plan = self.env["repo.write.plan"].browse(accion["res_id"])
+		self.assertEqual(plan.state, "draft")
+		self.assertTrue(plan.operation_ids)
+
+	# ------------------------------------------------------------------
+	# EL ENCADENAMIENTO
+	# ------------------------------------------------------------------
+
+	def _plan(self):
+		accion = self._asistente().action_armar_plan()
+		return self.env["repo.write.plan"].browse(accion["res_id"])
+
+	def test_las_ramas_dependen_de_la_creacion(self):
+		"""Si la creación falla, ninguna se intenta contra un repositorio que no está."""
+		plan = self._plan()
+		creacion = plan.operation_ids.filtered(
+			lambda o: o.kind == "repository_create")
+		for rama in plan.operation_ids.filtered(lambda o: o.kind == "branch_create"):
+			self.assertIn(creacion, rama.depends_on_ids, rama.target)
+
+	def test_cada_ruleset_depende_de_LAS_RAMAS_QUE_NOMBRA(self):
+		"""Un ruleset cuya rama no se creó no protege nada: GitHub lo acepta igual y
+		queda «aplicado» sin gobernar."""
+		plan = self._plan()
+		rulesets = plan.operation_ids.filtered(lambda o: o.kind == "ruleset_create")
+		self.assertTrue(rulesets)
+		for op in rulesets:
+			ramas = op.depends_on_ids.filtered(lambda o: o.kind == "branch_create")
+			self.assertTrue(ramas, op.target)
+			payload = json.loads(op.payload_json)
+			incluidas = payload["conditions"]["ref_name"]["include"]
+			for rama in ramas:
+				self.assertIn("refs/heads/%s" % rama.target, incluidas)
+
+	def test_el_grant_y_Dependabot_tambien_cuelgan_de_la_creacion(self):
+		plan = self._plan()
+		creacion = plan.operation_ids.filtered(lambda o: o.kind == "repository_create")
+		for kind in ("collaborator_grant", "dependabot_enable"):
+			op = plan.operation_ids.filtered(lambda o, k=kind: o.kind == k)
+			self.assertTrue(op, kind)
+			self.assertIn(creacion, op.depends_on_ids, kind)
+
+	def test_el_orden_es_creacion_ramas_rulesets_grants_dependabot(self):
+		plan = self._plan()
+		por_orden = plan.operation_ids.sorted("sequence").mapped("kind")
+		self.assertEqual(por_orden[0], "repository_create")
+		self.assertEqual(por_orden.index("branch_create"), 1)
+		self.assertLess(por_orden.index("branch_create"),
+						por_orden.index("ruleset_create"))
+		self.assertEqual(por_orden[-1], "dependabot_enable")
+
+	# ------------------------------------------------------------------
+	# El resumen del paso 3
+	# ------------------------------------------------------------------
+
+	def test_el_resumen_cuenta_las_operaciones_que_el_plan_va_a_tener(self):
+		"""Prometer nueve y armar siete sería mentir en el único número que alguien
+		mira antes de apretar."""
+		asistente = self._asistente()
+		prometidas = self.env["repo.write.plan"].resumen_de_nacimiento({
+			"base": asistente.base, "clasificacion": asistente.classification,
+			"version": asistente.version, "privado": asistente.private,
+		})["operaciones"]
+		plan = self.env["repo.write.plan"].browse(
+			asistente.action_armar_plan()["res_id"])
+		self.assertEqual(prometidas, len(plan.operation_ids))
+
+	def test_el_resumen_avisa_que_la_creacion_NO_se_deshace(self):
+		self.assertIn("no se puede deshacer", self._asistente().resumen_html)
+
+	def test_sin_responsable_lo_dice_en_vez_de_callarlo(self):
+		"""Un repositorio sin nadie con administración es un dato, no un detalle."""
+		asistente = self._asistente(member_id=False)
+		self.assertIn("nadie queda con administración", asistente.resumen_html)
+
+	def test_si_el_nombre_no_puede_armarse_se_dice_MIENTRAS_se_elige(self):
+		"""Un asistente que deja apretar y falla después obliga a leer un error para
+		entender que faltaba un dato."""
+		asistente = self._asistente(classification="fork_upstream")
+		self.assertTrue(asistente.problema)
+		self.assertFalse(asistente.resumen_html)
+		with self.assertRaises(UserError):
+			asistente.action_armar_plan()
+
+	# ------------------------------------------------------------------
+	# La irreversible, en la aprobación
+	# ------------------------------------------------------------------
+
+	def test_la_creacion_NO_se_aprueba_sin_su_confirmacion_propia(self):
+		"""Un hueco que este paso destapó: la aprobación exigía confirmar las
+		DESTRUCTIVAS, y crear un repositorio no lo es —no le saca nada a nadie— pero no
+		tiene vuelta atrás. Hasta B5 ningún tipo implementado era irreversible, así que
+		el renglón decía sólo «destructivas» y nadie lo notaba."""
+		plan = self._plan()
+		creacion = plan.operation_ids.filtered(lambda o: o.kind == "repository_create")
+		self.assertTrue(creacion.is_irreversible)
+		self.assertFalse(creacion.is_destructive, "no es destructiva: no le quita nada")
+		with self.assertRaises(UserError) as capturado:
+			plan._aprobar(confirmadas=self.env["repo.write.operation"])
+		self.assertIn("sin confirmar", str(capturado.exception))
+
+	def test_con_su_confirmacion_el_plan_se_aprueba(self):
+		plan = self._plan()
+		exigen = plan.operation_ids.filtered(
+			lambda o: o.is_destructive or o.is_irreversible)
+		plan._aprobar(confirmadas=exigen)
+		self.assertEqual(plan.state, "approved")

@@ -54,13 +54,6 @@
 		<field name="context">{'prm_titulo': 'Crear una rama desde una tarea', 'prm_bloque': 'F4 · Operación', 'prm_que': 'Desde una tarea de proyecto, crear la rama con el nombre que la convención pide y dejarla vinculada, para que después el mensaje de commit y la PR se puedan validar contra una tarea que existe de verdad.'}</field>
 	</record>
 
-	<record id="action_pendiente_crear_repo" model="ir.actions.act_window">
-		<field name="name">Crear repositorio</field>
-		<field name="res_model">repo.coming.soon</field>
-		<field name="view_mode">form</field>
-		<field name="target">current</field>
-		<field name="context">{'prm_titulo': 'Crear un repositorio ya gobernado', 'prm_bloque': 'Bloque B · cierre de la etapa de política', 'prm_que': 'Un repositorio nuevo que nace con su clasificación, su plantilla de política aplicada, sus ramas y sus permisos. Hoy un repositorio nuevo nace desnudo y alguien tiene que acordarse de gobernarlo después.'}</field>
-	</record>
 
 
 	<record id="action_pendiente_higiene" model="ir.actions.act_window">

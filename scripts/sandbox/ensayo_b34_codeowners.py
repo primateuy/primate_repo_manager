@@ -68,7 +68,8 @@ def plan_con(payload):
 	op = env["repo.write.operation"].create({
 		"plan_id": plan.id, "kind": "codeowners_write", "repository_id": repo.id,
 		"target": RAMA, "payload_json": json.dumps(payload)})
-	plan._aprobar(confirmadas=plan.operation_ids.filtered("is_destructive"))
+	plan._aprobar(confirmadas=plan.operation_ids.filtered(
+		lambda o: o.is_destructive or o.is_irreversible))
 	env.cr.commit()
 	return plan, op
 

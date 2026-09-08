@@ -102,7 +102,11 @@ def _aprobar_plan(plan):
 	quiere un plan aprobado llama al método del modelo. Que aprobar SIN confirmar se
 	niegue se prueba en `test_plan_legible`, que es donde vive esa guarda.
 	"""
-	plan._aprobar(confirmadas=plan.operation_ids.filtered("is_destructive"))
+	# Las destructivas Y LAS IRREVERSIBLES: desde B5 son dos conjuntos distintos, y el
+	# embudo exige confirmar los dos. Una persona en la pantalla confirma lo que hay que
+	# confirmar; este helper hace lo mismo.
+	plan._aprobar(confirmadas=plan.operation_ids.filtered(
+		lambda o: o.is_destructive or o.is_irreversible))
 	return plan
 
 

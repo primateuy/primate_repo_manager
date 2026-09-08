@@ -27,6 +27,7 @@ import json
 import logging
 
 from odoo import _, api, fields, models
+from odoo.fields import Command
 from odoo.exceptions import UserError
 
 from .repo_rules import ROLES_GOBERNADOS
@@ -429,13 +430,25 @@ class RepoWritePlan(models.Model):
 		# por acá y las dos chocan con la misma guarda.
 		if confirmadas is None:
 			confirmadas = self.operation_ids.filtered("approval_ok")
-		destructivas = self.operation_ids.filtered("is_destructive")
-		faltan = destructivas - (confirmadas or self.env["repo.write.operation"])
+		# LAS DESTRUCTIVAS **Y LAS IRREVERSIBLES**, y que sean dos conjuntos no es
+		# redundancia. Una destructiva le saca algo a alguien y se puede deshacer; una
+		# irreversible no se deshace, aunque no le saque nada a nadie. Crear un
+		# repositorio es exactamente eso: no es destructivo —no le quita acceso a nadie—
+		# y sin embargo no tiene vuelta atrás.
+		#
+		# Hasta B5 ningún tipo implementado era irreversible, así que este renglón decía
+		# sólo «destructivas» y nadie lo notaba. El primer tipo irreversible del catálogo
+		# habría entrado en una aprobación en lote sin su confirmación propia. Lo encontró
+		# el test del asistente de nacimiento.
+		exigen_confirmacion = self.operation_ids.filtered(
+			lambda o: o.is_destructive or o.is_irreversible)
+		faltan = exigen_confirmacion - (confirmadas or self.env["repo.write.operation"])
 		if faltan:
 			raise UserError(_(
-				"Quedan %(cuantas)s operación(es) destructiva(s) sin confirmar:\n\n%(lista)s"
-				"\n\nCada una se confirma por separado. Aprobar en lote lo que puede "
-				"sacarle el acceso a alguien es exactamente lo que esta pantalla evita."
+				"Quedan %(cuantas)s operación(es) sin confirmar una por una:\n\n%(lista)s"
+				"\n\nCada una se confirma por separado. Aprobar en lote lo que le saca "
+				"el acceso a alguien —o lo que no tiene vuelta atrás— es exactamente lo "
+				"que esta pantalla evita."
 			) % {
 				"cuantas": len(faltan),
 				"lista": "\n".join("• %s" % op.description for op in faltan),
@@ -1085,10 +1098,12 @@ class RepoWritePlanNacimiento(models.Model):
 			"name": _("Crear %s") % nombre,
 			"backend_id": backend.id,
 		})
+		Operacion = self.env["repo.write.operation"]
 		# El repositorio todavía no existe en el espejo: la operación de creación lo
-		# nombra por payload, y las que siguen se cuelgan de la fila que el sync va a
-		# traer. Hasta entonces, `repository_id` queda vacío en la creación.
-		self.env["repo.write.operation"].create({
+		# nombra por payload. Las que siguen dependen de ella POR LA BARRERA DE D2.0, y
+		# eso es lo que hace que si la creación falla, ninguna se intente sobre un
+		# repositorio que no está — en vez de fallar cinco veces seguidas contra un 404.
+		creacion = Operacion.create({
 			"plan_id": plan.id, "kind": "repository_create", "sequence": 10,
 			"target": nombre,
 			"payload_json": json.dumps({
@@ -1096,6 +1111,64 @@ class RepoWritePlanNacimiento(models.Model):
 				"private": valores.get("privado", True),
 				"description": valores.get("base") or "",
 			}),
+		})
+
+		# LAS RAMAS, cada una colgando de la creación. Nacen de la rama por defecto que
+		# GitHub crea con el README — por eso `auto_init` no era un adorno.
+		operaciones_de_rama = {}
+		for indice, rama in enumerate(ramas):
+			operaciones_de_rama[rama] = Operacion.create({
+				"plan_id": plan.id, "kind": "branch_create",
+				"sequence": 20 + indice, "target": rama,
+				"depends_on_ids": [Command.link(creacion.id)],
+				"payload_json": json.dumps({"name": rama}),
+			})
+
+		# LOS RULESETS, cada uno colgando de LAS RAMAS QUE NOMBRA. Un ruleset cuya rama
+		# no se creó no protege nada: sus condiciones apuntarían a una ref inexistente y
+		# GitHub lo aceptaría igual, callado. Depender de la rama es lo que evita ese
+		# «aplicado» que no gobierna.
+		if plantilla:
+			Builder = self.env["repo.ruleset.builder"]
+			bypass = Builder._bypass_actors(backend)
+			for indice, rol in enumerate(ROLES_GOBERNADOS):
+				de_ese_rol = [
+					r for r in ramas
+					if self.env["repo.branch.role.rule"].role_for(r) == rol]
+				if not de_ese_rol:
+					continue
+				armado = Builder.payload_for_role(plantilla, rol, de_ese_rol, bypass)
+				if not armado["payload"]:
+					continue
+				Operacion.create({
+					"plan_id": plan.id, "kind": "ruleset_create",
+					"sequence": 40 + indice, "target": armado["name"],
+					"depends_on_ids": [
+						Command.link(operaciones_de_rama[r].id) for r in de_ese_rol],
+					"payload_json": json.dumps(armado["payload"]),
+				})
+
+		# EL RESPONSABLE, con permiso de administración. Por persona y no por equipo:
+		# los teams no existen en una cuenta de usuario, y el paso a teams es parte del
+		# procedimiento de migración.
+		responsable = valores.get("responsable")
+		if responsable:
+			Operacion.create({
+				"plan_id": plan.id, "kind": "collaborator_grant", "sequence": 60,
+				"target": responsable.github_login,
+				"depends_on_ids": [Command.link(creacion.id)],
+				"payload_json": json.dumps({
+					"login": responsable.github_login, "permission": "admin"}),
+			})
+
+		# DEPENDABOT, encendido de nacimiento. Sin esta operación el repositorio perfecto
+		# estrenaría un hallazgo informativo el día uno, y «nace con cero hallazgos»
+		# quedaría con asterisco.
+		Operacion.create({
+			"plan_id": plan.id, "kind": "dependabot_enable", "sequence": 70,
+			"target": nombre,
+			"depends_on_ids": [Command.link(creacion.id)],
+			"payload_json": json.dumps({}),
 		})
 		return plan
 

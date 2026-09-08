@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 - PrimateUY / License AGPL-3.0 or later -->
+<odoo>
+
+	<!-- Página 6b del entregable: tres pasos, y el botón que dice lo que hace.
+		 «Revisar el plan y crear» — no «Crear»: el asistente no escribe en GitHub. -->
+	<record id="view_repo_repository_create_wizard" model="ir.ui.view">
+		<field name="name">repo.repository.create.wizard.form</field>
+		<field name="model">repo.repository.create.wizard</field>
+		<field name="arch" type="xml">
+			<form string="Crear repositorio">
+				<div class="alert alert-info" role="alert">
+					<b>Nace clasificado, con política aplicada y responsable asignado.</b>
+					Este asistente no escribe en GitHub: arma un plan que vas a poder leer
+					y aprobar, como cualquier otra escritura del módulo.
+				</div>
+
+				<group string="1 · Identidad">
+					<field name="backend_id" options="{'no_create': True}"/>
+					<field name="base" placeholder="Mutualista Casmu"/>
+					<field name="classification"/>
+					<field name="nombre_previsto" class="rm-mono" readonly="1"/>
+					<field name="private"/>
+				</group>
+
+				<group string="2 · Gobernanza">
+					<field name="version" placeholder="19.0"/>
+					<field name="member_id" options="{'no_create': True}"/>
+				</group>
+
+				<group string="3 · Confirmar">
+					<div class="alert alert-warning" role="alert"
+						 invisible="not problema">
+						<field name="problema" nolabel="1" readonly="1"/>
+					</div>
+					<field name="resumen_html" nolabel="1" readonly="1"
+						   invisible="problema"/>
+				</group>
+
+				<footer>
+					<button name="action_armar_plan" type="object" string="Revisar el plan y crear"
+							class="btn-primary" invisible="problema"/>
+					<button string="Cancelar" class="btn-secondary" special="cancel"/>
+				</footer>
+			</form>
+		</field>
+	</record>
+
+	<record id="action_repo_repository_create" model="ir.actions.act_window">
+		<field name="name">Crear repositorio</field>
+		<field name="res_model">repo.repository.create.wizard</field>
+		<field name="view_mode">form</field>
+		<field name="target">new</field>
+	</record>
+
+</odoo>

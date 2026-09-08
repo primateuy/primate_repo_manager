@@ -265,7 +265,7 @@ tramo: bundle oscuro servido, `--rm-bg` en `#14171C`, tarjetas en `#1C2027`, tex
 | Promoción entre ramas | 🔒 | casillero, **F4** |
 | Pull requests desde la app | 🔒 | casillero, **F4** |
 | Crear rama desde una tarea | 🔒 | casillero, **F4** |
-| Crear repositorio | 🔒 | casillero, **F4** |
+| Crear repositorio | ✅ | B5: asistente de tres pasos que arma un plan |
 | Notificaciones (tres canales) | 🔒 | casillero, **E3** |
 
 ## 6d · Especificación de drag & drop
@@ -306,3 +306,17 @@ representaba de ninguna forma — ni pantalla, ni casillero. **Ninguno quedó as
 
 **Cuatro pasan a casillero o se implementan en el próximo tramo; tres van al plan** con su
 bloque. Ninguno queda sin representación después de este commit.
+
+---
+
+## Desvíos deliberados de B5 (8-sep-2026)
+
+| lo que dice el diseño | lo que hace el producto | por qué |
+|---|---|---|
+| «Permisos por equipo: `@primateuy/dev` escribe» | **Grants por persona** | Los teams no existen en una cuenta de usuario. **El paso a teams es parte del procedimiento de migración** — no se adelanta por separado |
+| «9 operaciones, **todas reversibles**» | Ocho reversibles; **crear el repositorio no lo es** | Revertirla sería borrar un repositorio, y entre que el rollback lee y borra cabe un push de otro. **La realidad corrige al diseño hacia la honestidad** |
+
+Y una tercera diferencia que no es desvío sino límite: el asistente **no puede crear
+repositorios en una cuenta de usuario** —GitHub no expone el endpoint para una App—, así
+que en `primateuy` la pantalla existe y se niega con el motivo. Funciona en la
+organización, que es donde se ensaya. Ver spec §10.1.5.

@@ -30,6 +30,9 @@
 		"views/repo_module_views.xml",
 		"views/repo_panel_views.xml",
 		"views/repo_pendientes_views.xml",
+		# El asistente va ANTES del menú que lo referencia: una acción que todavía
+		# no existe rompe la carga del menuitem.
+		"wizards/repo_repository_create_views.xml",
 		"views/repo_menus.xml",
 		"report/repo_audit_report.xml",
 		"wizards/repo_key_rotation_views.xml",

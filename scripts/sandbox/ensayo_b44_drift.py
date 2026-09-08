@@ -118,7 +118,8 @@ try:
 		"plan_id": plan.id, "kind": "ruleset_update", "repository_id": repo.id,
 		"target": NUESTRO, "payload_json": json.dumps(definicion(2)),
 	})
-	plan._aprobar(confirmadas=plan.operation_ids.filtered("is_destructive"))
+	plan._aprobar(confirmadas=plan.operation_ids.filtered(
+		lambda o: o.is_destructive or o.is_irreversible))
 	env.cr.commit()
 	plan.action_apply()
 	env.cr.commit()
@@ -188,8 +189,8 @@ try:
 			"payload_json": hallazgo.remediation_payload,
 		})
 	linea("payload que se va a ejecutar", "el del hallazgo, tal cual")
-	plan_remediacion._aprobar(
-		confirmadas=plan_remediacion.operation_ids.filtered("is_destructive"))
+	plan_remediacion._aprobar(confirmadas=plan_remediacion.operation_ids.filtered(
+		lambda o: o.is_destructive or o.is_irreversible))
 	env.cr.commit()
 	plan_remediacion.action_apply()
 	env.cr.commit()
