@@ -29,7 +29,20 @@ class RepoRepository(models.Model):
 		[("public", "Público"), ("private", "Privado")], string="Visibilidad")
 	default_branch = fields.Char(string="Rama por defecto")
 	archived = fields.Boolean(string="Archivado")
+	present = fields.Boolean(
+		string="Sigue en GitHub", default=True, index=True,
+		help="Falso cuando un enumerado COMPLETO de la conexión no lo trajo. No se "
+			 "borra la fila: el espejo es historia, y la bitácora la referencia.")
+	absent_since = fields.Datetime(
+		string="Ausente desde", readonly=True, copy=False,
+		help="Cuándo se notó que dejó de venir en el listado. Puede ser que lo "
+			 "borraron, que lo transfirieron, o que la instalación perdió acceso: "
+			 "desde acá las tres se ven igual, y por eso se dice y no se supone.")
 	pushed_at = fields.Datetime(string="Último push")
+	created_at = fields.Datetime(
+		string="Creado en GitHub", readonly=True,
+		help="Cuándo lo creó GitHub. Sirve para distinguir «no se pudo leer» de "
+			 "«todavía no hay nada que leer» en un repositorio de segundos.")
 
 	is_fork = fields.Boolean(string="Es fork")
 	check_context_ids = fields.One2many(

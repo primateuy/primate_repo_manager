@@ -9,6 +9,7 @@ Los MODULADORES de severidad viven acá, con sus umbrales leídos de configuraci
 lógica es código testeado; los números son criterio y el criterio cambia.
 """
 import logging
+from datetime import timedelta
 
 from odoo import _, api, fields, models
 
@@ -35,6 +36,24 @@ class RepoAuditEngine(models.AbstractModel):
 		repos = run.backend_id.repository_ids.filtered(lambda r: not r.archived)
 
 		for repo in repos:
+			if not repo.present:
+				# AUSENTE: se deja de auditar y se dice por qué. Sus hallazgos no se
+				# regeneran —la corrida los rehace desde cero— así que quedan cerrados
+				# con esta entrada como causa. Seguir midiéndolo sería afirmar sobre
+				# ramas y permisos que ya no se pueden mirar: el espejo guarda la última
+				# foto, no el estado de hoy.
+				self._finding(
+					run, repo, "repository_absent",
+					_("«%s» ya no viene en el listado de la conexión") % repo.full_name,
+					severity="info",
+					detail=_("Ausente desde %s. Puede que lo hayan borrado, "
+							 "transferido, o que la instalación haya perdido acceso: "
+							 "desde acá las tres se ven igual. Deja de auditarse; la "
+							 "fila del espejo se conserva porque la bitácora la "
+							 "referencia.") % (repo.absent_since or "?"),
+					remediation_action="review_manually",
+					observed={"absent_since": str(repo.absent_since or "")})
+				continue
 			if repo.sync_state == "error":
 				# Un repo que no se pudo auditar es un hallazgo, no una nota al pie: si no,
 				# el informe afirma sobre 94 repos habiendo mirado 91.
@@ -189,6 +208,24 @@ class RepoAuditEngine(models.AbstractModel):
 	}
 	ORDEN_DEPENDABOT = ("critical", "high", "medium", "low")
 
+	# Cuánto dura «recién creado». Una hora es holgado para lo que en la práctica son
+	# segundos, y corto frente a cualquier repositorio real: si a la hora las fuentes
+	# siguen sin contestar, ya no es que GitHub no llegó, es que algo pasa — y ahí el
+	# hallazgo vuelve a ser MEDIUM con su causa de siempre.
+	VENTANA_DE_NACIMIENTO = timedelta(hours=1)
+
+	@api.model
+	def _es_recien_creado(self, repo):
+		"""¿Este repositorio es de hace un rato, según GITHUB y no según el espejo?
+
+		La fecha es la de GitHub a propósito: la del espejo diría «recién creado» de un
+		repositorio de 2019 que se sincronizó por primera vez hoy, y con eso una
+		conexión nueva estrenaría todos sus hallazgos de seguridad en informativo.
+		"""
+		if not repo.created_at:
+			return False
+		return (fields.Datetime.now() - repo.created_at) < self.VENTANA_DE_NACIMIENTO
+
 	@api.model
 	def _evaluate_security(self, run, repo):
 		"""B6.2 · las alertas de seguridad, con sus dos tratamientos y el apagado.
@@ -215,16 +252,36 @@ class RepoAuditEngine(models.AbstractModel):
 				self._security_apagado(run, repo, lectura)
 				continue
 			if lectura.state == "no_legible":
+				# EL TERCER ESTADO SE MANTIENE, LA CAUSA CAMBIA. En un repositorio de
+				# segundos las dos fuentes de seguridad contestan 404, y no es lo mismo
+				# que un 404 por falta de permiso: GitHub todavía no expone el estado de
+				# algo que acaba de crear. Se sigue sin afirmar nada —eso es el punto del
+				# tercer estado— pero con la causa que corresponde y en informativo: no
+				# hay nada que hacer salvo esperar a la próxima corrida, y un MEDIUM que
+				# se resuelve solo es ruido con la severidad equivocada.
+				# LA FALTA DE PERMISO NUNCA ES UN PROBLEMA DE NACIMIENTO. Medido contra
+				# prm-sandbox el 8-sep-2026: los dos 404 que parecían «GitHub todavía no
+				# lo expone» eran 403 «Resource not accessible by integration», y salían
+				# igual sobre un repositorio de meses — la instalación no tenía aprobados
+				# los permisos de seguridad. Con la ventana de nacimiento sola, eso se
+				# habría mostrado en informativo durante la primera hora de vida de cada
+				# repositorio nuevo: justo cuando se lo mira, y justo lo accionable.
+				recien = self._es_recien_creado(repo) and not lectura.es_falta_de_permiso()
 				self._finding(
 					run, repo, "security_feature_disabled",
 					_("No se pudo leer «%(que)s» en «%(repo)s»") % {
 						"que": dict(Scan._fields["source"].selection)[lectura.source],
 						"repo": repo.full_name},
-					subject=lectura.source, severity="medium",
-					detail=_("No se afirma nada sobre este repositorio en esa fuente: no "
-							 "se pudo mirar. Causa: %s") % (lectura.cause or "?"),
-					remediation_action="check_app_access",
-					observed={"causa": lectura.cause})
+					subject=lectura.source,
+					severity="info" if recien else "medium",
+					detail=(
+						_("Recién creado: GitHub todavía no expone su estado en esa "
+						  "fuente. Se relee en la próxima corrida.") if recien
+						else _("No se afirma nada sobre este repositorio en esa fuente: "
+							   "no se pudo mirar. Causa: %s") % (lectura.cause or "?")),
+					remediation_action=(
+						"no_action_recien_creado" if recien else "check_app_access"),
+					observed={"causa": "recien_creado" if recien else lectura.cause})
 				continue
 
 		abiertas = Alerta.search([

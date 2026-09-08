@@ -251,6 +251,7 @@ class GithubReadClient:
 		self._transport = transport or requests
 		self._api_root = api_root
 		self.last_rate_remaining = None
+		self.last_listing_truncated = False
 
 	# ------------------------------------------------------------------
 	# Lectura
@@ -328,6 +329,12 @@ class GithubReadClient:
 			exactamente el error que hay que hacer imposible acá.
 		"""
 		items = []
+		# EL LISTADO CORTADO TIENE QUE PODER DECIRSE. `paginate` devuelve lo leído hasta
+		# donde llegó y sigue —hasta ahora sólo dejaba un warning—, y hay una decisión
+		# que NO se puede tomar sobre un listado incompleto: declarar que algo ya no
+		# está. Sin esta bandera, una cuenta que supere el tope de páginas haría que el
+		# espejo marcara ausentes miles de repositorios que sí existen.
+		self.last_listing_truncated = False
 		params = dict(params or {})
 		params.setdefault("per_page", 100)
 		url = path if path.startswith("http") else "%s/%s" % (self._api_root, path.lstrip("/"))
@@ -359,6 +366,7 @@ class GithubReadClient:
 			if not url:
 				break
 		else:
+			self.last_listing_truncated = True
 			_logger.warning(
 				"GitHub: %s superó las %s páginas; se devuelve lo leído hasta acá",
 				path, MAX_PAGES,

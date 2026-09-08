@@ -9,6 +9,9 @@ no inventados.
 """
 import uuid
 
+from datetime import timedelta
+
+from odoo import fields
 from odoo.tests.common import TransactionCase
 
 # Los mensajes REALES, tal como los devolvió la API el 7-sep-2026.
@@ -357,6 +360,67 @@ class TestHallazgosDeSeguridad(TransactionCase):
 		self.assertTrue(hallazgo, "tiene que haber un hallazgo que lo diga")
 		self.assertIn("No se pudo leer", hallazgo.summary)
 		self.assertIn("no se afirma nada", hallazgo.detail.lower())
+
+	def test_en_un_repositorio_RECIEN_CREADO_la_causa_es_otra_y_es_informativa(self):
+		"""El tercer estado se mantiene; lo que cambia es la causa y la severidad.
+
+		En un repositorio de segundos las dos fuentes contestan 404, y no es lo mismo que
+		un 404 por falta de permiso: GitHub todavía no expone el estado de algo que acaba
+		de crear. Se sigue sin afirmar nada —eso es el punto del tercer estado— pero un
+		MEDIUM que se resuelve solo en la próxima corrida es ruido con la severidad
+		equivocada, y el recién nacido del ensayo B5.4 estrenaba dos.
+		"""
+		self.repo.created_at = fields.Datetime.now()
+		self.env["repo.security.scan"].upsert(
+			self.repo, "dependabot", "no_legible", cause="not accessible")
+		hallazgo = self._hallazgos("security_feature_disabled")
+		self.assertIn("No se pudo leer", hallazgo.summary)
+		self.assertEqual(hallazgo.severity, "info")
+		self.assertIn("Recién creado", hallazgo.detail)
+		self.assertIn("próxima corrida", hallazgo.detail)
+		self.assertEqual(hallazgo.remediation_action, "no_action_recien_creado")
+
+	def test_en_uno_VIEJO_el_mismo_404_sigue_siendo_MEDIUM(self):
+		"""La ventana es de nacimiento, no un perdón general.
+
+		Sin este test, ensanchar la ventana o quitarle la condición dejaría todos los
+		«no se pudo leer» en informativo y el problema de permisos de la App —que es un
+		problema real y que hay que ir a resolver— desaparecería del informe.
+		"""
+		self.repo.created_at = fields.Datetime.now() - timedelta(days=400)
+		self.env["repo.security.scan"].upsert(
+			self.repo, "dependabot", "no_legible", cause="not accessible")
+		hallazgo = self._hallazgos("security_feature_disabled")
+		self.assertEqual(hallazgo.severity, "medium")
+		self.assertEqual(hallazgo.remediation_action, "check_app_access")
+
+	def test_la_FALTA_DE_PERMISO_no_se_disfraza_de_recien_creado(self):
+		"""El caso que la ventana de nacimiento habría tapado, y que es el real.
+
+		Medido contra prm-sandbox: los dos «no se pudo leer» de un repositorio recién
+		creado no eran «GitHub todavía no lo expone», eran «Resource not accessible by
+		integration» — a la instalación le faltaban los dos permisos de seguridad. El
+		mismo mensaje salía sobre un repositorio de meses.
+
+		Es la única causa de «no se pudo leer» sobre la que alguien puede actuar. Si la
+		primera hora de vida de cada repositorio la mostrara en informativo, la
+		configuración que falta desaparecería del informe justo cuando se lo mira.
+		"""
+		self.repo.created_at = fields.Datetime.now()
+		self.env["repo.security.scan"].upsert(
+			self.repo, "dependabot", "no_legible",
+			cause="Resource not accessible by integration")
+		hallazgo = self._hallazgos("security_feature_disabled")
+		self.assertEqual(hallazgo.severity, "medium")
+		self.assertEqual(hallazgo.remediation_action, "check_app_access")
+
+	def test_sin_fecha_de_creacion_NO_se_supone_que_es_nuevo(self):
+		"""Un espejo viejo no tiene la fecha, y suponerla dejaría en informativo todo lo
+		que no se puede leer de una conexión recién sincronizada."""
+		self.repo.created_at = False
+		self.env["repo.security.scan"].upsert(
+			self.repo, "dependabot", "no_legible", cause="not accessible")
+		self.assertEqual(self._hallazgos("security_feature_disabled").severity, "medium")
 
 	def test_ninguno_de_los_tres_se_ofrece_planificable(self):
 		"""B6 lee. Encender seguridad desde acá cambiaría la postura de una cuenta sin

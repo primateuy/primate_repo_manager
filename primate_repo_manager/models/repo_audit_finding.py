@@ -67,6 +67,7 @@ FINDING_TYPES = [
 	# La cuenta DUEÑA de los repositorios no se mide con la matriz de acceso: su admin es
 	# inherente a la propiedad y no se puede bajar. El dato igual se conserva, como nota.
 	("owner_account_admin", "La cuenta dueña figura como colaboradora"),
+	("repository_absent", "El repositorio ya no viene en el listado"),
 	("institutional_account", "Cuenta institucional sin persona asociada"),
 	# B4 · los dos sentidos del drift. Son dos tipos y no uno con una bandera porque
 	# significan cosas distintas: el primero es un INCIDENTE —alguien cambió GitHub por
@@ -103,6 +104,7 @@ BASE_SEVERITY = {
 	"checks_not_evaluable": "info",
 	"convention_adoption": "info",
 	"owner_account_admin": "info",
+	"repository_absent": "info",
 	"institutional_account": "info",
 	# El incidente es alto; la deuda es media. La diferencia no es de matiz: uno pasó
 	# afuera del embudo y el otro es trabajo nuestro que falta hacer.
@@ -134,6 +136,7 @@ REMEDIATION_ACTIONS = [
 	("check_app_access", "Revisar el acceso de la App al repositorio"),
 	("review_manually", "Revisar a mano"),
 	("no_action_owner", "No requiere acción: es la cuenta dueña"),
+	("no_action_recien_creado", "No requiere acción: se relee en la próxima corrida"),
 	("reapply_ruleset", "Volver a aplicar el ruleset como estaba"),
 	("reapply_policy", "Volver a aplicar la política de la plantilla"),
 	("rotate_secret", "Rotar el secreto y cerrar la alerta en GitHub"),
@@ -159,6 +162,7 @@ REMEDIATION_BY_TYPE = {
 	"checks_not_evaluable": "define_required_checks",
 	"convention_adoption": "review_manually",
 	"owner_account_admin": "no_action_owner",
+	"repository_absent": "review_manually",
 	"institutional_account": "no_action_owner",
 	# El módulo auditándose a sí mismo: si la cadena de la bitácora está rota, alguien
 	# escribió en la base por fuera de la aplicación. No hay hallazgo más grave que ése,
@@ -267,6 +271,9 @@ POR_QUE_NO_PLANIFICABLE = {
 		"Crear ramas todavía no es un tipo de operación del plan."),
 	"review_manually": "No hay una acción automática: hay que mirarlo.",
 	"no_action_owner": "No requiere acción.",
+	"no_action_recien_creado": (
+		"El repositorio es de hace un rato y GitHub todavía no expone su estado en esa "
+		"fuente. Se vuelve a mirar en la próxima corrida."),
 }
 
 UNREADABLE_CAUSES = [

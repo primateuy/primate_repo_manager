@@ -163,6 +163,77 @@ class TestSync(TransactionCase):
 		finally:
 			type(self.backend).client = original
 
+	# --- lo que dejó de venir en el listado ---
+
+	def test_un_listado_completo_marca_ausente_lo_que_no_vino(self):
+		"""Se marca con fecha y NO se borra: el espejo es historia.
+
+		Antes el enumerado upserteaba lo que traía y no miraba lo que faltaba, así que un
+		repositorio borrado en GitHub se quedaba en el espejo para siempre y la auditoría
+		seguía emitiendo hallazgos sobre sus ramas. Una serie de ensayos dejó seis
+		fantasmas y dieciocho hallazgos así.
+		"""
+		repos = self._sincronizar()
+		fork = repos.filtered(lambda r: r.full_name == "primateuy/webOCA")
+		self.assertTrue(fork.present)
+
+		# GitHub deja de traerlo. Es lo único que pasa: el repositorio no se toca acá.
+		self.transporte.repos = [REPO_PRIVADO_SIN_ADMIN]
+		self._sincronizar()
+
+		self.assertFalse(fork.present, "no se marcó ausente")
+		self.assertTrue(fork.absent_since, "se marcó ausente sin decir desde cuándo")
+		self.assertTrue(fork.exists(), "la fila se borró: el espejo es historia")
+
+	def test_un_repositorio_que_VUELVE_deja_de_estar_ausente(self):
+		"""El acceso que se restituye tiene que reencontrar su fila, no estrenar otra."""
+		repos = self._sincronizar()
+		fork = repos.filtered(lambda r: r.full_name == "primateuy/webOCA")
+		self.transporte.repos = [REPO_PRIVADO_SIN_ADMIN]
+		self._sincronizar()
+		self.assertFalse(fork.present)
+
+		self.transporte.repos = [REPO_PRIVADO_SIN_ADMIN, REPO_FORK]
+		vueltos = self._sincronizar()
+
+		self.assertTrue(fork.present)
+		self.assertFalse(fork.absent_since)
+		self.assertIn(fork, vueltos, "estrenó fila nueva en vez de reencontrar la suya")
+
+	def test_un_listado_INCOMPLETO_no_declara_ausencia_jamas(self):
+		"""LA GUARDA. `paginate` devuelve lo leído cuando supera el tope de páginas.
+
+		Sobre un listado cortado, marcar ausente lo que «no vino» daría por desaparecidos
+		miles de repositorios vivos — y con ellos dejarían de auditarse. La ausencia sólo
+		se afirma desde el enumerado COMPLETO.
+		"""
+		repos = self._sincronizar()
+		fork = repos.filtered(lambda r: r.full_name == "primateuy/webOCA")
+
+		desaparecidos = self.env["repo.repository"]._marcar_ausentes(
+			self.backend, {str(REPO_PRIVADO_SIN_ADMIN["id"])}, listado_completo=False)
+
+		self.assertFalse(desaparecidos)
+		self.assertTrue(fork.present, "un listado cortado declaró una ausencia")
+		self.assertFalse(fork.absent_since)
+
+	def test_los_repos_de_OTRA_cuenta_no_se_dan_por_desaparecidos(self):
+		"""No se auditan bajo esta conexión, pero siguen estando.
+
+		Medir la ausencia contra los repos auditables —y no contra el listado entero—
+		los habría marcado ausentes en cada corrida.
+		"""
+		ajeno = dict(REPO_FORK, id=999, full_name="otra-cuenta/algo",
+					 owner={"login": "otra-cuenta"})
+		self.transporte.repos = [REPO_PRIVADO_SIN_ADMIN, ajeno]
+		self._sincronizar()
+		# El ajeno no entra al espejo, así que lo que se comprueba es que el enumerado
+		# no explote y que el propio siga presente.
+		propio = self.env["repo.repository"].search([
+			("backend_id", "=", self.backend.id),
+			("full_name", "=", "primateuy/LocalizacionUy")])
+		self.assertTrue(propio.present)
+
 	# --- la rama por defecto es un dato que CAMBIA ---
 
 	def test_la_rama_por_defecto_se_refresca_en_el_sync_del_repositorio(self):

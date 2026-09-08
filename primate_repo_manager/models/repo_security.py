@@ -28,6 +28,16 @@ FUENTES = [
 	("dependabot", "Vulnerabilidades de dependencias"),
 ]
 
+# LO QUE GITHUB DICE CUANDO A LA APP LE FALTA EL PERMISO, tal cual y en minúsculas.
+# Importa distinguirlo porque es la ÚNICA causa de «no se pudo leer» que significa «hay
+# algo que ir a hacer», y es justo la que se puede confundir con un problema pasajero:
+# medido el 8-sep-2026 contra prm-sandbox, un repositorio recién creado y uno de meses
+# devolvían exactamente este mensaje, y la instalación simplemente no tenía aprobados los
+# dos permisos de seguridad. Tratarlo como ruido de nacimiento habría escondido durante
+# la primera hora de vida de cada repositorio la única cosa accionable del grupo.
+SIN_ACCESO_DE_LA_APP = "resource not accessible by integration"
+
+
 ESTADOS = [
 	("con_datos", "Leído"),
 	("apagado", "Apagado en el repositorio"),
@@ -90,6 +100,18 @@ class RepoSecurityScan(models.Model):
 		fila.write({"last_seen_at": valores["last_seen_at"], "origin": origin}
 				   if iguales else valores)
 		return fila
+
+
+	def es_falta_de_permiso(self):
+		"""¿El «no se pudo leer» es porque a la App le falta el permiso?
+
+		Se contesta con el mensaje de GitHub y no con la antigüedad del repositorio: es
+		la diferencia entre «hay que ir a aprobar un permiso en la instalación» y «hubo
+		un problema pasajero», y confundirlas hace desaparecer la única de las dos sobre
+		la que alguien puede actuar.
+		"""
+		self.ensure_one()
+		return SIN_ACCESO_DE_LA_APP in (self.cause or "").lower()
 
 
 class RepoSecurityAlert(models.Model):

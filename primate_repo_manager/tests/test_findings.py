@@ -8,6 +8,7 @@ protección y un fork desfasado.
 import json
 import uuid
 
+from odoo import fields
 from odoo.tests.common import TransactionCase
 
 
@@ -202,6 +203,71 @@ class TestFindings(TransactionCase):
 		self.assertIn("main", adopcion.detail)
 		# Y el repo concreto también tiene el suyo.
 		self.assertTrue(self._hallazgo("default_branch_off_convention"))
+
+	# --- lo que la política no gobierna no se reclama ---
+
+	def test_una_rama_de_rol_NO_GOBERNADO_no_se_reclama(self):
+		"""`main` y las ramas de trabajo no tienen convención contra la cual medirse.
+
+		`rule_for_role` caía a la regla general para CUALQUIER rol, así que terminaba
+		exigiendo pull request en ramas que ninguna política nombra: `main` —la que crea
+		GitHub con el README— y `19.0-dev`, que es trabajo sobre una versión. El módulo
+		se acusaba de no aplicar lo que la política no pide.
+
+		La misma respuesta sirve para las dos preguntas: qué hay que escribir y qué hay
+		que reclamar.
+		"""
+		repo = self._repo("con-ramas-fuera-del-esquema")
+		for nombre, rol in [("main", "other"), ("19.0-dev", "version")]:
+			self.env["repo.branch"].create({
+				"repository_id": repo.id, "name": nombre, "role": rol,
+				"protected": False, "protection_readable": True})
+
+		self.env["repo.audit.engine"].evaluate(self.run)
+
+		reclamos = self.env["repo.audit.finding"].search([
+			("run_id", "=", self.run.id), ("finding_type", "=", "branch_unprotected"),
+			("repository_id", "=", repo.id)])
+		self.assertFalse(
+			reclamos.mapped("subject"),
+			"se le reclamó política a una rama que la política no gobierna")
+
+	def test_una_rama_GOBERNADA_se_sigue_reclamando(self):
+		"""La exención es para los roles fuera de gobierno, no para todos."""
+		repo = self._repo("con-rama-de-produccion")
+		self.env["repo.branch"].create({
+			"repository_id": repo.id, "name": "19.0-prod", "role": "prod",
+			"protected": False, "protection_readable": True})
+
+		self.env["repo.audit.engine"].evaluate(self.run)
+
+		reclamos = self.env["repo.audit.finding"].search([
+			("run_id", "=", self.run.id), ("finding_type", "=", "branch_unprotected"),
+			("repository_id", "=", repo.id)])
+		self.assertEqual(reclamos.mapped("subject"), ["19.0-prod"])
+
+	# --- el repositorio que ya no está ---
+
+	def test_un_repositorio_AUSENTE_deja_de_auditarse_y_se_dice_por_que(self):
+		"""Sus hallazgos no se regeneran: la corrida los rehace desde cero.
+
+		Seguir midiéndolo sería afirmar sobre ramas y permisos que ya no se pueden
+		mirar. Y callarlo sería peor: el hallazgo dice desde cuándo y que hay tres
+		explicaciones que desde acá se ven igual.
+		"""
+		repo = self._repo("que-ya-no-esta")
+		self.env["repo.branch"].create({
+			"repository_id": repo.id, "name": "19.0-prod", "role": "prod",
+			"protected": False, "protection_readable": True})
+		repo.write({"present": False, "absent_since": fields.Datetime.now()})
+
+		self.env["repo.audit.engine"].evaluate(self.run)
+
+		suyos = self.env["repo.audit.finding"].search([
+			("run_id", "=", self.run.id), ("repository_id", "=", repo.id)])
+		self.assertEqual(suyos.mapped("finding_type"), ["repository_absent"])
+		self.assertEqual(suyos.severity, "info")
+		self.assertIn("Ausente desde", suyos.detail)
 
 	# --- la cuenta dueña no se mide con la matriz de acceso ---
 

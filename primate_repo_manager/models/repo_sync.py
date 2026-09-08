@@ -90,6 +90,10 @@ class RepoRepositorySync(models.Model):
 
 		repos = self.browse()
 		ajenos = []
+		# TODOS los ids que el listado trajo, incluidos los de otra cuenta. Es lo que
+		# decide qué sigue estando, y los ajenos siguen estando aunque no se auditen:
+		# medirlos con `repos` los daría por desaparecidos en cada corrida.
+		vistos = {str(item.get("id")) for item in datos if item.get("id")}
 		for item in datos:
 			login = ((item.get("owner") or {}).get("login") or "")
 			if login and login.lower() != (backend.owner_login or "").lower():
@@ -103,7 +107,55 @@ class RepoRepositorySync(models.Model):
 				"Repo Manager: la instalación abarca %s repositorio(s) de otra cuenta, "
 				"fuera del alcance de «%s»: %s",
 				len(ajenos), backend.owner_login, ", ".join(ajenos))
+		self._marcar_ausentes(
+			backend, vistos, listado_completo=not client.last_listing_truncated)
 		return repos
+
+	@api.model
+	def _marcar_ausentes(self, backend, github_ids_vistos, listado_completo):
+		"""Lo que el listado no trajo se marca ausente, con fecha. NUNCA se borra.
+
+		LA REGLA DE D1, APLICADA AL REPOSITORIO. Un dato que deja de venir no es un dato
+		que deja de existir: puede que lo borraron, puede que lo transfirieron, puede que
+		la instalación perdió acceso. Desde acá las tres se ven igual — así que se dice
+		«ausente desde tal fecha», que es lo único cierto, y se deja de auditar. Callarlo
+		era peor: el espejo guardaba repositorios que ya no estaban y la auditoría seguía
+		emitiendo hallazgos sobre ramas inexistentes. Una serie de ensayos dejó seis
+		fantasmas y dieciocho hallazgos así.
+
+		Y NO SE BORRA LA FILA. El espejo es historia: la bitácora la referencia, los
+		hallazgos viejos la nombran, y un repositorio que vuelve —el acceso que se
+		restituye— tiene que reencontrar la suya y no estrenar otra.
+
+		UN SYNC PARCIAL NO DECLARA AUSENCIA JAMÁS. Es la guarda que hace esto seguro:
+		`paginate` devuelve lo leído cuando supera el tope de páginas, y sobre un listado
+		cortado esta función marcaría ausentes miles de repositorios vivos. Ausencia sólo
+		se afirma desde el enumerado COMPLETO de la conexión.
+		"""
+		if not listado_completo:
+			_logger.warning(
+				"Repo Manager: el listado de «%s» vino incompleto; NO se declara "
+				"ausencia. El espejo queda como estaba.", backend.owner_login)
+			return self.browse()
+		ahora = fields.Datetime.now()
+		desaparecidos = self.search([
+			("backend_id", "=", backend.id), ("present", "=", True),
+			("github_id", "not in", list(github_ids_vistos))])
+		if desaparecidos:
+			_logger.warning(
+				"Repo Manager: %s repositorio(s) dejaron de venir en el listado de «%s»: "
+				"%s", len(desaparecidos), backend.owner_login,
+				", ".join(desaparecidos.mapped("full_name")))
+			desaparecidos.write({"present": False, "absent_since": ahora})
+		# Y los que VUELVEN. Se escribe sólo sobre los que cambian: un write con los
+		# mismos datos igual genera un UPDATE, y sobre filas compartidas eso basta para
+		# pisar al job de al lado.
+		regresados = self.search([
+			("backend_id", "=", backend.id), ("present", "=", False),
+			("github_id", "in", list(github_ids_vistos))])
+		if regresados:
+			regresados.write({"present": True, "absent_since": False})
+		return desaparecidos
 
 	@api.model
 	def _upsert(self, backend, item):
@@ -121,6 +173,7 @@ class RepoRepositorySync(models.Model):
 			"default_branch": item.get("default_branch"),
 			"archived": bool(item.get("archived")),
 			"pushed_at": _fecha(item.get("pushed_at")),
+			"created_at": _fecha(item.get("created_at")),
 			"is_fork": bool(item.get("fork")),
 		}
 		if item.get("parent"):
