@@ -76,6 +76,7 @@ OPERATION_KINDS = [
 	("repository_create", "Crear el repositorio"),
 	("branch_create", "Crear una rama"),
 	("dependabot_enable", "Encender las alertas de Dependabot"),
+	("default_branch_set", "Fijar la rama por defecto"),
 ]
 
 
@@ -1161,6 +1162,21 @@ class RepoWritePlanNacimiento(models.Model):
 					"login": responsable.github_login, "permission": "admin"}),
 			})
 
+		# LA RAMA POR DEFECTO. Un repositorio nace con `main`, y la convención de este
+		# módulo es la rama de versión: dejarlo en `main` hacía que el recién nacido
+		# estrenara el hallazgo «rama por defecto fuera de convención» — nacer con un
+		# hallazgo que el mismo plan podía evitar. Cuál es la que corresponde lo decide
+		# la regla de roles, no una constante acá.
+		principal = next(
+			(r for r in ramas
+			 if self.env["repo.branch.role.rule"].role_for(r) == "prod"), ramas[0])
+		Operacion.create({
+			"plan_id": plan.id, "kind": "default_branch_set", "sequence": 30,
+			"target": principal,
+			"depends_on_ids": [Command.link(operaciones_de_rama[principal].id)],
+			"payload_json": json.dumps({"branch": principal}),
+		})
+
 		# DEPENDABOT, encendido de nacimiento. Sin esta operación el repositorio perfecto
 		# estrenaría un hallazgo informativo el día uno, y «nace con cero hallazgos»
 		# quedaría con asterisco.
@@ -1201,7 +1217,10 @@ class RepoWritePlanNacimiento(models.Model):
 			# más de las que el plan arma, y el número prometido es el único que alguien
 			# mira antes de apretar. Lo destapó el ensayo de B5.4 corriendo SIN
 			# responsable — el test siempre le pasaba uno.
+			"rama_por_defecto": next(
+				(r for r in ramas
+				 if self.env["repo.branch.role.rule"].role_for(r) == "prod"), ramas[0]),
 			"operaciones": (
-				1 + len(ramas) + len(gobernadas)
+				1 + len(ramas) + 1 + len(gobernadas)
 				+ (1 if valores.get("responsable") else 0) + 1),
 		}

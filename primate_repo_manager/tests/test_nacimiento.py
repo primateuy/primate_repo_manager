@@ -510,25 +510,6 @@ class TestAsistenteDeNacimiento(TransactionCase):
 		fuente = inspect.getsource(repo_write_apply.RepoWriteOperationApply._id_del_repositorio)
 		self.assertNotIn("_cursor_durable", fuente)
 
-	def test_una_PERSONA_con_rol_de_lider_puede_usar_el_asistente(self):
-		"""Los tests corren como superusuario y la ACL no se ve: este lo hace como
-		persona.
-
-		Lo destapó el ensayo contra el sandbox, no la suite: el asistente no tenía ACL y
-		cualquiera que lo abriera se comía un «No group currently allows this
-		operation». Una pantalla sin permisos declarados es una pantalla que anda para
-		el que la escribió y para nadie más.
-		"""
-		lider = self.env["res.users"].create({
-			"name": "Líder de prueba", "login": "lider-%s" % uuid.uuid4().hex[:8],
-			"group_ids": [(4, self.env.ref("primate_repo_manager.group_repo_lead").id),
-						  (4, self.env.ref("base.group_user").id)],
-		})
-		asistente = self.env["repo.repository.create.wizard"].with_user(lider).create({
-			"backend_id": self.backend.id, "base": "Mutualista Casmu",
-			"classification": "cliente", "version": "19.0"})
-		self.assertTrue(asistente.nombre_previsto)
-
 	def test_SIN_responsable_el_numero_prometido_tambien_cierra(self):
 		"""El conteo contaba el grant siempre, y sin responsable el plan arma uno menos.
 

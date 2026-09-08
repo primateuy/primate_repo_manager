@@ -1033,6 +1033,14 @@ class RepoWriteOperationApply(models.Model):
 				"verificar": "_verificar_rama_creada",
 				"revertir": "_revertir_rama_creada",
 			},
+			# Idempotente por destino: la rama por defecto es una sola. Revertir es
+			# volver a poner la que estaba.
+			"default_branch_set": {
+				"leer": "_leer_rama_por_defecto",
+				"ejecutar": "_fijar_rama_por_defecto",
+				"verificar": "_verificar_rama_por_defecto",
+				"revertir": "_revertir_rama_por_defecto",
+			},
 			# Idempotente por destino y reversible: encender es PUT, apagar es DELETE.
 			"dependabot_enable": {
 				"leer": "_leer_dependabot",
@@ -1422,6 +1430,35 @@ class RepoWriteOperationApply(models.Model):
 		cliente.delete(
 			"/repos/%s/git/refs/heads/%s" % (self.repository_id.full_name, nombre),
 			tolerar_404=True)
+		return True
+
+	# --- la rama por defecto ---------------------------------------------
+
+	def _leer_rama_por_defecto(self, cliente):
+		ficha = cliente.get("/repos/%s" % self.repository_id.full_name) or {}
+		return {"anterior": ficha.get("default_branch")}
+
+	def _fijar_rama_por_defecto(self, cliente):
+		deseada = (_cargar(self.payload_json) or {}).get("branch") or self.target
+		if self._leer_rama_por_defecto(cliente)["anterior"] == deseada:
+			return SIN_CAMBIOS
+		return cliente.patch("/repos/%s" % self.repository_id.full_name,
+							 {"default_branch": deseada})
+
+	def _verificar_rama_por_defecto(self, cliente):
+		deseada = (_cargar(self.payload_json) or {}).get("branch") or self.target
+		actual = self._leer_rama_por_defecto(cliente)["anterior"]
+		if actual != deseada:
+			return False, _("la rama por defecto quedó en «%s»") % actual
+		return True, {"default_branch": actual}
+
+	def _revertir_rama_por_defecto(self, cliente, previo):
+		anterior = (previo or {}).get("anterior")
+		if not anterior:
+			raise UserError(_(
+				"No se guardó cuál era la rama por defecto: no se adivina."))
+		cliente.patch("/repos/%s" % self.repository_id.full_name,
+					  {"default_branch": anterior})
 		return True
 
 	# --- Dependabot -------------------------------------------------------
