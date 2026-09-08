@@ -186,3 +186,122 @@ class TestNacimiento(TransactionCase):
 		cliente = self.backend.write_client(transport=transporte)
 		op._revertir_dependabot(cliente, {"encendido": False})
 		self.assertTrue([c for c in transporte.llamadas if c[0] == "DELETE"])
+
+
+class TestNombreYVuelta(TransactionCase):
+	"""B5.2 · el prefijo, y la guarda que hace imposible nacer mal clasificado."""
+
+	def setUp(self):
+		super().setUp()
+		self.Reglas = self.env["repo.classification.rule"]
+
+	# ------------------------------------------------------------------
+	# LA IDA Y VUELTA
+	# ------------------------------------------------------------------
+
+	def test_TODA_regla_con_prefijo_clasifica_de_vuelta_a_su_clasificacion(self):
+		"""La guarda no es sobre tres casos: es sobre lo que haya configurado.
+
+		Si generador y clasificador divergen, el repo nace mal clasificado en su primer
+		segundo — y ninguna auditoría posterior sabría que fue de nacimiento. Recorrer
+		las reglas con prefijo, y no una lista escrita acá, hace que la regla que alguien
+		agregue mañana quede cubierta por existir.
+		"""
+		con_prefijo = self.Reglas.search([("name_prefix", "!=", False)])
+		self.assertTrue(con_prefijo, "tiene que haber al menos una regla con prefijo")
+		for regla in con_prefijo:
+			nombre = self.Reglas.nombre_para(regla.classification, "Mutualista Casmu")
+			self.assertEqual(
+				self.Reglas.classify({"name": nombre, "full_name": nombre}),
+				regla.classification,
+				"«%s» no vuelve a «%s»" % (nombre, regla.classification))
+
+	def test_los_prefijos_se_sembraron_en_las_reglas_que_ya_existian(self):
+		"""Una base vieja y una recién instalada tienen que comportarse igual."""
+		for xmlid in ("classification_rule_localizacion", "classification_rule_interno",
+					  "classification_rule_cliente"):
+			regla = self.env.ref("primate_repo_manager.%s" % xmlid)
+			self.assertTrue(regla.name_prefix, xmlid)
+
+	def test_la_verificacion_se_niega_si_se_separaron(self):
+		regla = self.Reglas.search([("classification", "=", "cliente")], limit=1)
+		regla.name_prefix = "otracosa-"
+		with self.assertRaises(UserError) as capturado:
+			self.Reglas.verificar_ida_y_vuelta(
+				"cliente", self.Reglas.nombre_para("cliente", "Casmu"))
+		self.assertIn("no vuelve a clasificar", str(capturado.exception))
+
+	def test_sin_prefijo_declarado_NO_se_inventa_uno(self):
+		"""Un default silencioso que después nadie recuerda haber elegido."""
+		with self.assertRaises(UserError):
+			self.Reglas.nombre_para("fork_upstream", "algo")
+
+	# ------------------------------------------------------------------
+	# El nombre
+	# ------------------------------------------------------------------
+
+	def test_normaliza_acentos_y_espacios(self):
+		self.assertEqual(
+			self.Reglas.nombre_para("cliente", "Mutualista Casmú"), "cliente-mutualista-casmu")
+
+	def test_la_regla_de_cliente_NO_es_un_catch_all(self):
+		"""Un repositorio sin la convención sigue quedando sin clasificar, que es el
+		hallazgo que corresponde."""
+		self.assertFalse(
+			self.Reglas.classify({"name": "farmashop", "full_name": "org/farmashop"}))
+
+
+class TestPlanDeNacimiento(TransactionCase):
+	"""B5.2 · el asistente arma un plan; no crea nada."""
+
+	def setUp(self):
+		super().setUp()
+		self.backend = self.env["repo.backend"].create({
+			"name": "Nacer %s" % uuid.uuid4().hex[:6],
+			"owner_login": "org-%s" % uuid.uuid4().hex[:8],
+			"owner_type": "organization", "app_id": "1", "installation_id": "2"})
+		self.valores = {"base": "Mutualista Casmu", "clasificacion": "cliente",
+						"version": "19.0", "privado": True}
+
+	def test_el_plan_nace_en_BORRADOR_y_no_escribe_nada(self):
+		"""«Revisar el plan y crear», dice el mockup. No «crear»."""
+		plan = self.env["repo.write.plan"].armar_nacimiento(self.backend, self.valores)
+		self.assertEqual(plan.state, "draft")
+		self.assertTrue(plan.operation_ids)
+
+	def test_la_primera_operacion_es_crear_el_repositorio(self):
+		plan = self.env["repo.write.plan"].armar_nacimiento(self.backend, self.valores)
+		primera = plan.operation_ids.sorted("sequence")[0]
+		self.assertEqual(primera.kind, "repository_create")
+		self.assertEqual(primera.target, "cliente-mutualista-casmu")
+
+	def test_NO_se_arma_el_plan_si_el_nombre_no_vuelve(self):
+		"""La guarda corre ANTES de crear nada: no queda medio plan armado."""
+		self.env["repo.classification.rule"].search(
+			[("classification", "=", "cliente")], limit=1).name_prefix = "mal-"
+		antes = self.env["repo.write.plan"].search_count([])
+		with self.assertRaises(UserError):
+			self.env["repo.write.plan"].armar_nacimiento(self.backend, self.valores)
+		self.assertEqual(self.env["repo.write.plan"].search_count([]), antes)
+
+	# ------------------------------------------------------------------
+	# El resumen del paso 3
+	# ------------------------------------------------------------------
+
+	def test_el_resumen_dice_QUE_se_va_a_crear_antes_de_crearlo(self):
+		resumen = self.env["repo.write.plan"].resumen_de_nacimiento(self.valores)
+		self.assertEqual(resumen["nombre"], "cliente-mutualista-casmu")
+		self.assertEqual(resumen["ramas"],
+						 ["19.0-prod", "19.0-support", "19.0-staging", "19.0-dev"])
+
+	def test_los_ROLES_de_las_ramas_los_decide_la_regla_de_siempre(self):
+		"""`19.0-prod` es producción porque la regla lo dice, no porque acá lo supongamos."""
+		resumen = self.env["repo.write.plan"].resumen_de_nacimiento(self.valores)
+		self.assertIn("19.0-prod", resumen["ramas_gobernadas"])
+		self.assertIn("19.0-support", resumen["ramas_gobernadas"])
+		self.assertNotIn("19.0-dev", resumen["ramas_gobernadas"])
+
+	def test_el_resumen_dice_que_Dependabot_nace_encendido(self):
+		"""Sin esa operación, el repositorio perfecto estrenaría un hallazgo el día uno."""
+		self.assertTrue(
+			self.env["repo.write.plan"].resumen_de_nacimiento(self.valores)["dependabot"])

@@ -403,6 +403,27 @@ otros son límites de la API; éste es un límite de plan, y se levanta pagando 
 nada. Pero el plan de organización es donde esa función tiene precio razonable, así que en
 la práctica empuja en la misma dirección.
 
+### 10.1.5 Tercera pared: no se pueden crear repositorios en una cuenta de usuario
+
+**Medido el 8-sep-2026.** Un token de instalación de GitHub App **no puede crear
+repositorios en una cuenta de usuario**: el endpoint de creación para organizaciones es
+`POST /orgs/{org}/repos`, y el equivalente para cuentas —`POST /user/repos`— actúa como el
+usuario autenticado, que nunca es la App. No hay forma de que la App cree un repositorio
+en `primateuy`.
+
+En la organización sandbox funciona, y es donde el nacimiento gobernado se ensaya.
+
+**Es el tercer argumento medido para la migración**, junto con los dos que ya están arriba:
+
+| # | Qué no se puede sin organización | Dónde |
+|---|---|---|
+| 1 | Teams — y por lo tanto permisos por equipo y CODEOWNERS por equipo | §10.1.3 |
+| 2 | Escaneo de secretos con el alcance de la organización | §10.1.4 |
+| 3 | **Crear repositorios desde el módulo** | acá |
+
+Los tres se resuelven con la misma decisión, y ninguno tiene rodeo. El módulo se niega con
+el motivo en vez de chocar contra un 404 que nadie sabe leer.
+
 ## 10.2 Decisiones abiertas
 
 **Doble aprobación de planes de escritura — sin resolver, para el rollout de F3.**

@@ -103,7 +103,8 @@ class RepoRulesetBuilder(models.AbstractModel):
 			ramas = repo.branch_ids.filtered(lambda r: r.role == rol)
 			if not ramas:
 				continue
-			salida.append(self.payload_for_role(plantilla, rol, ramas, bypass))
+			salida.append(self.payload_for_role(
+				plantilla, rol, ramas.mapped("name"), bypass))
 		salida.extend(self._roles_sin_traduccion(repo, plantilla))
 		return salida
 
@@ -112,13 +113,16 @@ class RepoRulesetBuilder(models.AbstractModel):
 	# ------------------------------------------------------------------
 
 	@api.model
-	def payload_for_role(self, plantilla, rol, ramas, bypass_actors):
+	def payload_for_role(self, plantilla, rol, nombres_de_rama, bypass_actors):
 		"""El ruleset de un rol de rama, listo para mandar.
 
 		Args:
 			plantilla: registro de `repo.policy.template`.
 			rol: uno de `BRANCH_ROLES`.
-			ramas: recordset de `repo.branch` observadas con ese rol.
+			nombres_de_rama: los nombres de las ramas con ese rol. Se reciben como
+				texto —y no como recordset— porque el nacimiento gobernado arma el
+				ruleset de un repositorio que TODAVÍA NO EXISTE: sus ramas son las que
+				el mismo plan va a crear, y no hay espejo del que sacarlas.
 			bypass_actors: lo que devuelve `_bypass_actors`.
 
 		Returns:
@@ -196,7 +200,7 @@ class RepoRulesetBuilder(models.AbstractModel):
 		return {
 			"role": rol,
 			"name": nombre_de_ruleset(plantilla.code, rol),
-			"branches": ramas.mapped("name"),
+			"branches": list(nombres_de_rama),
 			"no_traducido": no_traducido,
 			"payload": {
 				"name": nombre_de_ruleset(plantilla.code, rol),
@@ -205,7 +209,7 @@ class RepoRulesetBuilder(models.AbstractModel):
 				"bypass_actors": bypass_actors,
 				"conditions": {
 					"ref_name": {
-						"include": ["refs/heads/%s" % nombre for nombre in ramas.mapped("name")],
+						"include": ["refs/heads/%s" % n for n in nombres_de_rama],
 						"exclude": [],
 					},
 				},

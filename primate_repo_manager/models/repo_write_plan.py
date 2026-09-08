@@ -29,6 +29,8 @@ import logging
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError
 
+from .repo_rules import ROLES_GOBERNADOS
+
 _logger = logging.getLogger(__name__)
 
 # Tipos de operación que un plan puede expresar. El ejecutor implementa de a uno; los que
@@ -1032,3 +1034,95 @@ def _normalizar(payload_json):
 		return json.loads(payload_json)
 	except (TypeError, ValueError):
 		return {"__crudo__": payload_json}
+
+
+class RepoWritePlanNacimiento(models.Model):
+	"""El plan de un repositorio que nace gobernado — B5.2.
+
+	NO EJECUTA NADA. Arma las operaciones y las deja en un plan en borrador, que se lee y
+	se aprueba como cualquier otro. El mockup lo dice con su botón: «Revisar el plan y
+	crear». Un asistente que creara directo sería la única escritura del módulo sin
+	embudo, y justo la que crea objetos nuevos.
+
+	EL ORDEN IMPORTA Y NO ES CASUAL: primero el repositorio, después sus ramas, después
+	lo que se apoya en las ramas. La barrera de D2.0 —una operación declara de cuáles
+	depende— es lo que hace que si la creación falla, lo demás no se intente sobre un
+	repositorio que no existe.
+	"""
+	_inherit = "repo.write.plan"
+
+	# Las cuatro ramas del mockup 6b. Los nombres salen de la versión elegida, y sus
+	# ROLES los decide la misma regla que clasifica cualquier otra rama: `19.0-prod` es
+	# producción porque la regla lo dice, no porque acá lo supongamos.
+	SUFIJOS_DE_RAMA = ("prod", "support", "staging", "dev")
+
+	@api.model
+	def armar_nacimiento(self, backend, valores):
+		"""Arma el plan de un repositorio nuevo.
+
+		Args:
+			backend: la conexión donde nace.
+			valores: ``base`` (cómo lo llama la gente), ``clasificacion``, ``version``
+				(«19.0»), ``responsable`` (`repo.member`), ``privado``.
+
+		Returns:
+			repo.write.plan: en borrador, con sus operaciones en orden.
+		"""
+		Reglas = self.env["repo.classification.rule"]
+		clasificacion = valores["clasificacion"]
+		nombre = Reglas.nombre_para(clasificacion, valores["base"])
+		# LA IDA Y VUELTA, ANTES DE ARMAR NADA. Si el nombre generado no vuelve a
+		# clasificar como lo elegido, el repositorio nacería mal clasificado en su primer
+		# segundo — y el plan no se arma.
+		Reglas.verificar_ida_y_vuelta(clasificacion, nombre)
+
+		version = valores.get("version") or "19.0"
+		ramas = ["%s-%s" % (version, sufijo) for sufijo in self.SUFIJOS_DE_RAMA]
+		plantilla = self.env["repo.policy.template"].search(
+			[("classification_default", "=", clasificacion)], limit=1)
+
+		plan = self.create({
+			"name": _("Crear %s") % nombre,
+			"backend_id": backend.id,
+		})
+		# El repositorio todavía no existe en el espejo: la operación de creación lo
+		# nombra por payload, y las que siguen se cuelgan de la fila que el sync va a
+		# traer. Hasta entonces, `repository_id` queda vacío en la creación.
+		self.env["repo.write.operation"].create({
+			"plan_id": plan.id, "kind": "repository_create", "sequence": 10,
+			"target": nombre,
+			"payload_json": json.dumps({
+				"name": nombre,
+				"private": valores.get("privado", True),
+				"description": valores.get("base") or "",
+			}),
+		})
+		return plan
+
+	@api.model
+	def resumen_de_nacimiento(self, valores):
+		"""Lo que se va a crear, en las palabras del mockup 6b y ANTES de crear nada.
+
+		Es el paso «3 · Confirmar»: quien decide tiene que ver la lista completa antes
+		de apretar, no descubrirla en la bitácora.
+		"""
+		Reglas = self.env["repo.classification.rule"]
+		clasificacion = valores["clasificacion"]
+		nombre = Reglas.nombre_para(clasificacion, valores["base"])
+		version = valores.get("version") or "19.0"
+		ramas = ["%s-%s" % (version, s) for s in self.SUFIJOS_DE_RAMA]
+		plantilla = self.env["repo.policy.template"].search(
+			[("classification_default", "=", clasificacion)], limit=1)
+		gobernadas = [
+			r for r in ramas
+			if self.env["repo.branch.role.rule"].role_for(r) in ROLES_GOBERNADOS]
+		return {
+			"nombre": nombre,
+			"clasificacion": clasificacion,
+			"plantilla": plantilla.name or _("sin plantilla para esta clasificación"),
+			"ramas": ramas,
+			"ramas_gobernadas": gobernadas,
+			"privado": valores.get("privado", True),
+			"dependabot": True,
+			"operaciones": 1 + len(ramas) + len(gobernadas) + 1 + 1,
+		}

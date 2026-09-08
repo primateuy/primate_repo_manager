@@ -367,6 +367,23 @@ siempre**, tanto para el rojo como para el verde. Un rojo se anuncia solo; un ve
 que ir a buscarlo, y es justo el que hay que ver cuando lo que se está probando es que
 algo se rompa.
 
+### Mutar un archivo de datos con `noupdate="1"` NO toca una base existente
+
+Tercera forma de la misma familia, encontrada el 8-sep-2026 mutando la regla de
+clasificación de B5.2. El XML va con `noupdate="1"` a propósito —esas reglas son
+configuración y las ediciones de la gente tienen que sobrevivir a un upgrade—, así que
+cambiar el archivo y volver a correr **deja la base como estaba** y la mutación sale en
+verde sin haber mutado nada.
+
+**Una guarda que vive en un registro de datos se muta en el registro:**
+
+    psql -d <db> -c "update <tabla> set <campo>='<mutado>' where ...;"
+    # correr los tests
+    psql -d <db> -c "update <tabla> set <campo>='<original>' where ...;"
+
+Las tres formas comparten raíz: **el archivo no es el sistema.** La guarda vive donde
+actúa —en Postgres, en el registro, en el índice— y ahí hay que romperla.
+
 ### Quitar una guarda del código NO la quita de la base
 
 Medido el 7-sep-2026 mutando el índice único de plantillas. Odoo **no borra** un índice

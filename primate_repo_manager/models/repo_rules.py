@@ -15,9 +15,10 @@ anclados a separador o fin de cadena.
 """
 import logging
 import re
+import unicodedata
 
 from odoo import _, api, fields, models
-from odoo.exceptions import ValidationError
+from odoo.exceptions import UserError, ValidationError
 
 _logger = logging.getLogger(__name__)
 
@@ -70,6 +71,15 @@ class RepoClassificationRule(models.Model):
 	classification = fields.Selection(
 		CLASSIFICATIONS, string="Clasificación", required=True)
 	note = fields.Char(string="Por qué")
+	# B5 · EL PREFIJO VIVE ACÁ, con la regla que clasifica por nombre, y no en la
+	# plantilla de política. El motivo: la relación nombre ↔ clasificación ya vive acá, y
+	# partirla en dos lugares es pedir que un día el generador y el clasificador digan
+	# cosas distintas. Que no lo digan se comprueba con un test de ida y vuelta.
+	name_prefix = fields.Char(
+		string="Prefijo al crear",
+		help="Con qué empieza el nombre de un repositorio nuevo de esta clasificación. "
+			 "Sólo tiene sentido en las reglas que clasifican POR NOMBRE: si la regla "
+			 "mira si es un fork, el nombre no la hace cumplir.")
 
 	@api.constrains("match_type", "value")
 	def _check_regex(self):
@@ -100,7 +110,93 @@ class RepoClassificationRule(models.Model):
 				return False
 		return False
 
+	# La marca de que los prefijos ya se sembraron una vez. Sin ella, rellenar en cada
+	# actualización devolvería un prefijo que alguien borró a propósito.
+	CLAVE_SEMBRADO = "repo_manager.prefijos_sembrados"
+
+	def init(self):
+		"""Siembra los prefijos en las reglas que ya existían. UNA sola vez.
+
+		El archivo de datos va con `noupdate="1"` —que es lo correcto: estas reglas son
+		configuración y las ediciones de la gente tienen que sobrevivir a un upgrade—,
+		así que un campo NUEVO agregado al XML sólo llega a instalaciones nuevas. Sin
+		esto, una base vieja y una recién instalada se comportarían distinto, que es la
+		peor clase de diferencia: la que nadie ve hasta que el asistente falla en una y
+		no en la otra.
+
+		Se rellena SÓLO lo vacío y SÓLO la primera vez. Un prefijo que alguien borre
+		después queda borrado: la marca en `ir.config_parameter` es lo que distingue
+		«nunca se sembró» de «se sembró y alguien lo cambió».
+		"""
+		parametros = self.env["ir.config_parameter"].sudo()
+		if parametros.get_param(self.CLAVE_SEMBRADO):
+			return
+		for xmlid, prefijo in (
+				("primate_repo_manager.classification_rule_localizacion", "localizacion-"),
+				("primate_repo_manager.classification_rule_interno", "primate-")):
+			regla = self.env.ref(xmlid, raise_if_not_found=False)
+			if regla and not regla.name_prefix:
+				regla.name_prefix = prefijo
+		parametros.set_param(self.CLAVE_SEMBRADO, "1")
+
 	@api.model
+	def nombre_para(self, clasificacion, base):
+		"""El nombre que le toca a un repositorio nuevo de esa clasificación.
+
+		Args:
+			clasificacion: la elegida a mano en el asistente.
+			base: cómo lo llama la gente — «Mutualista Casmu».
+
+		Returns:
+			str: el nombre completo, ya con prefijo y normalizado.
+
+		Raises:
+			UserError: si ninguna regla de esa clasificación declara prefijo. Inventar
+				uno sería exactamente lo que este módulo no hace: un default silencioso
+				que después nadie recuerda haber elegido.
+		"""
+		regla = self.search([
+			("classification", "=", clasificacion),
+			("name_prefix", "!=", False),
+		], limit=1)
+		if not regla:
+			raise UserError(_(
+				"Ninguna regla de clasificación «%s» declara con qué prefijo nacen sus "
+				"repositorios. Se declara una vez, en la regla, y no se inventa acá."
+			) % clasificacion)
+		return "%s%s" % (regla.name_prefix, self._normalizar(base))
+
+	@api.model
+	def _normalizar(self, texto):
+		"""«Mutualista Casmu» → «mutualista-casmu». Sin acentos, sin sorpresas."""
+		sin_acentos = unicodedata.normalize("NFKD", texto or "")
+		sin_acentos = "".join(c for c in sin_acentos if not unicodedata.combining(c))
+		limpio = re.sub(r"[^a-zA-Z0-9]+", "-", sin_acentos).strip("-").lower()
+		return re.sub(r"-{2,}", "-", limpio)
+
+	@api.model
+	def verificar_ida_y_vuelta(self, clasificacion, nombre):
+		"""El nombre generado ¿clasifica de vuelta a lo que se eligió?
+
+		ES LA GUARDA DEL PASO, y no una comprobación de cortesía. Si el generador y el
+		clasificador divergen, el repositorio nace mal clasificado **en su primer
+		segundo**: se le aplica la política de una clasificación y la auditoría lo mide
+		contra otra. Y ninguna auditoría posterior podría decir que fue de nacimiento —
+		se vería como un repositorio mal nombrado más.
+
+		Raises:
+			UserError: si el nombre generado no vuelve a la misma clasificación.
+		"""
+		de_vuelta = self.classify({"name": nombre, "full_name": nombre})
+		if de_vuelta == clasificacion:
+			return True
+		raise UserError(_(
+			"El nombre «%(nombre)s» no vuelve a clasificar como «%(elegida)s» sino como "
+			"«%(vuelve)s». El generador y las reglas de clasificación se separaron, y un "
+			"repositorio creado así nacería mal clasificado en su primer segundo."
+		) % {"nombre": nombre, "elegida": clasificacion,
+			 "vuelve": de_vuelta or _("ninguna")})
+
 	def classify(self, datos_repo):
 		"""Primera regla que matchea gana. None si ninguna: eso es un finding, no un default."""
 		for regla in self.search([]):
