@@ -11,6 +11,7 @@ from . import test_drift
 from . import test_seguridad
 from . import test_checks_requeridos
 from . import test_codeowners
+from . import test_nacimiento
 from . import test_sync
 from . import test_audit_launch
 from . import test_avance_vivo

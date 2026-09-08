@@ -335,6 +335,31 @@ corrección por el mismo embudo que todo lo demás.
 
 ## B5 · Wizard de crear repositorio
 
+### B5, en pasos — aprobado el 7-sep-2026
+
+| paso | qué deja hecho | estado |
+|---|---|---|
+| **B5.1** | `repository_create` (irreversible), `branch_create` y `dependabot_enable` | **hecho** |
+| **B5.2** | El armado del plan, y el prefijo de nombres con su ida y vuelta | |
+| **B5.3** | La pantalla de tres pasos, desde el mockup 6b | |
+| **B5.4** | El ensayo: un repositorio que nace y la auditoría no le encuentra nada | |
+
+**Tres desvíos del mockup, decididos:**
+
+1. **Permisos por persona, no por equipo.** Los teams no existen en una cuenta de usuario.
+   El paso a teams **es parte del procedimiento de migración**, para que nadie lo adelante.
+2. **«9 operaciones, todas reversibles» no es cierto:** crear un repositorio no lo es.
+   `repository_create` es irreversible, con el tipeo del nombre, y **el rollback jamás
+   borra un repositorio**. La realidad corrige al diseño hacia la honestidad.
+3. **El prefijo de nombres vive en la regla de clasificación**, con un test de ida y
+   vuelta: el nombre generado tiene que clasificar de vuelta a la clasificación elegida.
+   Si generador y clasificador divergen, el repo nace mal clasificado en su primer
+   segundo y ninguna auditoría posterior sabría que fue de nacimiento.
+
+**Y una limitación medida, no supuesta:** un token de App **no puede crear repositorios en
+una cuenta de usuario** —GitHub no expone ese endpoint— así que el nacimiento gobernado
+también espera la migración. En el sandbox, que es organización, funciona.
+
 ### Lo medido antes de empezar: Dependabot SÍ se puede encender
 
 `PUT /repos/{o}/{r}/vulnerability-alerts` con la App de escritura del sandbox: **funciona**.

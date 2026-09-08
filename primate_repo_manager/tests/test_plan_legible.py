@@ -549,19 +549,36 @@ class TestReversibleVsIrreversible(BasePlan):
 		self.assertIn("_manejadores", fuente)
 		self.assertIn("revertir", fuente)
 
-	def test_ningun_tipo_IMPLEMENTADO_es_irreversible_todavia(self):
-		"""El patrón de lo irreversible existe, pero todavía no hay tipo que lo dispare.
-		El primero va a ser borrar una rama, en el bloque de higiene."""
+	# La lista de lo irreversible se mantiene A MANO Y A PROPÓSITO, que es lo contrario
+	# de todo lo demás en este módulo. `is_irreversible` se DERIVA de un hecho —el
+	# manejador no declara cómo revertir—, así que un tipo nuevo puede volverse
+	# irreversible sin que nadie lo decida: alcanza con olvidarse de escribir el
+	# `revertir`. Esta lista es el lugar donde ese olvido se convierte en rojo.
+	IRREVERSIBLES_A_PROPOSITO = ("repository_create",)
+
+	def test_solo_es_irreversible_lo_que_decidimos_que_lo_fuera(self):
+		"""Hasta B5 no había ninguno; `repository_create` es el primero, por decisión.
+
+		Revertir una creación sería borrar un repositorio, y este módulo no borra
+		repositorios: entre que el rollback lee y borra cabe un push de otro, y no hay
+		verificación previa que cierre esa ventana. El mockup decía «todas reversibles»
+		y acá la realidad corrige al diseño.
+		"""
 		from ..models.repo_write_plan import OPERATION_KINDS
 
 		for kind, _etiqueta in OPERATION_KINDS:
 			op = self._op(kind, target="x")
 			if not op.is_supported:
 				continue
+			if kind in self.IRREVERSIBLES_A_PROPOSITO:
+				self.assertTrue(
+					op.is_irreversible,
+					"«%s» está declarada irreversible a propósito y dejó de serlo" % kind)
+				continue
 			self.assertFalse(
 				op.is_irreversible,
-				"«%s» quedó marcada como irreversible; si es a propósito, este test "
-				"tiene que actualizarse a propósito también" % kind)
+				"«%s» quedó marcada como irreversible; si es a propósito, sumala a "
+				"IRREVERSIBLES_A_PROPOSITO — a propósito y no de arrastre" % kind)
 
 	def test_actualizar_un_ruleset_es_un_tipo_propio_y_no_crear_mas_borrar(self):
 		"""B1.2. Sin este tipo, reaplicar una política era borrar y crear.

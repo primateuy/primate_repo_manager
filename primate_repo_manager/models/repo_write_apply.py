@@ -35,7 +35,8 @@ veces deja el mismo resultado, y revertir es volver a escribir el valor anterior
 MISMO destino, que sigue estando donde estaba.
 
     branch_protection_apply · collaborator_grant · collaborator_revoke
-    team_repo_grant · team_repo_revoke · ruleset_update
+    team_repo_grant · team_repo_revoke · ruleset_update · codeowners_write
+    branch_create · dependabot_enable
 
 Estas van con el ciclo de cuatro pasos y nada más. Si el apply muere a mitad, no hay nada
 huérfano: o el destino tiene el valor viejo, o tiene el nuevo, y en los dos casos el
@@ -45,7 +46,7 @@ estado previo alcanza para volver.
 GitHub le asigna un id que sólo se conoce DESPUÉS de crearlo: un ruleset, un repositorio,
 un team, un webhook, una PR.
 
-    ruleset_create · (F3: crear repositorio, crear team, alta de webhook)
+    ruleset_create · repository_create · (F3: crear team, alta de webhook)
 
 **`ruleset_create` y `ruleset_update` son tipos distintos, y la diferencia es esta
 taxonomía.** El primero hace nacer el ruleset y GitHub le pone un id que sólo se conoce
@@ -79,6 +80,23 @@ sobreviva al rollback de la transacción que se cae.
 
 REGLA PRÁCTICA: ¿el objeto que escribo ya existía y lo estoy modificando, o lo estoy
 haciendo nacer? Si nace, lleva el paso 2b.
+
+
+Y UNA TERCERA CLASE, QUE ESTRENA `repository_create`: LO IRREVERSIBLE
+====================================================================
+
+No es una cuarta forma de escribir sino una propiedad de la vuelta: **hay objetos que este
+módulo se niega a deshacer**. Crear un repositorio es el primero. GitHub tiene endpoint
+para borrarlo; no se usa nunca.
+
+El motivo no es técnico sino de ventana: entre que el rollback lee y borra, cabe un push
+de otro, y no hay verificación previa que cierre esa ventana. Un rollback que se lleva
+trabajo ajeno es peor que un repositorio vacío y sin gobierno, que al menos se ve.
+
+Se declara NO poniendo `revertir` en el manejador —`is_irreversible` se deriva de ese
+hecho, no de una lista— y el embudo exige entonces escribir el nombre del objeto para
+aprobarla. El resto del plan de nacimiento sí se deshace: las ramas que creamos se borran,
+Dependabot se apaga.
 """
 import base64
 import json
@@ -938,6 +956,29 @@ class RepoWriteOperationApply(models.Model):
 			},
 			# B1.3 · IDEMPOTENTE POR DESTINO: el ruleset ya existe y tiene id propio, así
 			# que van los cuatro pasos y NO el 2b. Ver la taxonomía arriba.
+			# B5 · CREA IDENTIDAD y es IRREVERSIBLE: no declara `revertir`, y de ahí
+			# sale su marca en la pantalla. Ver la taxonomía arriba.
+			"repository_create": {
+				"leer": "_leer_repositorio_a_crear",
+				"ejecutar": "_crear_repositorio",
+				"identidad": "_id_del_repositorio",
+				"verificar": "_verificar_repositorio_creado",
+			},
+			# Idempotente por destino: la ref tiene nombre propio. Revertir es borrar la
+			# rama, y SÓLO si el estado previo dice que no existía.
+			"branch_create": {
+				"leer": "_leer_rama",
+				"ejecutar": "_crear_rama",
+				"verificar": "_verificar_rama_creada",
+				"revertir": "_revertir_rama_creada",
+			},
+			# Idempotente por destino y reversible: encender es PUT, apagar es DELETE.
+			"dependabot_enable": {
+				"leer": "_leer_dependabot",
+				"ejecutar": "_encender_dependabot",
+				"verificar": "_verificar_dependabot",
+				"revertir": "_revertir_dependabot",
+			},
 			# B3.2 · IDEMPOTENTE POR DESTINO: el destino es una ruta, y escribir dos
 			# veces deja el mismo archivo. Revertir es volver a poner el contenido
 			# anterior — o borrar el archivo, si antes no había ninguno.
@@ -1138,6 +1179,172 @@ class RepoWriteOperationApply(models.Model):
 			# cambia nada y que igual queda en la auditoría de la organización.
 			return True
 		cliente.put("/repos/%s/rulesets/%s" % (full, identidad), anterior)
+		return True
+
+	# --- B5: el nacimiento gobernado -------------------------------------
+	#
+	# CREAR UN REPOSITORIO ES IRREVERSIBLE, Y ES UNA DECISIÓN, NO UNA LIMITACIÓN TÉCNICA.
+	# GitHub tiene endpoint para borrar repositorios. **Este módulo no lo usa nunca.** Un
+	# rollback que borra un repositorio puede llevarse trabajo que alguien empujó entre el
+	# apply y la reversión, y no hay verificación previa que cierre esa ventana: entre que
+	# se lee y se borra, cabe un push. El mockup dice «9 operaciones, todas reversibles» y
+	# acá la realidad corrige al diseño hacia la honestidad — ocho lo son; ésta no, y se
+	# muestra como lo que es, con el tipeo del nombre que el embudo exige para las
+	# irreversibles.
+	#
+	# LO QUE SÍ SE PUEDE DESHACER se deshace: las ramas que creamos se borran, Dependabot
+	# se apaga. El repositorio queda, vacío y sin gobierno, y eso es visible — que es
+	# mejor que un borrado silencioso que nadie puede auditar después.
+
+	def _leer_repositorio_a_crear(self, cliente):
+		"""¿Ya existe un repositorio con ese nombre? El estado previo es esa respuesta."""
+		datos = _cargar(self.payload_json) or {}
+		nombre = datos.get("name")
+		if not nombre:
+			raise UserError(_("La operación no dice qué repositorio crear."))
+		cuenta = self.plan_id.backend_id.owner_login
+		existente = cliente.get(
+			"/repos/%s/%s" % (cuenta, nombre), tolerar_404=True)
+		return {
+			"cuenta": cuenta,
+			"nombre": nombre,
+			"ya_existia": bool(existente),
+			"id_existente": (existente or {}).get("id"),
+		}
+
+	def _crear_repositorio(self, cliente):
+		"""Lo crea en la ORGANIZACIÓN. En una cuenta de usuario no se puede, y se dice.
+
+		Un token de instalación de App no puede crear repositorios en una cuenta de
+		usuario: no hay endpoint. `POST /user/repos` es del usuario autenticado, que no
+		es la App. Así que el nacimiento gobernado espera la migración a organización, y
+		negarse acá con el motivo es mejor que un 404 que nadie sabe leer.
+		"""
+		previo = self._leer_repositorio_a_crear(cliente)
+		if previo["ya_existia"]:
+			raise UserError(_(
+				"«%(cuenta)s/%(nombre)s» ya existe. Crear no es idempotente: si ya está, "
+				"lo que corresponde es gobernarlo, no volver a crearlo."
+			) % {"cuenta": previo["cuenta"], "nombre": previo["nombre"]})
+		if self.plan_id.backend_id.owner_type != "organization":
+			raise UserError(_(
+				"«%s» es una cuenta de usuario, y un token de App no puede crear "
+				"repositorios ahí: GitHub no expone ese endpoint. El nacimiento "
+				"gobernado espera la migración a organización."
+			) % previo["cuenta"])
+
+		datos = _cargar(self.payload_json) or {}
+		return cliente.post("/orgs/%s/repos" % previo["cuenta"], {
+			"name": previo["nombre"],
+			"private": datos.get("private", True),
+			"description": datos.get("description") or "",
+			# CON README, y no es un adorno: un repositorio vacío no tiene rama por
+			# defecto, y sin rama no hay dónde crear las demás ni qué proteger.
+			"auto_init": True,
+		})
+
+	def _id_del_repositorio(self, resultado):
+		identidad = (resultado or {}).get("id")
+		if not identidad:
+			raise UserError(_(
+				"GitHub no devolvió el id del repositorio creado. Sin identidad no se "
+				"puede registrar qué se creó, y la operación no continúa."))
+		return identidad
+
+	def _verificar_repositorio_creado(self, cliente):
+		previo = self._leer_repositorio_a_crear(cliente)
+		if not previo["ya_existia"]:
+			return False, _("el repositorio no aparece al releer")
+		return True, {"id": previo["id_existente"], "nombre": previo["nombre"]}
+
+	# --- ramas -----------------------------------------------------------
+
+	def _leer_rama(self, cliente):
+		datos = _cargar(self.payload_json) or {}
+		nombre = self.target or datos.get("name")
+		full = self.repository_id.full_name
+		ref = cliente.get(
+			"/repos/%s/git/ref/heads/%s" % (full, nombre), tolerar_404=True)
+		desde = datos.get("desde") or self.repository_id.default_branch
+		origen = cliente.get(
+			"/repos/%s/git/ref/heads/%s" % (full, desde), tolerar_404=True)
+		return {
+			"nombre": nombre,
+			"ya_existia": bool(ref),
+			"sha_actual": (ref or {}).get("object", {}).get("sha"),
+			"desde": desde,
+			"sha_origen": (origen or {}).get("object", {}).get("sha"),
+		}
+
+	def _crear_rama(self, cliente):
+		previo = self._leer_rama(cliente)
+		if previo["ya_existia"]:
+			return SIN_CAMBIOS
+		if not previo["sha_origen"]:
+			raise UserError(_(
+				"No se encontró la rama «%(desde)s» de la que nace «%(nombre)s»."
+			) % {"desde": previo["desde"], "nombre": previo["nombre"]})
+		return cliente.post("/repos/%s/git/refs" % self.repository_id.full_name, {
+			"ref": "refs/heads/%s" % previo["nombre"],
+			"sha": previo["sha_origen"],
+		})
+
+	def _verificar_rama_creada(self, cliente):
+		actual = self._leer_rama(cliente)
+		if not actual["ya_existia"]:
+			return False, _("la rama no aparece al releer")
+		return True, {"rama": actual["nombre"], "sha": actual["sha_actual"]}
+
+	def _revertir_rama_creada(self, cliente, previo):
+		"""Borra la rama SÓLO si el estado previo dice que no existía.
+
+		Si ya estaba antes de que llegáramos, no es nuestra y no se toca — la misma
+		regla del ruleset ajeno y del CODEOWNERS ajeno, aplicada a una ref.
+		"""
+		if (previo or {}).get("ya_existia"):
+			return True
+		nombre = (previo or {}).get("nombre")
+		if not nombre:
+			raise UserError(_(
+				"No se guardó qué rama se creó: no se borra ninguna por las dudas."))
+		cliente.delete(
+			"/repos/%s/git/refs/heads/%s" % (self.repository_id.full_name, nombre),
+			tolerar_404=True)
+		return True
+
+	# --- Dependabot -------------------------------------------------------
+
+	def _leer_dependabot(self, cliente):
+		"""El endpoint contesta 204 si está encendido y 404 si no. Nada de cuerpo.
+
+		Fue el que destapó que `get` trataba un 204 como error de parseo, y por eso acá
+		se comprueba con una excepción y no con el contenido.
+		"""
+		full = self.repository_id.full_name
+		try:
+			cliente.get("/repos/%s/vulnerability-alerts" % full)
+			return {"encendido": True}
+		except GithubNotFound:
+			return {"encendido": False}
+
+	def _encender_dependabot(self, cliente):
+		if self._leer_dependabot(cliente)["encendido"]:
+			return SIN_CAMBIOS
+		return cliente.put(
+			"/repos/%s/vulnerability-alerts" % self.repository_id.full_name)
+
+	def _verificar_dependabot(self, cliente):
+		if not self._leer_dependabot(cliente)["encendido"]:
+			return False, _("Dependabot sigue apagado al releer")
+		return True, {"encendido": True}
+
+	def _revertir_dependabot(self, cliente, previo):
+		"""Lo apaga sólo si estaba apagado antes. Si ya estaba encendido, no era nuestro."""
+		if (previo or {}).get("encendido"):
+			return True
+		cliente.delete(
+			"/repos/%s/vulnerability-alerts" % self.repository_id.full_name,
+			tolerar_404=True)
 		return True
 
 	# --- CODEOWNERS: el archivo que NO admite coexistencia ---------------

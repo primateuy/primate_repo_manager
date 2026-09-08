@@ -66,6 +66,13 @@ OPERATION_KINDS = [
 	# destino es UNO SOLO —el archivo— y no admite coexistencia: por eso su guarda del
 	# «ajeno» carga más peso que la del ruleset ajeno. Ver repo_write_apply.
 	("codeowners_write", "Escribir el archivo CODEOWNERS"),
+	# B5 · los tres del nacimiento gobernado. `repository_create` es LA PRIMERA
+	# IRREVERSIBLE del catálogo, y lo es por decisión: revertir una creación sería borrar
+	# un repositorio, y este módulo no borra repositorios. Ver la taxonomía en
+	# repo_write_apply.
+	("repository_create", "Crear el repositorio"),
+	("branch_create", "Crear una rama"),
+	("dependabot_enable", "Encender las alertas de Dependabot"),
 ]
 
 
