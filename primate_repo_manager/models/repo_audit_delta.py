@@ -30,7 +30,7 @@ para no decir — y la más cómoda de todas, porque el número mejora solo.
 """
 import logging
 
-from odoo import _, api, models
+from odoo import _, api, fields, models
 from odoo.exceptions import UserError
 
 _logger = logging.getLogger(__name__)
@@ -38,6 +38,41 @@ _logger = logging.getLogger(__name__)
 # Los estados de una corrida que se pueden comparar. Una corrida `error` se detuvo a
 # mitad de camino: lo que no llegó a mirar no se distingue de lo que miró y estaba bien.
 COMPARABLES = ("done", "partial")
+
+# LOS HALLAZGOS QUE SE RESUELVEN **EN** ODOO, no en GitHub.
+#
+# Su remediación no es una escritura al repositorio sino un acto de esta aplicación:
+# clasificar, vincular una cuenta, declarar los checks. No pasan por el embudo —no hay
+# nada que escribir allá— así que no dejan entrada de escritura en la bitácora, y decir
+# de ellos «se resolvió fuera de la app» sería exactamente al revés de lo que pasó.
+#
+# Cada uno trae CÓMO COMPROBARLO: la atribución se afirma sobre el hecho que quedó en la
+# base, no sobre la suposición de que alguien hizo algo. Si el hecho no está, se cae a
+# «fuera de la app» como cualquier otro.
+ACTOS_EN_LA_APP = {
+	"classification_missing": {
+		"texto": "clasificación definida",
+		"comprobar": lambda h: bool(h.repository_id.classification),
+	},
+	"member_without_employee": {
+		"texto": "cuenta vinculada a una persona",
+		# El hallazgo no enlaza la persona —va a nivel cuenta— así que se la busca por
+		# su login, que es el sujeto. Buscar es más honesto que suponer.
+		"comprobar": lambda h: bool(
+			h.env["repo.member"].search([
+				("github_login", "=", h.subject)], limit=1).employee_id),
+	},
+	"checks_not_evaluable": {
+		"texto": "checks requeridos definidos",
+		"comprobar": lambda h: bool(
+			h.env["repo.policy.template"].search([
+				("name", "=", h.subject)], limit=1).status_checks_defined),
+	},
+}
+
+# `institutional_account` NO está en la lista y no es un olvido: no se resuelve con
+# ningún acto, ni acá ni en GitHub. Es una nota permanente sobre la cuenta dueña. Si
+# alguna vez desaparece será porque la cuenta dejó de existir, y eso no es «se resolvió».
 
 
 class RepoAuditDelta(models.AbstractModel):
@@ -286,7 +321,7 @@ class RepoAuditDelta(models.AbstractModel):
 		base.update({
 			"frase": self._frase(delta),
 			"nuevos": [self._fila(h, delta) for h in delta["nuevos"]],
-			"resueltos": [self._fila(h, delta) for h in delta["resueltos"]],
+			"resueltos": self._resueltos_con_atribucion(delta, corrida),
 			"sin_confirmar": [{"repositorio": repo.name or repo.full_name,
 							   "motivo": motivo}
 							  for repo, motivo in delta["repos_sin_confirmar"]],
@@ -294,6 +329,17 @@ class RepoAuditDelta(models.AbstractModel):
 			"nuevos_ids": delta["nuevos"].ids,
 		})
 		return base
+
+	@api.model
+	def _resueltos_con_atribucion(self, delta, corrida):
+		"""Cada resuelto con POR QUÉ dejó de estar. Una sola consulta por hallazgo."""
+		filas = []
+		for hallazgo in delta["resueltos"]:
+			atribucion = self.atribucion(hallazgo, corrida, delta["anterior"])
+			fila = self._fila(hallazgo, delta, nota=atribucion["texto"])
+			fila["atribucion"] = atribucion["categoria"]
+			filas.append(fila)
+		return filas
 
 	@api.model
 	def _cuando(self, corrida):
@@ -343,3 +389,92 @@ class RepoAuditDelta(models.AbstractModel):
 				"motivo": motivo,
 			})
 		return salida
+
+	# ------------------------------------------------------------------
+	# Por qué se resolvió — tres categorías, y ninguna se supone
+	# ------------------------------------------------------------------
+
+	@api.model
+	def _ventana(self, corrida, anterior):
+		"""Entre las dos fotos. Lo que pasó fuera de esa ventana no explica este delta.
+
+		El borde de abajo es cuándo TERMINÓ la anterior y no cuándo empezó: un plan
+		aplicado mientras la corrida anterior recorría repositorios ya está reflejado en
+		lo que esa corrida vio, así que atribuirle este resuelto sería contarlo dos veces.
+		"""
+		desde = anterior.finished_at or anterior.create_date
+		hasta = corrida.finished_at or fields.Datetime.now()
+		return desde, hasta
+
+	@api.model
+	def _plan_que_lo_corrigio(self, hallazgo, desde, hasta):
+		"""La entrada de la bitácora que explica este resuelto, si la hay.
+
+		SE BUSCA POR EL ENLACE Y NO POR PARECIDO. La operación guarda el `finding_id` que
+		la originó, así que cuando el plan se armó desde ESTE hallazgo la atribución es
+		exacta. Recién si no hay enlace se cae a «misma cuenta, mismo repositorio, mismo
+		sujeto», que es lo que cubre el caso de un plan armado desde una corrida más
+		vieja con el mismo problema.
+
+		«Verificado» no es un adorno: una entrada `write_applied` sólo existe después de
+        que el apply releyó el estado y comprobó que quedó como se pedía. Es el paso 3 del
+		ciclo, y es lo que hace que esta frase se pueda afirmar.
+
+		UNA ESCRITURA REVERTIDA NO CORRIGE NADA. Si la misma operación tiene después una
+		entrada de reversión dentro de la ventana, no se atribuye: lo que se aplicó se
+		deshizo, y si el hallazgo igual desapareció fue por otra cosa.
+		"""
+		Log = self.env["repo.audit.log"]
+		dominio = [
+			("event_type", "=", "write_applied"),
+			("timestamp", ">=", desde), ("timestamp", "<=", hasta),
+		]
+		entrada = Log.search(
+			dominio + [("operation_id.finding_id", "=", hallazgo.id)],
+			order="timestamp desc", limit=1)
+		if not entrada and hallazgo.repository_id:
+			entrada = Log.search(
+				dominio + [
+					("repository_id", "=", hallazgo.repository_id.id),
+					("operation_id.target", "=", hallazgo.subject or ""),
+				], order="timestamp desc", limit=1)
+		if not entrada:
+			return Log.browse()
+		revertida = Log.search_count([
+			("event_type", "=", "write_rolled_back"),
+			("operation_id", "=", entrada.operation_id.id),
+			("timestamp", ">=", entrada.timestamp), ("timestamp", "<=", hasta),
+		])
+		return Log.browse() if revertida else entrada
+
+	@api.model
+	def atribucion(self, hallazgo, corrida, anterior):
+		"""Por qué dejó de estar. Tres categorías, en orden de cuánto se sabe.
+
+		1. **Un plan de este módulo**, con su nombre y su verificación. Sale de la
+		   bitácora, que es el registro.
+		2. **Un acto en la app sin plan**: clasificar, vincular una cuenta. No hay
+		   escritura a GitHub que registrar porque no la hubo, y el hecho se comprueba
+		   contra la base antes de afirmarlo.
+		3. **Fuera de la app.** Se afirma tal cual, y se puede: el embudo es el ÚNICO
+		   camino por el que este módulo escribe en GitHub, así que si ningún plan lo
+		   tocó y no fue un acto de acá, alguien lo cambió por otro lado. No es una
+		   suposición: es lo que queda cuando las otras dos están descartadas.
+		"""
+		desde, hasta = self._ventana(corrida, anterior)
+		entrada = self._plan_que_lo_corrigio(hallazgo, desde, hasta)
+		if entrada:
+			return {
+				"categoria": "plan",
+				"texto": _("Lo corrigió %(plan)s el %(cuando)s · verificado") % {
+					"plan": (entrada.operation_id.plan_id.display_name
+							 or entrada.plan_label or _("un plan")),
+					"cuando": entrada.timestamp.strftime("%d/%m/%Y"),
+				},
+			}
+		acto = ACTOS_EN_LA_APP.get(hallazgo.finding_type)
+		if acto and acto["comprobar"](hallazgo):
+			return {"categoria": "app",
+					"texto": _("Se resolvió en la app: %s") % acto["texto"]}
+		return {"categoria": "fuera",
+				"texto": _("Se resolvió fuera de la app: alguien lo cambió en GitHub.")}

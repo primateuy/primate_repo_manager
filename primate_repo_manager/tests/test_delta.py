@@ -8,6 +8,7 @@ número mejora solo, nadie la revisa, y es exactamente la clase de mentira que l
 categoría del mockup existe para impedir.
 """
 import uuid
+from datetime import datetime
 
 from odoo import fields
 from odoo.tests import HttpCase, tagged
@@ -307,3 +308,216 @@ class TestTourDelta(HttpCase):
 		self.start_tour(
 			"/odoo/action-primate_repo_manager.action_repo_audit_run/%s" % self.corrida.id,
 			"prm_delta", login="admin")
+
+
+class TestAtribucionDelResuelto(TransactionCase):
+	"""E2.2c · por qué dejó de estar. Tres categorías, y ninguna se supone.
+
+	La atribución es una AFIRMACIÓN sobre lo que pasó fuera de esta pantalla, y las tres
+	frases se leen distinto: «lo corrigió PLAN-12» es un mérito del equipo, «se resolvió
+	fuera de la app» es un aviso de que alguien tocó GitHub por su cuenta. Decir una por
+	la otra desinforma en la dirección exacta en la que este módulo no puede desinformar.
+	"""
+
+	def setUp(self):
+		super().setUp()
+		self.backend = self.env["repo.backend"].create({
+			"name": "Atrib %s" % uuid.uuid4().hex[:6],
+			"owner_login": "cuenta-%s" % uuid.uuid4().hex[:8],
+			"owner_type": "user", "app_id": "1", "installation_id": "2",
+			"state": "connected"})
+		self.repo = self.env["repo.repository"].create({
+			"backend_id": self.backend.id, "github_id": uuid.uuid4().hex[:8],
+			"name": "uno", "full_name": "cuenta/uno"})
+		self.Delta = self.env["repo.audit.delta"]
+
+	def _corrida(self, cuando=None, state="done"):
+		corrida = self.env["repo.audit.run"].create({
+			"name": "C %s" % uuid.uuid4().hex[:4], "backend_id": self.backend.id,
+			"state": state, "finished_at": cuando or fields.Datetime.now()})
+		self.env["repo.audit.run.line"].create({
+			"run_id": corrida.id, "repository_id": self.repo.id, "state": "done"})
+		return corrida
+
+	def _hallazgo(self, corrida, tipo="permission_exceeded", sujeto="alguien", repo=True):
+		return self.env["repo.audit.finding"].create({
+			"run_id": corrida.id,
+			"repository_id": self.repo.id if repo else False,
+			"finding_type": tipo, "severity": "high", "subject": sujeto,
+			"summary": "%s / %s" % (tipo, sujeto)})
+
+	def _plan_aplicado(self, hallazgo, cuando, revertido=False):
+		"""Un plan aplicado POR EL CAMINO REAL de la bitácora, no una entrada a mano.
+
+		La entrada `write_applied` es lo que el apply escribe después de releer y
+		verificar; fabricarla con otros datos probaría lo que el código debería hacer en
+		vez de lo que hace.
+		"""
+		plan = self.env["repo.write.plan"].create({
+			"name": "PLAN de prueba", "backend_id": self.backend.id})
+		operacion = self.env["repo.write.operation"].create({
+			"plan_id": plan.id, "kind": "collaborator_revoke", "sequence": 10,
+			"repository_id": self.repo.id, "target": hallazgo.subject,
+			"finding_id": hallazgo.id, "payload_json": "{}"})
+		entrada = self.env["repo.audit.log"].sudo().create({
+			"event_type": "write_applied", "backend_id": self.backend.id,
+			"repository_id": self.repo.id, "operation_id": operacion.id,
+			"summary": "se aplicó", "timestamp": cuando})
+		if revertido:
+			self.env["repo.audit.log"].sudo().create({
+				"event_type": "write_rolled_back", "backend_id": self.backend.id,
+				"repository_id": self.repo.id, "operation_id": operacion.id,
+				"summary": "se revirtió", "timestamp": cuando})
+		return plan, entrada
+
+	# --- 1 · el plan ---
+
+	def test_un_plan_aplicado_en_la_ventana_se_atribuye_CON_SU_NOMBRE(self):
+		anterior = self._corrida(cuando=datetime(2026, 9, 1, 10, 0))
+		ido = self._hallazgo(anterior)
+		plan, _e = self._plan_aplicado(ido, datetime(2026, 9, 3, 12, 0))
+		ahora = self._corrida(cuando=datetime(2026, 9, 8, 10, 0))
+
+		atribucion = self.Delta.atribucion(ido, ahora, anterior)
+
+		self.assertEqual(atribucion["categoria"], "plan")
+		self.assertIn(plan.display_name, atribucion["texto"])
+		self.assertIn("verificado", atribucion["texto"])
+
+	def test_un_plan_aplicado_ANTES_de_la_ventana_no_explica_este_delta(self):
+		"""Ya estaba reflejado en lo que la corrida anterior vio: atribuirlo sería
+		contarlo dos veces, y encima taparía lo que sí pasó esta semana."""
+		anterior = self._corrida(cuando=datetime(2026, 9, 5, 10, 0))
+		ido = self._hallazgo(anterior)
+		self._plan_aplicado(ido, datetime(2026, 9, 1, 12, 0))
+		ahora = self._corrida(cuando=datetime(2026, 9, 8, 10, 0))
+
+		self.assertEqual(
+			self.Delta.atribucion(ido, ahora, anterior)["categoria"], "fuera")
+
+	def test_una_escritura_REVERTIDA_no_corrige_nada(self):
+		"""Lo que se aplicó se deshizo. Si el hallazgo igual desapareció, fue por otra
+		cosa, y decir «lo corrigió PLAN-X» sería falso en los dos sentidos."""
+		anterior = self._corrida(cuando=datetime(2026, 9, 1, 10, 0))
+		ido = self._hallazgo(anterior)
+		self._plan_aplicado(ido, datetime(2026, 9, 3, 12, 0), revertido=True)
+		ahora = self._corrida(cuando=datetime(2026, 9, 8, 10, 0))
+
+		self.assertEqual(
+			self.Delta.atribucion(ido, ahora, anterior)["categoria"], "fuera")
+
+	# --- 2 · el acto en la app ---
+
+	def test_una_clasificacion_definida_es_un_acto_EN_la_app(self):
+		"""Clasificar no escribe en GitHub: no hay plan que lo registre. Decir «se
+		resolvió fuera de la app» sería exactamente al revés de lo que pasó."""
+		anterior = self._corrida()
+		ido = self._hallazgo(anterior, tipo="classification_missing", sujeto="")
+		self.repo.classification = "cliente"
+		ahora = self._corrida()
+
+		atribucion = self.Delta.atribucion(ido, ahora, anterior)
+
+		self.assertEqual(atribucion["categoria"], "app")
+		self.assertIn("clasificación definida", atribucion["texto"])
+
+	def test_una_cuenta_vinculada_tambien(self):
+		persona = self.env["repo.member"].create({"github_login": "pepe-%s" % uuid.uuid4().hex[:4]})
+		anterior = self._corrida()
+		ido = self._hallazgo(anterior, tipo="member_without_employee",
+							 sujeto=persona.github_login, repo=False)
+		empleado = self.env["hr.employee"].create({"name": "Pepe"})
+		persona.employee_id = empleado
+		ahora = self._corrida()
+
+		atribucion = self.Delta.atribucion(ido, ahora, anterior)
+		self.assertEqual(atribucion["categoria"], "app")
+		self.assertIn("vinculada", atribucion["texto"])
+
+	def test_si_el_acto_NO_ocurrio_no_se_lo_inventa(self):
+		"""LA GUARDA DE LA SEGUNDA CATEGORÍA. Se comprueba contra la base antes de
+		afirmar: sin la clasificación puesta, el hallazgo desapareció por otra cosa."""
+		anterior = self._corrida()
+		ido = self._hallazgo(anterior, tipo="classification_missing", sujeto="")
+		ahora = self._corrida()
+
+		self.assertEqual(
+			self.Delta.atribucion(ido, ahora, anterior)["categoria"], "fuera")
+
+	# --- 3 · fuera de la app ---
+
+	def test_sin_plan_y_sin_acto_se_afirma_FUERA_DE_LA_APP(self):
+		"""Y se puede afirmar: el embudo es el ÚNICO camino por el que este módulo
+		escribe en GitHub. Si ningún plan lo tocó y no fue un acto de acá, alguien lo
+		cambió por otro lado. No es suposición: es lo que queda."""
+		anterior = self._corrida()
+		ido = self._hallazgo(anterior)
+		ahora = self._corrida()
+
+		atribucion = self.Delta.atribucion(ido, ahora, anterior)
+
+		self.assertEqual(atribucion["categoria"], "fuera")
+		self.assertIn("fuera de la app", atribucion["texto"])
+
+	# --- y llega a la pantalla ---
+
+	def test_la_pantalla_recibe_la_atribucion_de_cada_resuelto(self):
+		anterior = self._corrida(cuando=datetime(2026, 9, 1, 10, 0))
+		ido = self._hallazgo(anterior)
+		self._plan_aplicado(ido, datetime(2026, 9, 3, 12, 0))
+		ahora = self._corrida(cuando=datetime(2026, 9, 8, 10, 0))
+
+		datos = self.Delta.para_pantalla(ahora.id)
+
+		self.assertEqual(len(datos["resueltos"]), 1)
+		self.assertEqual(datos["resueltos"][0]["atribucion"], "plan")
+		self.assertIn("verificado", datos["resueltos"][0]["nota"])
+
+	def test_dos_plantillas_sin_checks_son_DOS_hallazgos_y_no_uno(self):
+		"""La clave los distingue sólo si el hallazgo lleva sujeto.
+
+		Sin sujeto, `(checks_not_evaluable, sin repo, sin sujeto)` es la misma clave para
+		las dos, y el delta las colapsaba: definir los checks de una se leía como si se
+		hubieran definido los de las dos.
+
+		LOS HALLAZGOS LOS PRODUCE EL MOTOR, no este test. La primera versión los creaba a
+		mano —con el sujeto puesto por el test— y por eso pasaba en verde con el motor
+		mutado: comprobaba lo que el código debería hacer en vez de lo que hace. Es el
+		antipatrón que el propio CLAUDE.md documenta, cometido de nuevo.
+		"""
+		clasificaciones = [c[0] for c in self.env[
+			"repo.policy.template"]._fields["classification_default"].selection][:2]
+		self.assertEqual(len(clasificaciones), 2, "hacen falta dos clasificaciones")
+		nombres = []
+		for clasificacion in clasificaciones:
+			# Una plantilla por clasificación, y la de fábrica desactivada: sólo puede
+			# haber una activa por clasificación.
+			self.env["repo.policy.template"].with_context(active_test=False).search([
+				("classification_default", "=", clasificacion)]).write({"active": False})
+			self.env.flush_all()
+			nombre = "Sin checks %s %s" % (clasificacion, uuid.uuid4().hex[:4])
+			self.env["repo.policy.template"].create({
+				"name": nombre, "code": "sc-%s" % uuid.uuid4().hex[:6],
+				"classification_default": clasificacion,
+				"status_checks_defined": False})
+			nombres.append(nombre)
+			self.env["repo.repository"].create({
+				"backend_id": self.backend.id, "github_id": uuid.uuid4().hex[:8],
+				"name": "r-%s" % clasificacion, "full_name": "cuenta/r-%s" % clasificacion,
+				"classification": clasificacion,
+				"classification_source": "manual"})
+
+		corrida = self._corrida()
+		self.env["repo.audit.engine"].evaluate(corrida)
+
+		# Se los busca por el RESUMEN y no por el sujeto: si se filtrara por sujeto, la
+		# mutación que se lo quita haría desaparecer los hallazgos del filtro y el test
+		# fallaría por no encontrarlos — un rojo por el motivo equivocado. Así el rojo
+		# cae donde tiene que caer: en la clave colapsada.
+		suyos = corrida.finding_ids.filtered(
+			lambda h: h.finding_type == "checks_not_evaluable"
+			and any(n in (h.summary or "") for n in nombres))
+		self.assertEqual(len(suyos), 2, "el motor no emitió uno por plantilla")
+		self.assertEqual(
+			len({self.Delta.clave(h) for h in suyos}), 2,
+			"las dos plantillas comparten la clave: el delta las va a colapsar")

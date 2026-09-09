@@ -559,6 +559,11 @@ class RepoAuditEngine(models.AbstractModel):
 				_("La plantilla «%(plantilla)s» no tiene checks de CI definidos "
 				  "(%(n)s repositorio(s))") % {
 					"plantilla": plantilla.name, "n": len(alcanzados)},
+				# EL SUJETO NO ES DECORACIÓN: es lo que hace único al hallazgo. Sin él,
+				# dos plantillas sin checks producían la misma clave —(tipo, sin repo,
+				# sin sujeto)— y el delta las contaba como una sola: definir los checks
+				# de una plantilla se leía como si se hubieran definido los de las dos.
+				subject=plantilla.name,
 				detail=_("Hasta definirlos no se puede evaluar si la CI requerida se "
 						 "cumple. La auditoría releva qué workflows corren hoy para "
 						 "poder proponer la lista."),
