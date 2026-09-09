@@ -31,6 +31,7 @@ para no decir — y la más cómoda de todas, porque el número mejora solo.
 import logging
 
 from odoo import _, api, models
+from odoo.exceptions import UserError
 
 _logger = logging.getLogger(__name__)
 
@@ -97,8 +98,8 @@ class RepoAuditDelta(models.AbstractModel):
 		return _("la corrida se detuvo antes de llegar a él")
 
 	@api.model
-	def calcular(self, corrida):
-		"""El delta de una corrida contra la anterior comparable.
+	def calcular(self, corrida, anterior=None):
+		"""El delta de una corrida contra la anterior comparable, o contra la que se pida.
 
 		Returns:
 			dict:
@@ -123,7 +124,7 @@ class RepoAuditDelta(models.AbstractModel):
 				"sin_base_anterior": set(), "repos_sin_confirmar": [],
 			}
 
-		anterior = self.corrida_anterior(corrida)
+		anterior = anterior if anterior is not None else self.corrida_anterior(corrida)
 		if not anterior:
 			return {
 				"comparable": False,
@@ -186,3 +187,159 @@ class RepoAuditDelta(models.AbstractModel):
 			"sin_base_anterior": sin_base,
 			"repos_sin_confirmar": repos_sin_confirmar,
 		}
+
+
+	# ------------------------------------------------------------------
+	# Lo que la pantalla dibuja
+	# ------------------------------------------------------------------
+
+	@api.model
+	def _fila(self, hallazgo, delta, nota=""):
+		"""Un hallazgo como lo pinta la pantalla: severidad, dónde, qué, y la salvedad."""
+		severidades = dict(self.env["repo.audit.finding"]._fields["severity"].selection)
+		return {
+			"id": hallazgo.id,
+			"severidad": hallazgo.severity,
+			"severidad_etiqueta": severidades.get(hallazgo.severity, hallazgo.severity),
+			"repositorio": hallazgo.repository_id.name or _("toda la cuenta"),
+			"titulo": hallazgo.summary,
+			"nota": nota or (
+				_("El repositorio no se pudo leer en la corrida anterior, así que puede "
+				  "no ser nuevo.") if hallazgo.id in delta["sin_base_anterior"] else ""),
+		}
+
+	@api.model
+	def _frase(self, delta):
+		"""La narrativa del mockup, armada con los números de esta comparación.
+
+		Se redacta en el servidor por la misma razón que las filas: es una afirmación
+		sobre lo que se sabe y lo que no, y esa distinción no se decide en dos lugares.
+		"""
+		nuevos, resueltos = delta["nuevos"], delta["resueltos"]
+		criticos = len(nuevos.filtered(lambda h: h.severity == "critical"))
+		partes = []
+		# Sin novedades es una noticia, y de las buenas. Decirlo es mejor que dejar
+		# la pantalla en blanco: el silencio se lee como «no corrió».
+		if not nuevos and not resueltos:
+			partes.append(_("No apareció ni se resolvió nada desde la corrida anterior."))
+		else:
+			if nuevos:
+				partes.append(_("Aparecieron %s hallazgo(s)") % len(nuevos)
+							  + (_(", %s de ellos crítico(s)") % criticos if criticos else ""))
+			if resueltos:
+				partes.append((_("se resolvieron %s") % len(resueltos)) if nuevos
+							  else (_("Se resolvieron %s hallazgo(s)") % len(resueltos)))
+		frase = ", y ".join(partes) if len(partes) > 1 else partes[0]
+		if not frase.endswith("."):
+			frase += "."
+		repos = delta["repos_sin_confirmar"]
+		if repos:
+			frase += " " + _(
+				"%(n)s repositorio(s) no se pudieron leer esta vez, así que sus %(h)s "
+				"hallazgo(s) anteriores se mantienen abiertos sin confirmar."
+			) % {"n": len(repos), "h": len(delta["sin_confirmar"])}
+		return frase
+
+	@api.model
+	def para_pantalla(self, corrida_id, anterior=None):
+		"""Todo lo que la pantalla del delta dibuja, en una sola llamada.
+
+		Recibe IDS y no recordsets porque quien llama es el navegador. Los dos se
+		resuelven acá, y el acceso se comprueba explícitamente: una corrida que el
+		usuario no puede leer no se dibuja aunque alguien mande su id a mano.
+		"""
+		Run = self.env["repo.audit.run"]
+		corrida = Run.browse(int(corrida_id)).exists()
+		if not corrida:
+			raise UserError(_("Esa corrida ya no existe."))
+		corrida.check_access("read")
+		if anterior:
+			anterior = Run.browse(int(anterior)).exists()
+			anterior.check_access("read")
+			if anterior.backend_id != corrida.backend_id:
+				# Comparar dos cuentas distintas daría un delta donde todo es nuevo y
+				# todo se resolvió: dos inventarios que no se comparan entre sí.
+				raise UserError(_(
+					"No se comparan corridas de conexiones distintas."))
+		delta = self.calcular(corrida, anterior=anterior or None)
+		comparables = self.env["repo.audit.run"].search([
+			("backend_id", "=", corrida.backend_id.id),
+			("id", "!=", corrida.id),
+			("state", "in", COMPARABLES)], order="id desc", limit=20)
+		base = {
+			"comparable": delta["comparable"],
+			"motivo": delta["motivo"],
+			"corrida": {"id": corrida.id, "nombre": corrida.display_name,
+						"cuando": self._cuando(corrida)},
+			"anterior": ({"id": delta["anterior"].id,
+						  "nombre": delta["anterior"].display_name,
+						  "cuando": self._cuando(delta["anterior"])}
+						 if delta["anterior"] else False),
+			"otras": [{"id": c.id, "etiqueta": "%s · %s" % (c.display_name,
+														   self._cuando(c))}
+					  for c in comparables],
+			"nuevos": [], "resueltos": [], "sin_confirmar": [],
+			"frase": "", "hallazgos_sin_confirmar": 0,
+		}
+		if not delta["comparable"]:
+			return base
+		base.update({
+			"frase": self._frase(delta),
+			"nuevos": [self._fila(h, delta) for h in delta["nuevos"]],
+			"resueltos": [self._fila(h, delta) for h in delta["resueltos"]],
+			"sin_confirmar": [{"repositorio": repo.name or repo.full_name,
+							   "motivo": motivo}
+							  for repo, motivo in delta["repos_sin_confirmar"]],
+			"hallazgos_sin_confirmar": len(delta["sin_confirmar"]),
+			"nuevos_ids": delta["nuevos"].ids,
+		})
+		return base
+
+	@api.model
+	def _cuando(self, corrida):
+		return (corrida.finished_at or corrida.started_at or corrida.create_date
+				).strftime("%d/%m/%Y %H:%M")
+
+	# ------------------------------------------------------------------
+	# La historia de UN hallazgo
+	# ------------------------------------------------------------------
+
+	@api.model
+	def historia(self, hallazgo, limite=8):
+		"""En qué auditorías apareció este hallazgo y en cuáles no estaba.
+
+		Sale de la MISMA clave que el delta: no hace falta ningún dato nuevo, sólo
+		preguntar por `(tipo, repositorio, sujeto)` en las corridas comparables de la
+		conexión. Por eso entra acá y no en un modelo aparte — dos definiciones de «es el
+		mismo hallazgo» se separan el día que alguien toca una.
+
+		Lo que devuelve dice tres cosas por corrida, no dos: **estaba**, **no estaba**, y
+		**no se pudo mirar**. La tercera es la de siempre: en una corrida que no leyó ese
+		repositorio, la ausencia del hallazgo no significa que no estuviera.
+		"""
+		hallazgo.ensure_one()
+		clave = self.clave(hallazgo)
+		corridas = self.env["repo.audit.run"].search([
+			("backend_id", "=", hallazgo.run_id.backend_id.id),
+			("state", "in", COMPARABLES),
+		], order="id desc", limit=limite)
+		salida = []
+		for corrida in corridas:
+			presente = any(self.clave(h) == clave for h in corrida.finding_ids)
+			if presente:
+				estado, motivo = "estaba", ""
+			elif hallazgo.repository_id and hallazgo.repository_id not in self._releidos(corrida):
+				estado = "sin_mirar"
+				motivo = self._motivo_de_no_releido(corrida, hallazgo.repository_id)
+			elif not hallazgo.repository_id and corrida.state != "done":
+				estado, motivo = "sin_mirar", _("la corrida no leyó todos los repositorios")
+			else:
+				estado, motivo = "no_estaba", ""
+			salida.append({
+				"corrida_id": corrida.id,
+				"corrida": corrida.display_name,
+				"cuando": self._cuando(corrida),
+				"estado": estado,
+				"motivo": motivo,
+			})
+		return salida

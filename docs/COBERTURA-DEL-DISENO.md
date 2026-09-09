@@ -28,10 +28,10 @@ oscuro (turno 7 del entregable).
 
 | columna | cuántos |
 |---|---|
-| ✅ Implementado | 88 |
-| 🔒 Apagado con su cartel | 18 |
+| ✅ Implementado | 96 |
+| 🔒 Apagado con su cartel | 14 |
 | 📋 Ítem de plan, con su bloque | 11 |
-| ↔️ Desvío deliberado, con su motivo | 2 |
+| ↔️ Desvío deliberado, con su motivo | 3 |
 | ⛔ Sin representación | **0** |
 
 **La tercera columna quedó vacía en esta revisión**, y así tiene que quedar cada vez: los
@@ -75,10 +75,10 @@ final cuenta cuáles eran y dónde fueron.
 | Por tipo de repositorio | ✅ | dentro del pliegue |
 | Cuentas sin dueño | ✅ | por conexión |
 | Bloque de repositorios sin leer con su causa | ✅ | y fuera de los porcentajes |
-| Tendencia de las últimas 8 corridas | 🔒 | llega con **E2** |
-| «Comparar con auditoría anterior» | 🔒 | llega con **E2** |
+| Tendencia de las últimas 8 corridas | 🔒 | llega con **E4**: los datos ya se guardan en cada corrida (`repo.metric`); falta la pantalla, que nace con ella |
+| «Comparar con auditoría anterior» | ✅ | E2.2b · y además «Comparar con otra», que el mockup pide en la pantalla del delta |
 | Meta configurable del 85 % | 🔒 | llega con **E4** |
-| Delta «▲ 6 puntos desde la anterior» en los números | 🔒 | llega con **E2**, nombrado en el cartel de «comparar con la anterior» |
+| Delta «▲ 6 puntos desde la anterior» en los números | ✅ | E2.2b · el valor viejo sale de `repo.metric`. El color dice si el movimiento es **bueno o malo**, no si el número subió: más ramas protegidas es mejor, más hallazgos abiertos es peor |
 | Aviso de auditoría en curso dentro del panel | 🔒 | es uno de los dos avisos de barra: **E4**, ver abajo |
 
 ## 2a · Navegación
@@ -124,7 +124,7 @@ final cuenta cuáles eran y dónde fueron.
 | Camino por clic equivalente | ✅ | «Agregar al plan» |
 | Camino por teclado | ✅ | mango enfocable, espacio, Escape |
 | Informativos sin mango | ✅ | prevención antes que explicación |
-| Bloque «Historia» del hallazgo | 🔒 | llega con **E2** |
+| Bloque «Historia» del hallazgo | ✅ | E2.2b · misma clave que el delta, sin datos nuevos. Tres estados: estaba, no estaba, **no se pudo mirar** |
 | «Regla que incumple» y «Evidencia leída de GitHub» | 📋 | ítem de plan, **D2.3b** — los datos ya están, falta mostrarlos |
 
 ## 2d · Bitácora
@@ -165,7 +165,7 @@ final cuenta cuáles eran y dónde fueron.
 | Corrida viva con barra, «ahora» y cronómetro | ✅ | |
 | Historial de corridas | ✅ | lista Odoo |
 | Corrida detenida con error, conservando lo leído | ✅ | |
-| Delta «qué cambió» entre dos corridas | 🔒 | cartel en el formulario de la corrida; llega con **E2** |
+| Delta «qué cambió» entre dos corridas | ✅ | E2.2b · los tres bloques del mockup 2b, con «sin confirmar» y sus porqués por repositorio |
 | «Detener después de este repo» | 🔒 | botón apagado en la cabecera mientras corre; llega con **E1** |
 
 ## 4a · Plantillas de política
@@ -257,6 +257,17 @@ final cuenta cuáles eran y dónde fueron.
 **Verificado en Chromium con el tema oscuro de Odoo activo**, en las cuatro pantallas del
 tramo: bundle oscuro servido, `--rm-bg` en `#14171C`, tarjetas en `#1C2027`, texto en
 `#E7EAEF`, y el chip crítico en `#FF7A73` con texto `#14171C`. La isla clara desapareció.
+
+### Correcciones de la implementación al diseño
+
+Tres, y las tres van **hacia más verdad**. No son desvíos de gusto: el mockup afirma algo
+que la realidad no sostiene, y el producto dice lo que sí puede sostener.
+
+| # | El diseño dice | El producto hace | Por qué |
+|---|---|---|---|
+| 1 | El correo del delta va al grupo Aprobador | Destinatarios configurables en Ajustes, de fábrica el usuario dueño | Hoy hay un solo destinatario real; un grupo vacío no manda nada y nadie se entera |
+| 2 | Un resuelto se atribuye a un plan o «se resolvió fuera de la app» | **Tres** categorías: plan de la bitácora, acto registrado en la app sin plan, y fuera de la app | Un hallazgo cuya remediación es de Odoo —clasificar, vincular una cuenta— se resuelve **en** la app sin pasar por un plan. Decir «fuera» sería falso |
+| 3 | «Sin confirmar» sólo del lado de los resueltos | También del lado de los **nuevos**: `sin_base_anterior` | Un hallazgo que aparece en un repositorio que la corrida anterior no pudo leer puede haber estado ahí todo el tiempo. La misma honestidad, en el otro sentido |
 
 ## 6a–6c · F4 y notificaciones
 

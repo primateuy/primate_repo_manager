@@ -499,6 +499,15 @@ class RepoAuditFinding(models.Model):
 			"context": dict(self.env.context, prm_aviso=mensaje),
 		}
 
+	def historia_del_hallazgo(self):
+		"""E2.2b · en qué auditorías apareció y en cuáles no estaba.
+
+		La ficha entra por acá; la comparación vive en `repo.audit.delta`, que es dueño
+		de la definición de «es el mismo hallazgo».
+		"""
+		self.ensure_one()
+		return self.env["repo.audit.delta"].historia(self)
+
 	def action_remediate_many(self):
 		"""Varios hallazgos de una. Veinte ramas sin proteger son UN plan, no veinte.
 

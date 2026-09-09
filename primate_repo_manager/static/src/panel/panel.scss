@@ -188,3 +188,18 @@
 		}
 	}
 }
+
+// E2.2b · el delta contra la corrida anterior.
+//
+// El color dice si el movimiento es bueno o malo, NO si el número subió o bajó: más
+// ramas protegidas es mejor, más hallazgos abiertos es peor. Se usan los colores de
+// estado —no los de severidad— porque esto no es un hallazgo, es una tendencia.
+.rm-panel-delta {
+	font-size: 12px;
+	margin-top: var(--rm-space-1);
+	@include rm-mono;
+
+	&.rm-panel-delta-mejor { color: var(--rm-done); }
+	&.rm-panel-delta-peor  { color: var(--rm-error); }
+	&.rm-panel-delta-igual { color: var(--rm-ink-3); }
+}

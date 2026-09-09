@@ -110,6 +110,28 @@
 										Abrir el hallazgo
 									</a>
 								</div>
+								<!-- E2.2b · la historia, encendida. Sale de la misma clave que
+								el delta: `(tipo, repositorio, sujeto)`, sin datos nuevos.
+
+								TRES ESTADOS Y NO DOS, como en todo el módulo: estaba, no
+								estaba, y no se pudo mirar. En una corrida que no leyó ese
+								repositorio, la ausencia del hallazgo no significa que no
+								estuviera. -->
+								<div class="rm-hallazgos-historia"
+								t-if="state.historia[record.resId]">
+								<h5 class="rm-hallazgos-historia-titulo">Historia</h5>
+								<t t-foreach="state.historia[record.resId]" t-as="paso"
+								t-key="paso.corrida_id">
+								<div t-attf-class="rm-hallazgos-historia-fila rm-historia-{{paso.estado}}">
+								<span class="rm-historia-cuando" t-esc="paso.cuando"/>
+								<span t-if="paso.estado === 'estaba'">estaba</span>
+								<span t-elif="paso.estado === 'no_estaba'">no estaba</span>
+								<span t-else="" class="rm-no-legible">
+								no se pudo mirar — <t t-esc="paso.motivo"/>
+								</span>
+								</div>
+								</t>
+								</div>
 								<div>
 									<div class="rm-hallazgos-detalle-titulo">
 										Operaciones que generaría
@@ -180,9 +202,7 @@
 						Leer el plan
 					</button>
 
-					<!-- Regla 2. -->
-					<Apagado que="'Historia del hallazgo'" bloque="'E2'" forma="'bloque'"
-							 detalle="'En qué auditoría apareció y en cuál no estaba.'"/>
+
 				</aside>
 			</div>
 		</div>

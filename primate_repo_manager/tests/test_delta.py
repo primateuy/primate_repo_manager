@@ -10,6 +10,7 @@ categoría del mockup existe para impedir.
 import uuid
 
 from odoo import fields
+from odoo.tests import HttpCase, tagged
 from odoo.tests.common import TransactionCase
 
 
@@ -238,3 +239,71 @@ class TestDelta(TransactionCase):
 		from ..models import repo_audit_delta
 		fuente = inspect.getsource(repo_audit_delta.RepoAuditDelta.clave)
 		self.assertNotIn("run_id", fuente)
+
+
+@tagged("post_install", "-at_install")
+class TestTourDelta(HttpCase):
+	"""La pantalla del delta, en un navegador de verdad.
+
+	Se siembra a mano lo que la corrida dejaría: dos corridas, un hallazgo que sigue, uno
+	que aparece, uno que se resuelve, y un repositorio que esta vez no se pudo leer. Es
+	la única forma de que el tercer bloque tenga qué dibujar.
+	"""
+
+	def setUp(self):
+		super().setUp()
+		backend = self.env["repo.backend"].create({
+			"name": "GitHub — tour delta",
+			"owner_login": "cuenta-%s" % uuid.uuid4().hex[:8],
+			"owner_type": "organization", "app_id": "1", "installation_id": "2",
+			"state": "connected", "environment": "sandbox"})
+		vivo = self.env["repo.repository"].create({
+			"backend_id": backend.id, "github_id": uuid.uuid4().hex[:8],
+			"name": "sbx-vivo", "full_name": "cuenta/sbx-vivo"})
+		caido = self.env["repo.repository"].create({
+			"backend_id": backend.id, "github_id": uuid.uuid4().hex[:8],
+			"name": "sbx-caido", "full_name": "cuenta/sbx-caido"})
+		Run = self.env["repo.audit.run"]
+		Line = self.env["repo.audit.run.line"]
+		Finding = self.env["repo.audit.finding"]
+
+		anterior = Run.create({
+			"name": "Auditoría anterior", "backend_id": backend.id, "state": "done",
+			"finished_at": fields.Datetime.now()})
+		for repo in (vivo, caido):
+			Line.create({"run_id": anterior.id, "repository_id": repo.id,
+						 "state": "done"})
+		# Uno que se va a resolver, y uno que se va a quedar sin confirmar.
+		Finding.build(anterior, "permission_exceeded", "alguien tenía de más",
+					  repository=vivo, severity="high", subject="alguien",
+					  remediation_payload={"permission": "pull"})
+		Finding.build(anterior, "branch_unprotected", "la rama del caído",
+					  repository=caido, severity="high", subject="17.0")
+
+		self.corrida = Run.create({
+			"name": "Auditoría de hoy", "backend_id": backend.id, "state": "partial",
+			"finished_at": fields.Datetime.now()})
+		Line.create({"run_id": self.corrida.id, "repository_id": vivo.id,
+					 "state": "done"})
+		Line.create({"run_id": self.corrida.id, "repository_id": caido.id,
+					 "state": "error",
+					 "error": "GitHub 403: Resource not accessible by integration"})
+		# DOS NUEVOS, Y UNO SOLO SE PUEDE PLANIFICAR. Es la mezcla real: el botón tiene
+		# que armar el plan con el que se puede y saltear el otro sin negarse entero.
+		# `branch_unprotected` NO es planificable a propósito —su payload identifica, no
+		# configura, y F1 lo aprendió a los golpes— así que sembrarlo como único nuevo
+		# hacía que el botón se negara. El tour lo cazó: la semilla estaba mal, no el
+		# selector.
+		Finding.build(self.corrida, "branch_unprotected", "la rama quedó sin protección",
+					  repository=vivo, severity="critical", subject="19.0",
+					  remediation_payload={"repository": vivo.full_name,
+										   "branch": "19.0"})
+		Finding.build(self.corrida, "permission_exceeded", "otro tiene de más",
+					  repository=vivo, severity="high", subject="otro",
+					  remediation_payload={"repository": vivo.full_name,
+										   "login": "otro", "permission": "pull"})
+
+	def test_la_pantalla_del_delta_dibuja_sus_tres_bloques(self):
+		self.start_tour(
+			"/odoo/action-primate_repo_manager.action_repo_audit_run/%s" % self.corrida.id,
+			"prm_delta", login="admin")

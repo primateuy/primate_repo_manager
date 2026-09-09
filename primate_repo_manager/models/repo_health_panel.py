@@ -106,12 +106,43 @@ class RepoHealthPanel(models.AbstractModel):
 	# ------------------------------------------------------------------
 
 	def _tres_numeros(self, backend, corrida, anterior):
-		return [
+		numeros = [
 			self._numero_protegidas(backend),
 			self._numero_convencion(backend),
 			self._numero_hallazgos(corrida, anterior,
 								   self._hay_politica(backend)),
 		]
+		return self._con_delta(numeros, anterior)
+
+	def _con_delta(self, numeros, anterior):
+		"""«▲ 6 puntos desde la anterior», para los que se puedan comparar.
+
+		DE DÓNDE SALE EL VALOR VIEJO. El espejo guarda cómo están las cosas HOY: el
+		porcentaje de la semana pasada no está en ningún lado y no se puede reconstruir.
+		Sale de `repo.metric`, que toma la foto de los tres números al cerrar cada
+		corrida — el modelo que B4.1 dejó puesto justamente para esto.
+
+		LO QUE NO SE PUEDE COMPARAR NO SE COMPARA. Sin corrida anterior, sin foto de esa
+		corrida, o con un número que hoy no se puede medir, el delta queda en `None` y la
+		pantalla no dibuja nada. Un «▲ 0» sobre una comparación que no existe se lee como
+		«no cambió», que es una afirmación.
+		"""
+		if not anterior:
+			return numeros
+		fotos = {
+			m.key: m.value
+			for m in self.env["repo.metric"].search([("run_id", "=", anterior.id)])
+		}
+		for numero in numeros:
+			if numero.get("delta") is not None:
+				continue  # el de hallazgos ya lo trae, contra la corrida entera
+			previo = fotos.get(numero["clave"])
+			valor = numero.get("valor")
+			if previo is None or not isinstance(valor, (int, float)) or isinstance(valor, bool):
+				numero["delta"] = None
+				continue
+			numero["delta"] = round(valor - previo, 1)
+		return numeros
 
 	def _numero_protegidas(self, backend):
 		"""Ramas principales protegidas. El tramo «sin leer» se muestra aparte."""

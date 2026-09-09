@@ -260,3 +260,29 @@
 @media (prefers-reduced-motion: reduce) {
 	.rm-hallazgos .rm-bandeja-tarjeta { animation: none; }
 }
+
+// E2.2b · la historia del hallazgo, en la ficha desplegada.
+.rm-hallazgos-historia {
+	margin-top: var(--rm-space-3);
+
+	.rm-hallazgos-historia-titulo {
+		font-size: 11px;
+		text-transform: uppercase;
+		letter-spacing: .04em;
+		color: var(--rm-ink-3);
+		margin-bottom: var(--rm-space-1);
+	}
+
+	.rm-hallazgos-historia-fila {
+		display: flex;
+		gap: var(--rm-space-2);
+		align-items: baseline;
+		font-size: 12px;
+		padding: 2px 0;
+	}
+
+	.rm-historia-cuando { @include rm-mono; color: var(--rm-ink-3); }
+
+	// «No estaba» se dice en gris: es la ausencia comprobada, no una alarma.
+	.rm-historia-no_estaba { color: var(--rm-ink-2); }
+}

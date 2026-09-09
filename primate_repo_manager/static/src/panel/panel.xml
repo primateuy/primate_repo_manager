@@ -73,10 +73,22 @@
 						</div>
 						<div class="rm-panel-numero-que" t-esc="numero.explicacion"/>
 
+						<!-- E2.2b · el delta contra la corrida anterior, encendido.
+							 Sólo aparece cuando HAY con qué comparar: un «▲ 0» sobre una
+							 comparación que no existe se lee como «no cambió», que es
+							 una afirmación. -->
+						<div t-if="numero.delta !== null and numero.delta !== undefined"
+							 t-attf-class="rm-panel-delta rm-panel-delta-{{sentido(numero)}}">
+							<t t-esc="flecha(numero)"/>
+							<t t-esc="Math.abs(numero.delta)"/>
+							<t t-esc="numero.unidad === '%' ? ' puntos' : ''"/>
+							desde la anterior
+						</div>
+
 						<!-- Regla 2: lo que todavía no llegó, a la vista y apagado. -->
 						<Apagado t-if="numero.clave === 'protegidas'"
-								 que="'Comparar con la auditoría anterior'" bloque="'E2'"
-								 detalle="'El delta de los tres números («▲ 6 puntos desde la anterior») y la tendencia de las últimas 8 corridas.'"/>
+								 que="'Tendencia de las últimas 8 corridas'" bloque="'E4'"
+								 detalle="'El gráfico de la serie. Los datos ya se guardan en cada corrida; falta la pantalla, que nace con ella en E4.'"/>
 						<Apagado t-if="numero.clave === 'convencion'"
 								 que="'Meta configurable'" bloque="'E4'"
 								 detalle="'Hoy el número se muestra sin meta contra la cual compararlo.'"/>

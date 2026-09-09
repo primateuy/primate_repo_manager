@@ -80,6 +80,29 @@ export class PanelDeSalud extends Component {
 			: `${numero.valor}${numero.unidad || ""}`;
 	}
 
+	/**
+	 * Hacia dónde va el número, que NO es lo mismo que si subió o bajó.
+	 *
+	 * Más ramas protegidas es mejor; más hallazgos abiertos es peor. Sin esta distinción
+	 * el panel pintaría de verde una semana en la que aparecieron doce hallazgos nuevos,
+	 * sólo porque el número creció.
+	 */
+	sentido(numero) {
+		if (!numero.delta) {
+			return "igual";
+		}
+		const masEsMejor = numero.clave !== "hallazgos";
+		const subio = numero.delta > 0;
+		return subio === masEsMejor ? "mejor" : "peor";
+	}
+
+	flecha(numero) {
+		if (!numero.delta) {
+			return "=";
+		}
+		return numero.delta > 0 ? "▲" : "▼";
+	}
+
 	sinMedida(numero) {
 		return numero.valor === null || numero.valor === undefined;
 	}

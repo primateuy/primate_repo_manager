@@ -14,6 +14,17 @@
 				<field name="repos_done"/>
 				<field name="repos_error" decoration-danger="repos_error &gt; 0"/>
 				<field name="progress" widget="progressbar"/>
+				<!-- E2.2b · las dos columnas del mockup. Una corrida que no se puede
+					 comparar muestra el motivo en vez de un cero: cero resueltos y «no
+					 hay con qué comparar» se leen igual en una tabla, y son cosas
+					 distintas. -->
+				<field name="delta_new_count" string="Nuevos"
+					   decoration-danger="delta_new_count &gt; 0"
+					   invisible="delta_note != ''"/>
+				<field name="delta_resolved_count" string="Resueltos"
+					   invisible="delta_note != ''"/>
+				<field name="delta_note" string="Comparación" optional="show"/>
+				<field name="origin" optional="hide"/>
 				<field name="state" widget="badge"
 					   decoration-success="state == 'done'"
 					   decoration-warning="state in ('running', 'partial')"
@@ -43,16 +54,12 @@
 					<field name="state" widget="statusbar"/>
 				</header>
 				<sheet>
-					<!-- El delta entre corridas es la otra mitad de esta pantalla en el
-						 diseño. Se ve dónde va a estar, y con qué bloque llega. -->
-					<div class="rm-apagado rm-apagado-bloque"
-						 invisible="state not in ('done', 'partial')">
-						<span class="rm-apagado-etiqueta">Qué cambió respecto de la
-							corrida anterior</span>
-						<span class="rm-apagado-cartel">llega con E2 — nuevos, resueltos,
-							y los que no se pudieron volver a leer y por eso no cuentan
-							como resueltos ni como nuevos</span>
-					</div>
+					<!-- E2.2b · la otra mitad de esta pantalla en el diseño, ya
+						 encendida. Se monta sobre `finding_ids` porque el componente
+						 necesita repintarse cuando los hallazgos de la corrida cambian,
+						 y ése es el campo que lo dice. -->
+					<field name="finding_ids" widget="repo_delta" nolabel="1"
+						   invisible="state in ('draft', 'running')"/>
 
 					<div class="oe_button_box" name="button_box">
 						<button name="action_open_findings" type="object"

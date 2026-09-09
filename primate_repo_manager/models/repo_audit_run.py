@@ -164,6 +164,31 @@ class RepoAuditRun(models.Model):
 		with self._cursor_de_avisos() as cr:
 			self.env(cr=cr)["repo.audit.run"].browse(self.id)._bus_send(self.AVISO, aviso)
 
+	# --- las columnas Nuevos / Resueltos de la lista de corridas ---
+	#
+	# SE CALCULAN, NO SE GUARDAN. Un contador guardado es una fila que alguien escribe, y
+	# la regla del módulo es derivar contando (A4.5 y A10 lo midieron). Acá además sería
+	# peor: el delta depende de CUÁL sea la corrida anterior, y esa respuesta cambia sola
+	# —una corrida vieja que se reevalúa, una fallida que deja de contar— así que un
+	# número guardado envejecería mal sin que nadie lo tocara.
+	delta_new_count = fields.Integer(
+		string="Nuevos", compute="_compute_delta", help=(
+			"Hallazgos que no estaban en la corrida anterior comparable."))
+	delta_resolved_count = fields.Integer(
+		string="Resueltos", compute="_compute_delta", help=(
+			"Estaban en la anterior y ya no. No incluye los de repositorios que no se "
+			"pudieron volver a leer: ésos no se resolvieron, no se miraron."))
+	delta_note = fields.Char(string="Comparación", compute="_compute_delta")
+
+	@api.depends("state", "finding_ids")
+	def _compute_delta(self):
+		Delta = self.env["repo.audit.delta"]
+		for corrida in self:
+			datos = Delta.calcular(corrida)
+			corrida.delta_new_count = len(datos["nuevos"])
+			corrida.delta_resolved_count = len(datos["resueltos"])
+			corrida.delta_note = "" if datos["comparable"] else datos["motivo"]
+
 	def delta(self):
 		"""Qué cambió respecto de la corrida anterior. Atajo hacia `repo.audit.delta`.
 
@@ -175,6 +200,37 @@ class RepoAuditRun(models.Model):
 		"""
 		self.ensure_one()
 		return self.env["repo.audit.delta"].calcular(self)
+
+	def action_armar_plan_con_los_nuevos(self, hallazgo_ids=None):
+		"""«Armar plan con los N nuevos». ARMA Y NO EJECUTA, como todo acá.
+
+		NO ESTRENA UNA PUERTA. Los hallazgos entran al plan por `action_remediate_many`,
+		que es la misma que usan el botón de la lista y el arrastre: tres caminos que
+		crearan operaciones por su cuenta divergirían, y el que se mira menos envejece
+		mal. Lo único que agrega este método es de QUÉ conjunto salen —los nuevos de
+		este delta— y la comprobación de que ese conjunto sea de esta corrida.
+
+		Un plan armado queda en borrador. Después alguien tiene que aprobarlo operación
+		por operación, y recién ahí se escribe en GitHub.
+		"""
+		self.ensure_one()
+		Hallazgo = self.env["repo.audit.finding"]
+		if hallazgo_ids:
+			hallazgos = Hallazgo.browse(hallazgo_ids).exists()
+			# QUE SEAN DE ESTA CORRIDA. Los ids llegan del navegador, y armar un plan
+			# con hallazgos de otra corrida —o de otra cuenta— sería una escritura
+			# planificada sobre algo que esta pantalla nunca mostró.
+			ajenos = hallazgos.filtered(lambda h: h.run_id != self)
+			if ajenos:
+				raise UserError(_(
+					"Esos hallazgos no son de esta corrida. Volvé a abrir la pantalla: "
+					"lo que se ve y lo que se planifica tienen que ser lo mismo."))
+		else:
+			hallazgos = self.delta()["nuevos"]
+		if not hallazgos:
+			raise UserError(_(
+				"No hay hallazgos nuevos respecto de la corrida anterior."))
+		return hallazgos.action_remediate_many()
 
 	def action_open_findings(self):
 		"""Los hallazgos de esta corrida.

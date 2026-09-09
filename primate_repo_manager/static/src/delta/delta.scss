@@ -1,0 +1,93 @@
+// Copyright 2026 - PrimateUY / License AGPL-3.0 or later
+//
+// Todo por variable. Ningún valor literal: el sistema de diseño tiene dueño y los
+// tokens son su traducción. Ver `tokens.scss`.
+
+.rm-delta {
+	background: var(--rm-surface);
+	border: 1px solid var(--rm-border);
+	border-radius: var(--rm-radius);
+	padding: var(--rm-space-4);
+	margin-bottom: var(--rm-space-4);
+	color: var(--rm-ink);
+
+	.rm-delta-cabecera {
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-start;
+		gap: var(--rm-space-3);
+		margin-bottom: var(--rm-space-2);
+	}
+
+	.rm-delta-titulo {
+		font-weight: 600;
+		font-size: 15px;
+	}
+
+	.rm-delta-cuando {
+		color: var(--rm-ink-3);
+		font-size: 12px;
+		@include rm-mono;
+	}
+
+	.rm-delta-otra {
+		border: 1px solid var(--rm-border);
+		border-radius: var(--rm-radius-sm);
+		background: var(--rm-bg);
+		color: var(--rm-ink);
+		padding: var(--rm-space-1) var(--rm-space-2);
+		font-size: 12px;
+	}
+
+	.rm-delta-frase {
+		margin: 0 0 var(--rm-space-3) 0;
+		line-height: 1.5;
+	}
+
+	.rm-delta-bloque { margin-top: var(--rm-space-3); }
+
+	.rm-delta-bloque-titulo {
+		font-size: 12px;
+		text-transform: uppercase;
+		letter-spacing: .04em;
+		color: var(--rm-ink-3);
+		margin-bottom: var(--rm-space-2);
+	}
+
+	.rm-delta-fila {
+		display: flex;
+		align-items: baseline;
+		flex-wrap: wrap;
+		gap: var(--rm-space-2);
+		padding: var(--rm-space-2) 0;
+		border-top: 1px solid var(--rm-border);
+	}
+
+	// Un resuelto no se pinta de verde: el color de este sistema dice gravedad, no
+	// desenlace. El chip conserva la severidad que TENÍA, y lo que cambia es el peso.
+	.rm-delta-fila-resuelta .rm-delta-titulo-hallazgo { opacity: .75; }
+
+	.rm-delta-repo {
+		@include rm-mono;
+		font-size: 12px;
+	}
+
+	.rm-delta-nota {
+		color: var(--rm-ink-3);
+		font-size: 12px;
+		flex-basis: 100%;
+	}
+
+	.rm-delta-acciones {
+		margin-top: var(--rm-space-4);
+		display: flex;
+		align-items: center;
+		gap: var(--rm-space-3);
+		flex-wrap: wrap;
+	}
+
+	.rm-delta-vacio {
+		color: var(--rm-ink-3);
+		padding: var(--rm-space-3) 0;
+	}
+}

@@ -55,6 +55,7 @@ export class HallazgosRenderer extends Component {
 			plan: null,            // el borrador de esta conexión
 			enPlan: [],            // operaciones del borrador
 			anuncio: "",           // para el lector de pantalla
+			historia: {},          // id de hallazgo -> sus corridas, ya cargadas
 		});
 		onWillStart(() => this.cargarBandeja());
 	}
@@ -150,6 +151,24 @@ export class HallazgosRenderer extends Component {
 	alternar(record) {
 		this.state.expandido =
 			this.state.expandido === record.resId ? null : record.resId;
+		if (this.state.expandido) {
+			this.cargarHistoria(record.resId);
+		}
+	}
+
+	/**
+	 * E2.2b · «en qué auditoría apareció y en cuál no estaba».
+	 *
+	 * Se pide al desplegar y no al cargar la lista: son doscientos hallazgos y la
+	 * historia de cada uno recorre las últimas ocho corridas. Se guarda por id para no
+	 * volver a preguntar cada vez que alguien pliega y despliega la misma fila.
+	 */
+	async cargarHistoria(id) {
+		if (this.state.historia[id]) {
+			return;
+		}
+		this.state.historia[id] = await this.orm.call(
+			"repo.audit.finding", "historia_del_hallazgo", [[id]]);
 	}
 
 	abierto(record) {

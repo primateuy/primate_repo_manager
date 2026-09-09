@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 - PrimateUY / License AGPL-3.0 or later -->
+<templates xml:space="preserve">
+
+	<t t-name="primate_repo_manager.Delta">
+		<div class="rm-delta">
+
+			<t t-if="state.cargando">
+				<div class="rm-delta-vacio">Leyendo la corrida anterior…</div>
+			</t>
+
+			<t t-elif="state.datos and !state.datos.comparable">
+				<!-- No se inventa un delta: se dice por qué no hay. Una corrida
+					 incompleta comparada sería peor que ninguna comparación. -->
+				<div class="rm-delta-cabecera">
+					<span class="rm-delta-titulo">Qué cambió</span>
+				</div>
+				<div class="rm-delta-vacio" t-esc="state.datos.motivo"/>
+			</t>
+
+			<t t-elif="state.datos">
+				<div class="rm-delta-cabecera">
+					<div>
+						<span class="rm-delta-titulo">
+							Qué cambió · <t t-esc="state.datos.corrida.nombre"/>
+							respecto de <t t-esc="state.datos.anterior.nombre"/>
+						</span>
+						<div class="rm-delta-cuando">
+							<t t-esc="state.datos.anterior.cuando"/> →
+							<t t-esc="state.datos.corrida.cuando"/>
+						</div>
+					</div>
+					<select class="rm-delta-otra" t-on-change="comparar"
+							aria-label="Comparar con otra corrida">
+						<option value="">Comparar con otra…</option>
+						<t t-foreach="state.datos.otras" t-as="otra" t-key="otra.id">
+							<option t-att-value="otra.id"
+									t-att-selected="otra.id === state.comparandoCon"
+									t-esc="otra.etiqueta"/>
+						</t>
+					</select>
+				</div>
+
+				<p class="rm-delta-frase" t-esc="state.datos.frase"/>
+
+				<div class="rm-delta-bloque" t-if="state.datos.nuevos.length">
+					<h4 class="rm-delta-bloque-titulo">
+						Nuevos · <t t-esc="state.datos.nuevos.length"/>
+					</h4>
+					<t t-foreach="state.datos.nuevos" t-as="fila" t-key="fila.id">
+						<div class="rm-delta-fila">
+							<span class="rm-chip" t-att-class="chip(fila)"
+								  t-esc="fila.severidad_etiqueta"/>
+							<span class="rm-delta-repo" t-esc="fila.repositorio"/>
+							<span class="rm-delta-titulo-hallazgo" t-esc="fila.titulo"/>
+							<!-- La salvedad simétrica: si la corrida anterior no pudo
+								 mirar ese repositorio, esto puede no ser nuevo. Se dice,
+								 igual que del otro lado se dice «sin confirmar». -->
+							<span class="rm-delta-nota" t-if="fila.nota" t-esc="fila.nota"/>
+						</div>
+					</t>
+				</div>
+
+				<div class="rm-delta-bloque" t-if="state.datos.resueltos.length">
+					<h4 class="rm-delta-bloque-titulo">
+						Resueltos · <t t-esc="state.datos.resueltos.length"/>
+					</h4>
+					<t t-foreach="state.datos.resueltos" t-as="fila" t-key="fila.id">
+						<div class="rm-delta-fila rm-delta-fila-resuelta">
+							<span class="rm-chip" t-att-class="chip(fila)"
+								  t-esc="fila.severidad_etiqueta"/>
+							<span class="rm-delta-repo" t-esc="fila.repositorio"/>
+							<span class="rm-delta-titulo-hallazgo" t-esc="fila.titulo"/>
+							<span class="rm-delta-nota" t-if="fila.nota" t-esc="fila.nota"/>
+						</div>
+					</t>
+				</div>
+
+				<!-- EL BLOQUE QUE HACE CREÍBLES A LOS OTROS DOS. -->
+				<div class="rm-delta-bloque rm-delta-sin-confirmar"
+					 t-if="state.datos.sin_confirmar.length">
+					<h4 class="rm-delta-bloque-titulo">
+						Sin confirmar · <t t-esc="state.datos.sin_confirmar.length"/> repos
+					</h4>
+					<t t-foreach="state.datos.sin_confirmar" t-as="repo"
+					   t-key="repo.repositorio">
+						<div class="rm-delta-fila rm-no-legible">
+							<span class="rm-delta-repo" t-esc="repo.repositorio"/>
+							<span class="rm-delta-nota" t-esc="repo.motivo"/>
+						</div>
+					</t>
+					<p class="rm-delta-nota">
+						Sus <t t-esc="state.datos.hallazgos_sin_confirmar"/> hallazgo(s)
+						de la corrida anterior siguen abiertos porque no se pudieron
+						volver a leer. No cuentan como resueltos ni como nuevos.
+					</p>
+				</div>
+
+				<div class="rm-delta-acciones" t-if="state.datos.nuevos.length">
+					<button class="btn btn-primary" t-on-click="armarPlan"
+							t-esc="textoDelBoton"/>
+					<span class="rm-delta-nota">
+						Arma un plan en borrador. No escribe nada en GitHub: después hay
+						que aprobarlo operación por operación.
+					</span>
+				</div>
+			</t>
+		</div>
+	</t>
+
+</templates>
