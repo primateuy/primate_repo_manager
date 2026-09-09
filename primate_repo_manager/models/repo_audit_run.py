@@ -164,6 +164,18 @@ class RepoAuditRun(models.Model):
 		with self._cursor_de_avisos() as cr:
 			self.env(cr=cr)["repo.audit.run"].browse(self.id)._bus_send(self.AVISO, aviso)
 
+	def delta(self):
+		"""Qué cambió respecto de la corrida anterior. Atajo hacia `repo.audit.delta`.
+
+		Vive como método de la corrida porque es donde se lo busca —la pantalla, el
+		correo y el test entran por acá— pero la lógica está en un modelo aparte: la
+		comparación no es de una corrida contra el mundo, es entre dos, y meterla en el
+		modelo de una de ellas la habría atado a `run_id` justo en la parte que no puede
+		depender de él.
+		"""
+		self.ensure_one()
+		return self.env["repo.audit.delta"].calcular(self)
+
 	def action_open_findings(self):
 		"""Los hallazgos de esta corrida.
 
