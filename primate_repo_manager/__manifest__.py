@@ -19,6 +19,7 @@
 		"data/repo_rules_data.xml",
 		"data/repo_policy_data.xml",
 		"data/repo_config_data.xml",
+		"data/repo_cron_data.xml",
 		"views/repo_backend_views.xml",
 		"views/repo_audit_views.xml",
 		"views/repo_write_views.xml",

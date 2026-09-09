@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 - PrimateUY / License AGPL-3.0 or later -->
+<odoo>
+
+	<!-- `noupdate="1"` A PROPÓSITO. La frecuencia y la hora son CONFIGURACIÓN: se editan
+		 desde Ajustes, y una actualización del módulo no puede devolverlas al valor de
+		 fábrica. Quien puso la auditoría los miércoles a las 6 tiene una razón.
+
+		 Consecuencia que hay que tener presente al probar: cambiar este archivo NO toca
+		 una base que ya lo cargó. Para mutar la guarda hay que hacerlo en el registro.
+		 Está en CLAUDE.md. -->
+	<data noupdate="1">
+
+		<record id="cron_auditoria_programada" model="ir.cron">
+			<field name="name">Repo Manager: auditoría programada</field>
+			<field name="model_id" ref="model_repo_audit_run"/>
+			<field name="state">code</field>
+			<field name="code">model._cron_auditoria_programada()</field>
+			<field name="interval_number">1</field>
+			<field name="interval_type">weeks</field>
+			<!-- Lunes 08:00 de Montevideo = 11:00 UTC. La fecha concreta es un lunes; de
+				 ahí en adelante Odoo la avanza sola de semana en semana. Al guardar desde
+				 Ajustes se recalcula con la zona horaria de quien guarda. -->
+			<field name="nextcall" eval="'2026-09-14 11:00:00'"/>
+			<field name="active" eval="True"/>
+			<field name="priority">50</field>
+		</record>
+
+	</data>
+</odoo>

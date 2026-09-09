@@ -32,6 +32,12 @@ class RepoAuditRun(models.Model):
 		[("draft", "Preparada"), ("running", "En curso"), ("done", "Terminada"),
 		 ("partial", "Terminada con errores"), ("error", "Fallida")],
 		string="Estado", default="draft", required=True, tracking=True, index=True)
+	origin = fields.Selection(
+		[("manual", "Lanzada a mano"), ("scheduled", "Programada")],
+		string="Origen", default="manual", required=True, index=True,
+		help="Quién la pidió: una persona o el cron semanal. La pantalla lo dice porque "
+			 "«empezó 10:02, lanzada a mano por @gsosa» y «programada: lunes 08:00» se "
+			 "leen distinto cuando algo salió mal.")
 	started_at = fields.Datetime(string="Inicio", readonly=True)
 	finished_at = fields.Datetime(string="Fin", readonly=True)
 
@@ -207,6 +213,65 @@ class RepoAuditRun(models.Model):
 	# ------------------------------------------------------------------
 	# Ciclo
 	# ------------------------------------------------------------------
+
+	@api.model
+	def _cron_auditoria_programada(self):
+		"""La auditoría de los lunes. Una corrida POR CONEXIÓN verificada.
+
+		POR QUÉ UNA POR CONEXIÓN Y NO UNA SOLA. Una corrida pertenece a un backend —sus
+		repositorios, sus líneas, sus hallazgos y su delta salen de ahí—, así que auditar
+		dos cuentas en una corrida mezclaría dos inventarios que no se comparan entre sí.
+
+		LO QUE NO ESTÁ VERIFICADO NO SE AUDITA. Una conexión que no pasó su prueba gasta
+		la ventana entera para terminar en error; se saltea diciéndolo, que es distinto de
+		no intentarlo.
+
+		Y NO SE PISA UNA CORRIDA EN CURSO. El cron semanal puede caer sobre una auditoría
+		lanzada a mano que todavía no terminó; empezar otra encima duplicaría el trabajo
+		contra la misma cuenta y dejaría dos deltas que se contradicen. Se saltea **con
+		constancia en el chatter de la conexión**: un salteo silencioso se lee, la semana
+		siguiente, como «el cron no corrió».
+
+		Returns:
+			dict: cuántas corridas se lanzaron y cuántas se saltearon, con el motivo. Lo
+				devuelve para que el test —y quien lo llame a mano— pueda afirmar sobre
+				el resultado y no sobre el log.
+		"""
+		lanzadas, salteadas = self.browse(), []
+		for backend in self.env["repo.backend"].search([]):
+			if backend.state != "connected":
+				salteadas.append((backend, _("la conexión no está verificada")))
+				continue
+			en_curso = self.search([
+				("backend_id", "=", backend.id),
+				("state", "in", ("draft", "running"))], limit=1)
+			if en_curso:
+				motivo = _(
+					"ya hay una auditoría en curso (%s), lanzada antes de esta ventana"
+				) % en_curso.display_name
+				salteadas.append((backend, motivo))
+				# LA CONSTANCIA, en el chatter de la conexión y no sólo en el log: el log
+				# del servidor no lo mira nadie el lunes a la mañana.
+				backend.message_post(body=_(
+					"Auditoría programada salteada: %s. No se lanza otra encima para no "
+					"duplicar el trabajo contra la misma cuenta.") % motivo)
+				continue
+			corrida = self.create({
+				"name": _("Auditoría programada de %s") % backend.name,
+				"backend_id": backend.id,
+				"origin": "scheduled",
+			})
+			corrida.action_start()
+			lanzadas |= corrida
+
+		for backend, motivo in salteadas:
+			_logger.info(
+				"Repo Manager: auditoría programada salteada en «%s»: %s",
+				backend.name, motivo)
+		_logger.info(
+			"Repo Manager: auditoría programada — %s lanzada(s), %s salteada(s).",
+			len(lanzadas), len(salteadas))
+		return {"lanzadas": lanzadas, "salteadas": salteadas}
 
 	def action_start(self):
 		"""Lanza la auditoría. Corre en el momento o se encola, según cuántos repos haya.

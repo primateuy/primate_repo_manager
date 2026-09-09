@@ -22,6 +22,28 @@
 						</div>
 					</group>
 
+					<group string="Cuándo se audita sola">
+						<div colspan="2" class="text-muted mb-2">
+							Se edita acá y no en <b>Técnico</b>: cuándo se audita es una
+							decisión de quien administra Repo Manager, y aquel menú pide
+							ser administrador de Odoo entero.
+						</div>
+						<field name="audit_cron_active"/>
+						<field name="audit_cron_frequency"
+							   invisible="not audit_cron_active"/>
+						<field name="audit_cron_weekday"
+							   invisible="not audit_cron_active or audit_cron_frequency != 'weeks'"/>
+						<field name="audit_cron_hour" widget="float_time"
+							   invisible="not audit_cron_active"/>
+						<field name="audit_cron_nextcall" readonly="1"/>
+						<div colspan="2" class="text-muted">
+							La hora es la <b>tuya</b>. Se guarda convertida a UTC, que es
+							como Odoo programa las tareas, y la línea de arriba la
+							devuelve a tu zona para que se pueda comprobar que lo
+							guardado es lo que se quiso decir.
+						</div>
+					</group>
+
 					<group string="Cuándo un hallazgo es más grave">
 						<div colspan="2" class="text-muted mb-2">
 							La lógica de qué sube y qué baja vive en el código y está
