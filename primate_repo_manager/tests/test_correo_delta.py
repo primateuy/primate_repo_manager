@@ -105,6 +105,26 @@ class TestElCuerpoDelCorreo(BaseCorreo):
 		self.assertIn("no dice nada sobre ellos", cuerpo)
 		self.assertIn("403", cuerpo)
 
+	def test_un_repo_ilegible_SIN_hallazgos_previos_igual_se_nombra(self):
+		"""LO QUE EL ENSAYO E2.4 ENCONTRÓ.
+
+		La caja punteada salía del bloque «sin confirmar» del delta, que habla de
+		HALLAZGOS que no se pueden dar por resueltos y por eso sólo lista repositorios
+		que ya tenían alguno. Un repositorio nuevo que no se pudo leer quedaba fuera de
+		los tres números de arriba y el correo no lo decía.
+
+		Esta frase habla de los NÚMEROS: cualquiera que no se pudo mirar va nombrado,
+		haya tenido hallazgos antes o no.
+		"""
+		self._corrida()  # una anterior, para que haya con qué comparar
+		corrida = self._corrida(state="partial", lineas="error")
+		# El repositorio no tuvo NUNCA un hallazgo: es nuevo y falló en su primera
+		# lectura, que es exactamente el caso del ensayo.
+		self.assertFalse(corrida.finding_ids)
+		cuerpo = self.Correo.cuerpo(corrida)
+		self.assertIn("Sin leer", cuerpo)
+		self.assertIn(self.repo.full_name, cuerpo)
+
 	def test_el_correo_de_una_auditoria_FALLIDA_dice_qué_pasó(self):
 		corrida = self._corrida(state="error")
 		corrida.error_detail = "El token venció (401)"

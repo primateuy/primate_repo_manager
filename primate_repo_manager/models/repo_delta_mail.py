@@ -126,17 +126,31 @@ class RepoDeltaMail(models.AbstractModel):
 		return "".join(lineas)
 
 	@api.model
-	def _sin_leer(self, sin_confirmar):
+	def _sin_leer(self, corrida):
 		"""LA FRASE QUE HACE HONESTO AL RESTO DEL CORREO.
 
 		Sin ella, los tres números de arriba se leen como si hablaran de toda la cuenta.
 		Hablan de lo que se pudo mirar, y hay que decir de qué no se está hablando.
+
+		SALE DE LAS FILAS DE LA CORRIDA Y NO DEL DELTA, y la diferencia importa. El
+		bloque «sin confirmar» de la pantalla habla de HALLAZGOS que no se pueden dar por
+		resueltos, así que sólo lista repositorios que ya tenían alguno. Esta frase habla
+		de los NÚMEROS: cualquier repositorio que no se pudo mirar queda fuera de ellos,
+		haya tenido hallazgos antes o no.
+
+		Lo encontró el ensayo E2.4: una corrida terminó con un repositorio ilegible y el
+		correo salió sin la caja punteada, porque ese repositorio era nuevo y no tenía
+		hallazgos anteriores. Los tres números de arriba ya no lo incluían y el correo no
+		lo decía.
 		"""
-		if not sin_confirmar:
+		lineas = corrida.line_ids.filtered(lambda l: l.state != "done")
+		if not lineas:
 			return ""
 		nombres = ", ".join(
-			'<span style="font-family:%s">%s</span> (%s)' % (MONO, r["repositorio"], r["motivo"])
-			for r in sin_confirmar)
+			'<span style="font-family:%s">%s</span> (%s)' % (
+				MONO, linea.repository_id.full_name,
+				(linea.error or _("no se llegó a leer")).splitlines()[0][:90])
+			for linea in lineas)
 		return self._caja(
 			'<div style="color:%s;font-size:12px">'
 			'<b>Sin leer:</b> %s.<br/><b>Este correo no dice nada sobre ellos.</b>'
@@ -229,10 +243,11 @@ class RepoDeltaMail(models.AbstractModel):
 				'<div style="color:%s;font-size:12px;text-transform:uppercase;'
 				'letter-spacing:.04em;margin-bottom:4px">%s</div>%s'
 				% (T["ink_3"], _("Lo nuevo"), self._lo_nuevo(datos["nuevos"]))))
-			partes.append(self._sin_leer(datos["sin_confirmar"]))
+			partes.append(self._sin_leer(corrida))
 		else:
 			partes.append(self._caja(
 				'<div style="color:%s">%s</div>' % (T["ink_3"], datos["motivo"])))
+			partes.append(self._sin_leer(corrida))
 		partes.append(self._plan_pendiente(corrida.backend_id))
 		partes.append(
 			'<div style="color:%s;font-size:11px;margin-top:8px">%s</div>'

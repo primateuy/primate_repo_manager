@@ -665,7 +665,26 @@ repositorio y comparten la pantalla de política.
 *Dimensión:* chica-media. Dos tipos de hallazgo nuevos, dos llamadas en el sync, su
 severidad y su lugar en el informe.
 
-### E2 · Auditoría programada, y el delta contra la corrida anterior
+### E2 · Auditoría programada, y el delta · **CERRADO el 10-sep-2026**
+
+Cron semanal configurable desde Ajustes (E2.1) · motor del delta con la clave
+`(tipo, repositorio, sujeto)` y sus tres categorías (E2.2a) · la pantalla del mockup 2b
+con los cuatro casilleros que se encienden (E2.2b) · la atribución del resuelto en tres
+categorías (E2.2c) · el correo del lunes y Discuss (E2.3) · el ensayo contra el sandbox
+con las tres atribuciones ejercitadas de verdad (E2.4, ver `docs/ENSAYO-E2.4.md`).
+
+La tendencia de las últimas 8 corridas **no** entró: necesita serie y no par, y su
+pantalla nace con ella en E4. Los datos ya se guardan en cada corrida (`repo.metric`).
+
+Queda pendiente de infraestructura, no de código: **probar el correo en un cliente real**.
+Los servidores de correo de staging están desactivados y su cola tiene mensajes dirigidos
+a clientes; activar uno para esta prueba los soltaría.
+
+---
+
+### El desglose original, para referencia
+
+#### E2 · Auditoría programada, y el delta contra la corrida anterior
 
 **E2.1 · Cron configurable.** Un `ir.cron` que lanza la auditoría, con su frecuencia
 editable desde la pantalla de Ajustes (A8) y no desde *Técnico*.
