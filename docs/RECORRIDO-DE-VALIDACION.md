@@ -1,14 +1,16 @@
-# Recorrido de validación del Bloque A
+# Recorrido de validación
 
 > Documento de trabajo, no guía de usuario. La guía dice **cómo se usa**; esto dice **qué
 > hay que comprobar y qué sería señal de problema**. Cuando este recorrido salga completo,
 > el criterio de salida del flujo existente queda cerrado.
 
 **Para:** Daryl · **Con:** `desarrollo@primate.uy` · **Contra:** `prm-sandbox`
-**Escrito:** 4 de septiembre de 2026 · **Actualizado:** 7 de septiembre
+**Escrito:** 4 de septiembre de 2026 · **Actualizado:** 10 de septiembre
 **Estado:** la **Parte 2 se recorrió entera y pasó** — la deuda de A5+A6+A8 quedó saldada
-**Cubre:** A4 completo, la deuda visual de A5+A6+A8, y lo que trajo el entregable de
-diseño: la cadena de la bitácora y los cuatro tipos de entrada.
+**Cubre:** A4 completo, la deuda visual de A5+A6+A8, la cadena de la bitácora y los
+cuatro tipos de entrada — y, desde el 10-sep, la **Parte 4** con todo lo que se construyó
+después y que **ninguna persona miró todavía**: el delta y su pantalla, los correos, la
+higiene entera, el nacimiento desde el asistente, y el panel con su tendencia.
 
 > **Qué hay que repetir de la corrida del 5 de septiembre.** La Parte 1 entera, con una
 > diferencia: la remediación va ahora por los **hallazgos de permisos**, que son los
@@ -387,3 +389,303 @@ segunda pasada por el rollback.
 **Lo que este recorrido NO cubre**, y no es olvido: el informe en PDF (funciona desde F1 y
 no cambió), y todo lo que todavía no existe — política aplicada por plantilla (B), forks
 (C), inventario de módulos (D).
+
+---
+
+# Parte 4 · Lo que nunca pasó por tus ojos
+
+**Agregada el 10-sep-2026, con los bloques B, E2, E3.2 y E4 cerrados.** Todo lo de acá
+funciona y está probado —790 tests, ensayos contra `prm-sandbox`, instalación desde
+cero— pero **ninguna de estas pantallas la miró una persona todavía**. Ése es el punto de
+esta parte: no es «comprobar que anda», es «ver si dice lo que tiene que decir».
+
+**Antes de empezar:** `Repo Manager → Configuración → Ajustes` y anotá cómo están los
+umbrales. Los pasos 4.6 y 4.7 los mueven, y hay que dejarlos como estaban.
+
+---
+
+## 4.1 — El panel, que es lo primero que ve Diego (10 min)
+
+**Hago:** entro con mi usuario y **no navego**: miro dónde aterricé.
+
+**Tengo que ver:** si mi usuario tiene rol de Líder o Administrador, aterrizo en
+**Hallazgos**; si sólo tiene Lectura, en el **Panel**. Es un default: el menú entero sigue
+estando.
+
+**Sería problema:** aterrizar en la pantalla de Odoo genérica, o que la puerta pise una
+acción de inicio que yo haya configurado antes.
+
+**Hago:** *Ver y entender → Panel de salud*. Leo los tres números **sin abrir nada más**.
+
+**Tengo que ver:** tres números con su unidad y su pie («1 de 38», «últimos 30 días»),
+la frase de estado con su chip, y los botones. Si algo no se pudo medir, un guion — no un
+cero.
+
+**Sería problema:** un `0 %` donde no hay nada que medir; un número sin decir sobre cuántos;
+la frase de estado hablando de repositorios que no se pudieron leer.
+
+**Hago:** despliego **Ver el detalle** y miro la tendencia.
+
+**Tengo que ver:** tres series, cada una con su escala a la derecha (los valores reales de
+esa serie). **La línea se corta** donde una corrida no se pudo medir, con una banda rayada
+en el hueco, y debajo la frase «N corrida(s) sin medición: la línea se corta ahí, no se
+rellena».
+
+**Sería problema:** una línea continua de punta a punta cuando hay huecos — eso sería el
+gráfico afirmando que se midió una semana que nadie miró. **Si ves eso, cortá el recorrido
+y avisame.**
+
+---
+
+## 4.2 — La meta, que se muestra y no reclama (5 min)
+
+**Hago:** *Configuración → Ajustes → Metas del panel*. Pongo **85** en «commits con
+convención». Guardo. Vuelvo al panel.
+
+**Tengo que ver:** debajo del número de convención, «meta 85 %» en gris. En la tendencia
+de esa serie, una línea punteada horizontal a la altura de 85 — **o ninguna**, si 85 queda
+fuera de la escala de la serie (que es lo esperable hoy, con la convención en 12 %).
+
+**Sería problema:** que la meta pinte el número de rojo, que aparezca un hallazgo nuevo
+que hable de la meta, o que la línea punteada se dibuje pegada al borde de arriba
+fingiendo que estamos cerca.
+
+**Hago:** *Ver y entender → Hallazgos*, busco cualquier cosa que mencione la meta.
+
+**Tengo que ver:** nada. La meta no genera hallazgos.
+
+**Hago:** dejo la meta vacía otra vez y guardo.
+
+---
+
+## 4.3 — El delta: qué cambió respecto de la anterior (15 min)
+
+**Hago:** *Ver y entender → Auditorías*. Miro la lista.
+
+**Tengo que ver:** las columnas **Nuevos** y **Resueltos** con números, y en las corridas
+que fallaron, la columna *Comparación* diciendo por qué no hay delta en vez de un cero.
+
+**Sería problema:** una corrida fallida mostrando «0 nuevos, 0 resueltos» — eso se lee
+igual que «no cambió nada», y lo que pasó es que no se pudo comparar.
+
+**Hago:** abro la última corrida terminada.
+
+**Tengo que ver:** arriba del todo, **«Qué cambió · #N respecto de #M»** con las dos
+fechas, un desplegable **Comparar con otra**, y una frase en castellano («Aparecieron N
+hallazgos… y se resolvieron M»). Debajo, los bloques **Nuevos**, **Resueltos** y —si hubo
+repositorios ilegibles— **Sin confirmar**.
+
+**Lo que más me interesa que mires:** cada **resuelto** dice **por qué** dejó de estar. Hay
+tres frases posibles y las tres significan cosas distintas:
+
+| frase | qué quiere decir |
+|---|---|
+| «Lo corrigió PLAN-X el dd/mm · verificado» | lo arregló un plan de este módulo, y el apply lo comprobó releyendo |
+| «Se resolvió en la app: clasificación definida» | alguien lo resolvió acá, sin plan (clasificar, vincular una cuenta) |
+| «Se resolvió fuera de la app: alguien lo cambió en GitHub» | nadie lo tocó desde acá |
+
+**Sería problema:** que un hallazgo que vos sabés que se arregló por un plan diga «fuera de
+la app», o al revés. Ésa es la afirmación más delicada de esta pantalla.
+
+**Hago:** si hay bloque **Sin confirmar**, lo leo entero.
+
+**Tengo que ver:** los repositorios con **el motivo de cada uno** (el error de GitHub tal
+cual), y la frase «No cuentan como resueltos ni como nuevos».
+
+**Hago:** aprieto **Armar plan con los N nuevos**.
+
+**Tengo que ver:** se abre un plan **en borrador**, con las operaciones de los que sí se
+pueden remediar. Los que no —una rama sin protección, por ejemplo— no entran, y el botón
+no se niega por eso.
+
+**Sería problema:** que aplique algo. El botón arma; no ejecuta.
+
+---
+
+## 4.4 — Los correos del lunes, en tu cliente (10 min)
+
+**No se pudieron mandar**, y el motivo está anotado: los ocho servidores de correo de
+staging están desactivados y su cola tiene 232 mensajes en excepción con **destinatarios
+reales de clientes**. Activar uno para probar el render los soltaría.
+
+**Hago:** abro los tres archivos que están en `~/Downloads/`, con doble clic o
+arrastrándolos a mi cliente de correo:
+
+| archivo | qué es |
+|---|---|
+| `correo_e24_lunes.html` | el resumen del lunes: tres números con su movimiento, lo nuevo por gravedad, el plan que espera |
+| `correo_e24_sin_leer.html` | el mismo, con la **caja punteada** de los repositorios que no se pudieron leer |
+| `correo_e24_fallida.html` | el que llega **igual** cuando la auditoría no pudo terminar |
+
+**Tengo que ver:** los colores enteros (el chip de severidad, el delta en verde o rojo
+según si el movimiento es bueno o malo), la caja punteada con su borde, y los nombres de
+repositorio en monoespaciada. En el de los no leídos, la frase en negrita **«Este correo no
+dice nada sobre ellos»**.
+
+**Sería problema:** que llegue como texto plano o sin colores — querría decir que algún
+estilo se escapó a una hoja externa, que los clientes de correo no cargan.
+
+**Y el que más importa:** el de la auditoría fallida tiene que decir la causa y que **los
+números de la aplicación son los de la semana pasada**. No mandar nada dejaría creer que no
+hay novedades.
+
+---
+
+## 4.5 — El nacimiento de un repositorio, desde el asistente (20 min)
+
+> **Esto escribe en GitHub de verdad**, en `prm-sandbox`. El repositorio queda creado; hay
+> un paso final para borrarlo.
+
+**Hago:** *Decidir y aplicar → Crear repositorio*. Paso 1: cliente o producto **«Ensayo
+Daryl»**, clasificación **Cliente**, versión **19.0**, sin responsable.
+
+**Tengo que ver:** el nombre que arma la regla —`cliente-ensayo-daryl`— y que **no lo
+escribí yo**.
+
+**Hago:** paso 2 y 3, leo el resumen.
+
+**Tengo que ver:** el número de operaciones prometidas, y que coincida con el que después
+tiene el plan. Cuatro ramas, la rama por defecto, los rulesets que la política exige,
+Dependabot.
+
+**Sería problema:** que prometa un número y arme otro.
+
+**Hago:** **Revisar el plan y crear**.
+
+**Tengo que ver:** un plan **en borrador**. Nada se escribió todavía. En la pantalla del
+plan, la operación de crear el repositorio marcada **IRREVERSIBLE**, y para confirmarla hay
+que **escribir el nombre a mano** — un tilde no alcanza.
+
+**Hago:** confirmo todo y aplico.
+
+**Tengo que ver:** las diez operaciones en `applied`, y en GitHub el repositorio con sus
+cuatro ramas, `19.0-prod` como rama por defecto, tres rulesets y Dependabot encendido.
+
+**Hago:** lanzo una auditoría y miro los hallazgos **de ese repositorio**.
+
+**Tengo que ver:** **dos**, los dos de seguridad, y los dos diciendo que **no se pudo
+leer** —no que esté todo bien—. Son ciertos: a la instalación de `prm-sandbox` le faltan
+los dos permisos de seguridad que sí aprobaste para `primateuy`. Si los aprobás antes de
+este paso, tienen que ser **cero**.
+
+**Sería problema:** un hallazgo de rama sin protección sobre las ramas gobernadas, o de
+convención de commits sobre el commit inicial del README.
+
+---
+
+## 4.6 — La higiene: lo que se ofrece borrar y lo que no (20 min)
+
+**Hago:** en el repositorio que acabás de crear, desde GitHub, creá dos ramas a partir de
+`19.0`: **`19.0_limpia`** (sin tocarla) y **`19.0_trabajo`**, y a la segunda hacele un
+commit cualquiera desde la web.
+
+**Hago:** *Configuración → Ajustes* y poné **0** en «meses sin actividad para llamar
+abandonada a una rama». Guardá. Lanzá una auditoría.
+
+**Tengo que ver:** dos hallazgos distintos sobre ese repositorio:
+
+- **`19.0_limpia`**: «está integrada a «19.0»: no tiene commits propios» — y **dice contra
+  qué rama se midió**.
+- **`19.0_trabajo`**: «tiene 1 commit(s) que nunca llegaron a «19.0»…»
+
+**Hago:** intento planificar la **abandonada**: la abro, busco el botón de remediar, y
+también pruebo arrastrarla a la bandeja del plan.
+
+**Tengo que ver:** que **no se puede, por ninguno de los dos caminos**, y que diga por qué:
+«Tiene commits que nunca llegaron a producción. Borrarla los tira».
+
+**Sería problema — y es el más grave de todo este recorrido:** que el módulo ofrezca
+borrar la rama con trabajo sin integrar. **Si eso pasa, cortá y avisame.**
+
+**Hago:** planifico la **integrada**, apruebo y aplico.
+
+**Tengo que ver:** la frase de la aprobación dice que **se borra**, contra qué estaba
+integrada, y **la salvedad**: «la reversión recrea la rama en el mismo commit mientras
+GitHub conserve el objeto — eso no lo controlamos». Y para confirmarla hay que **escribir
+el nombre de la rama**, aunque sea reversible.
+
+**Hago:** desde la pestaña Detalle del plan, **revierto** esa operación.
+
+**Tengo que ver:** la rama de vuelta en GitHub, **en el mismo commit**.
+
+**Hago:** dejá el umbral de abandono como estaba.
+
+---
+
+## 4.7 — Archivar, con el aviso de qué depende de ese repositorio (10 min)
+
+**Hago:** *Ajustes*, poné **0** en «meses sin push para proponer archivar». Auditá.
+
+**Tengo que ver:** el hallazgo «no recibe un push desde…».
+
+**Hago:** lo planifico y **leo la pantalla de aprobación entera antes de aprobar**.
+
+**Tengo que ver:** un bloque **«Qué depende hoy de …»** con los hechos concretos de ese
+repositorio: PRs abiertas que se congelan, forks nuestros que lo tienen de upstream,
+módulos que una promoción movió. Si no hay nada, tiene que decir que **eso es lo que el
+espejo ve** — no «no depende nada de él».
+
+**Sería problema:** una advertencia genérica sobre archivar, sin los datos de ese repo.
+
+**Hago:** aplico, compruebo en GitHub que quedó archivado, y **revierto**.
+
+**Tengo que ver:** desarchivado, sin haber perdido nada.
+
+**Hago:** dejá el umbral como estaba, y **borrá el repositorio de ensayo** desde GitHub.
+
+**Hago, al final:** lanzá una auditoría más.
+
+**Tengo que ver:** el repositorio borrado aparece como **ausente** —con su fecha— y **deja
+de auditarse**: un solo hallazgo informativo que dice que ya no viene en el listado, y
+ninguno sobre sus ramas.
+
+---
+
+## 4.8 — Los avisos de la barra (5 min)
+
+**Hago:** lanzo una auditoría y **me voy a otra pantalla** cualquiera del módulo.
+
+**Tengo que ver:** arriba, en la barra, **«Auditoría en curso · N/M»** con un punto vivo. Y
+si hay un plan en borrador esperando, **«N plan(es) espera(n) tu aprobación»**.
+
+**Hago:** abro el panel mientras la auditoría corre.
+
+**Tengo que ver:** una tarjeta arriba con el avance y la frase **«Los números de abajo son
+de la auditoría anterior. Se actualizan al terminar; hasta entonces no cambian solos.»**
+
+**Sería problema:** que los tres números cambien solos a mitad de una corrida, o que la
+barra avise de un plan que yo no puedo aprobar.
+
+---
+
+## 4.9 — Los controles de siempre (10 min)
+
+**Hago:** *Configuración → Ajustes*, bloque **Estado de la instancia**.
+
+**Tengo que ver:** procesamiento en segundo plano **funcionando**, cadena de la bitácora
+**íntegra**, clave de cifrado **cargada**. Y la **próxima corrida programada**, en tu zona
+horaria.
+
+**Hago:** *Ver y entender → Bitácora*. Miro las entradas de todo lo que hiciste hoy.
+
+**Tengo que ver:** cada escritura con su antes y su después, la reversión del borrado de
+rama con su punto de retorno, y la cadena sin cortes.
+
+**Sería problema:** una entrada editable, o la cadena marcada como rota.
+
+**Hago:** abro cualquier entrada de la bitácora e intento cambiarle algo.
+
+**Tengo que ver:** que no se puede. Ni siquiera como administrador.
+
+---
+
+## Qué hacer con lo que anotes
+
+Todo lo de la columna «sería problema» va a una lista y lo miramos junto. Los tres que
+piden **cortar el recorrido** si aparecen:
+
+1. La tendencia dibujando una línea continua sobre un hueco.
+2. El módulo ofreciendo borrar una rama con trabajo sin integrar.
+3. Una entrada de la bitácora que se deje editar.
+
+Los tres significan lo mismo: el producto afirmando algo que no puede sostener.
