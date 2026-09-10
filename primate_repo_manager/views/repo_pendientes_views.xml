@@ -56,13 +56,6 @@
 
 
 
-	<record id="action_pendiente_higiene" model="ir.actions.act_window">
-		<field name="name">Higiene</field>
-		<field name="res_model">repo.coming.soon</field>
-		<field name="view_mode">form</field>
-		<field name="target">current</field>
-		<field name="context">{'prm_titulo': 'Ramas muertas y repositorios a archivar', 'prm_bloque': 'Bloque E · la lectura va con el inventario de módulos', 'prm_que': 'Ramas que ya se integraron a su línea de producción y se pueden borrar, y repositorios sin movimiento que conviene archivar.\n\nLa distinción que hace este trabajo útil: una rama vieja YA INTEGRADA es basura y se puede proponer borrar; una rama vieja CON TRABAJO QUE NUNCA LLEGÓ puede ser trabajo por rescatar, y de ésa el módulo nunca va a proponer nada — sólo listarla.'}</field>
-	</record>
 
 	<record id="action_pendiente_forks" model="ir.actions.act_window">
 		<field name="name">Forks y su upstream</field>
@@ -72,12 +65,5 @@
 		<field name="context">{'prm_titulo': 'Forks, su atraso y sus parches', 'prm_bloque': 'Bloque C', 'prm_que': 'Cuánto atrás está cada fork de su upstream, qué parches propios tiene encima, y la sincronización que los reaplica sin forzar nada cuando hay conflicto.\n\nHoy los forks se relevan y se clasifican, pero su atraso no se mide y sus parches no se siguen.'}</field>
 	</record>
 
-	<record id="action_pendiente_notificaciones" model="ir.actions.act_window">
-		<field name="name">Notificaciones</field>
-		<field name="res_model">repo.coming.soon</field>
-		<field name="view_mode">form</field>
-		<field name="target">current</field>
-		<field name="context">{'prm_titulo': 'Auditoría programada y aviso de novedades', 'prm_bloque': 'Bloque E · después del drift de política', 'prm_que': 'La auditoría corriendo sola los lunes por la mañana, y un aviso por Discuss y correo con lo que cambió: lo nuevo y lo RESUELTO.\n\nLo resuelto importa tanto como lo nuevo: es la única evidencia de que el trabajo sirvió, y un informe que sólo lista incumplimientos nunca la muestra.'}</field>
-	</record>
 
 </odoo>

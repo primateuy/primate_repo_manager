@@ -48,7 +48,7 @@ try:
 	# reportara TRES PANTALLAS ROTAS que en realidad eran casilleros retirados —un rojo
 	# que no es del producto es peor que ninguno, porque el próximo también se ignora.
 	ACCIONES = ["promocion_modulos", "promocion_ramas", "prs", "rama_tarea",
-				"higiene", "forks", "notificaciones"]
+				"forks"]
 	malas = []
 	for clave in ACCIONES:
 		url = "%s/odoo/action-primate_repo_manager.action_pendiente_%s" % (BASE, clave)
@@ -85,6 +85,8 @@ try:
 		"action_repo_audit_run": ".o_list_view",
 		"action_repo_security_findings": ".o_list_view, .rm-hallazgos",
 		"action_repo_repository_create": ".o_form_view",
+		"action_repo_hygiene_findings": ".o_list_view, .rm-hallazgos",
+		"action_repo_config_settings": ".o_form_view",
 	}
 	for accion, selector in REALES.items():
 		cdp("Page.navigate",

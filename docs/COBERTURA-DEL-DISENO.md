@@ -32,12 +32,12 @@ es exactamente lo que un documento de constancia no puede hacer.
 
 | columna | cuántos |
 |---|---|
-| ✅ Implementado | 150 |
+| ✅ Implementado | 152 |
 | 🔒 Apagado con su cartel | 17 |
 | 📋 Ítem de plan, con su bloque | 9 |
 | ↔️ Desvío deliberado, con su motivo | 2 |
 | ⛔ Sin representación | **0** |
-| | **178 elementos** |
+| | **180 elementos** |
 
 Para volver a contarlos, sin creerle a esta tabla:
 
@@ -131,7 +131,7 @@ final cuenta cuáles eran y dónde fueron.
 | elemento | estado | dónde |
 |---|---|---|
 | Siete secciones fijas | ✅ | `repo_menus.xml` |
-| Entradas futuras grises con su etapa | ✅ | nueve casilleros con su página honesta |
+| Entradas futuras grises con su etapa | ✅ | **cinco** casilleros con su página honesta. Higiene y Notificaciones salieron de la lista el 10-sep: sus funciones existen, y un «esto llega con…» sobre algo que el producto ya hace es el producto mintiendo sobre sí mismo |
 | Página vacía honesta: qué hace y con qué bloque llega | ✅ | `repo.coming.soon` |
 | Aviso permanente «auditoría en curso» en la barra | ✅ | E4.4 · con su conteo: no es «hay trabajo corriendo», es «lo que estás mirando no es de ahora» |
 | Aviso permanente «1 plan espera tu aprobación» | ✅ | E4.4 · sólo a quien puede aprobarlo, y sólo si tiene operaciones |
@@ -324,6 +324,9 @@ que la realidad no sostiene, y el producto dice lo que sí puede sostener.
 | Borrar rama por el embudo | ✅ | destructiva, reversible, con el nombre escrito a mano y la salvedad en la frase |
 | Archivar / desarchivar por el embudo | ✅ | con el aviso estilo D3 y los hechos de ese repositorio |
 | Campana: plan a aprobar / plan aplicado | 🔒 | casillero, **E3.3** |
+
+| Menú «Higiene» | ✅ | E3.2 · la misma lista de hallazgos filtrada a las tres clases, igual que Seguridad. Sin pantalla propia: dos lugares para leer lo mismo envejecen distinto |
+| Menú «Notificaciones» | ✅ | E2.3 · lleva a Ajustes, donde viven el cron y los destinatarios |
 
 ## 6a–6c · F4 y notificaciones
 

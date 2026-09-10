@@ -518,6 +518,26 @@
 		<field name="help" type="html"><p class="o_view_nocontent_smiling_face">Todavía no hay hallazgos de seguridad</p><p>Aparecen después de una auditoría. Si una fuente está apagada en un repositorio o no se pudo leer, también se dice acá: no haber mirado no es lo mismo que no haber encontrado nada.</p></field>
 	</record>
 
+	<!-- HIGIENE · las tres clases, en la MISMA lista de hallazgos y filtrada, igual que
+		 seguridad. Inventarle una pantalla propia sería dos lugares para leer lo mismo.
+
+		 Esta acción reemplaza al casillero que decía «llega con el Bloque E». El bloque
+		 llegó: la distinción integrada/abandonada existe, se mide contra GitHub y una de
+		 las tres NUNCA se propone. Un «esto llega con…» sobre algo que el producto ya
+		 hace es el producto mintiendo sobre sí mismo — la regla era «lo futuro se ve, no
+		 se toca», no «lo presente se dice futuro».
+
+		 El domain va en UNA SOLA LÍNEA: el evaluador del navegador no acepta literales
+		 partidos. -->
+	<record id="action_repo_hygiene_findings" model="ir.actions.act_window">
+		<field name="name">Higiene</field>
+		<field name="res_model">repo.audit.finding</field>
+		<field name="view_mode">list,form</field>
+		<field name="domain">[('finding_type', 'in', ['branch_integrated_candidate', 'branch_abandoned', 'repository_archivable'])]</field>
+		<field name="context">{'search_default_group_by_finding_type': 1}</field>
+		<field name="help" type="html"><p class="o_view_nocontent_smiling_face">Todavía no hay nada que limpiar</p><p>Ramas ya integradas a su línea de producción —que se pueden borrar sin perder nada— y repositorios sin movimiento que conviene archivar.<br/><br/>Una rama vieja <b>con trabajo que nunca llegó</b> también aparece acá, y de ésa este módulo no propone nada: sólo la lista. Borrarla tiraría commits que no están en ningún otro lado.</p></field>
+	</record>
+
 	<record id="action_repo_repository" model="ir.actions.act_window">
 		<field name="name">Repositorios</field>
 		<field name="res_model">repo.repository</field>

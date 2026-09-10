@@ -77,7 +77,7 @@
 	<menuitem id="menu_repo_security_findings" name="Hallazgos de seguridad" sequence="10"
 			  parent="menu_repo_seguridad" action="action_repo_security_findings"/>
 	<menuitem id="menu_repo_hygiene" name="Higiene" sequence="20"
-			  parent="menu_repo_seguridad" action="action_pendiente_higiene"/>
+			  parent="menu_repo_seguridad" action="action_repo_hygiene_findings"/>
 
 	<!-- ============ 6 · Forks ============ -->
 	<menuitem id="menu_repo_forks" name="Forks" sequence="60"
@@ -97,6 +97,6 @@
 	<menuitem id="menu_repo_diagnostico" name="Diagnóstico" sequence="30"
 			  parent="menu_repo_config" action="action_repo_config_settings"/>
 	<menuitem id="menu_repo_notificaciones" name="Notificaciones" sequence="40"
-			  parent="menu_repo_config" action="action_pendiente_notificaciones"/>
+			  parent="menu_repo_config" action="action_repo_config_settings"/>
 
 </odoo>
