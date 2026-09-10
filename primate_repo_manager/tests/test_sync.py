@@ -46,9 +46,17 @@ BRANCHES = [
 ]
 
 # Lo que GitHub contesta al comparar. La clave es la rama que se compara (`head`).
+# La comparación TRAE LOS COMMITS que están adelante. El doble los incluye porque de ahí
+# sale la fecha del último commit de la rama, y sin ella «abandonada» no se dispara nunca.
 COMPARACIONES = {
-	"17.0_integrada": {"ahead_by": 0, "behind_by": 12},
-	"17.0_con_trabajo": {"ahead_by": 7, "behind_by": 3},
+	"17.0_integrada": {"ahead_by": 0, "behind_by": 12, "commits": []},
+	"17.0_con_trabajo": {
+		"ahead_by": 7, "behind_by": 3,
+		"commits": [
+			{"sha": "viejo1", "commit": {"committer": {"date": "2025-01-10T10:00:00Z"}}},
+			{"sha": "punta", "commit": {"committer": {"date": "2025-03-02T09:30:00Z"}}},
+		],
+	},
 }
 
 COLABORADORES = [
@@ -201,6 +209,21 @@ class TestSync(TransactionCase):
 			lambda b: b.name == "17.0_con_trabajo")[:1]
 		self.assertEqual(rama.ahead_of_line, 7)
 		self.assertTrue(rama.line_comparison_readable)
+
+	def test_la_FECHA_del_ultimo_commit_se_llena_con_la_comparacion(self):
+		"""EL CAMPO QUE NADIE LLENABA. Existía desde F1 y ningún sync lo escribía, así
+		que «rama abandonada» —que lo mira— no podía dispararse nunca: media E3 era
+		código muerto. Los tests no lo veían porque escribían la fecha a mano.
+
+		Lo encontró el ensayo contra GitHub, y sale gratis: la comparación ya trae los
+		commits que están adelante, y el más nuevo es la punta de la rama.
+		"""
+		repos = self._sincronizar()
+		rama = repos.mapped("branch_ids").filtered(
+			lambda b: b.name == "17.0_con_trabajo")[:1]
+		self.assertTrue(rama.last_commit_date, "nadie llenó la fecha")
+		self.assertEqual(str(rama.last_commit_date.date()), "2025-03-02")
+		self.assertEqual(rama.last_commit_sha, "punta")
 
 	def test_la_rama_de_produccion_de_la_linea_es_prod_SI_EXISTE(self):
 		"""La jerarquía: rol `prod` si está, si no la base de la línea."""

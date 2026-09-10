@@ -711,7 +711,31 @@ entre corridas. E2.3 con ellas.
 *Dimensión:* E2.2 es media —un modelo de comparación y su pantalla—; E2.1 y E2.3 son
 chicas.
 
-### E3 · Higiene: ramas muertas y repos candidatos a archivar
+### E3 · Higiene · **E3.1 y E3.2 CERRADOS el 10-sep-2026**
+
+Los tres hallazgos con su distinción de ciclo de vida, `branch_delete` y
+`repository_archive` en el embudo, y el ensayo contra GitHub real
+(`docs/ENSAYO-E3.2.md`). Lo que quedó definido y conviene no volver a discutir:
+
+- **Candidatas sólo los roles que la política NO gobierna.** La higiene no es la puerta
+  trasera del esquema.
+- **La rama abandonada no se propone jamás**, en dos capas: el catálogo le da una acción
+  no planificable y `NUNCA_PLANIFICABLES` lo sostiene aunque alguien cambie esa
+  asignación.
+- **El tipeo dejó de ser sinónimo de irreversible.** Borrar una rama tiene vuelta, pero
+  depende de que GitHub conserve el objeto: con una vuelta que depende de un tercero, el
+  tilde no alcanza.
+- **La semántica del fallo la declara el manejador** (`falla_sola`): «el plan está mal
+  armado» aborta entero, «esta rama cambió» falla sola.
+
+Falta de E3: **E3.3, las notificaciones por campana** (plan a aprobar / plan aplicado),
+que el checklist tiene como casillero apagado.
+
+---
+
+#### El desglose original, para referencia
+
+##### E3 · Higiene: ramas muertas y repos candidatos a archivar
 
 **E3.1 · Hallazgos de higiene (lectura).** *Redefinido el 4-sep-2026, y el cambio es de
 fondo: la higiene se ata al CICLO DE VIDA, no a las fechas.* El flujo real es

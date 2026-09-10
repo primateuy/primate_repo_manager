@@ -234,6 +234,8 @@ PLANIFICABLES = {
 	# el manejador lo usa así: la rama por nombre, el sha como punto de retorno. No
 	# configura nada, que es la lección que este catálogo aprendió a los golpes.
 	"delete_branch": "branch_delete",
+	# Su payload identifica el repositorio y nada más: archivar no se configura.
+	"archive_repository": "repository_archive",
 	# B4 · LA EXCEPCIÓN A LA LECCIÓN DE ARRIBA, Y HAY QUE DECIR POR QUÉ ES UNA.
 	#
 	# «`remediation_payload` identifica, no configura» sigue valiendo para todos los

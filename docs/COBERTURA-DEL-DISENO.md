@@ -28,7 +28,7 @@ oscuro (turno 7 del entregable).
 
 | columna | cuántos |
 |---|---|
-| ✅ Implementado | 99 |
+| ✅ Implementado | 104 |
 | 🔒 Apagado con su cartel | 15 |
 | 📋 Ítem de plan, con su bloque | 11 |
 | ↔️ Desvío deliberado, con su motivo | 3 |
@@ -268,6 +268,17 @@ que la realidad no sostiene, y el producto dice lo que sí puede sostener.
 | 1 | El correo del delta va al grupo Aprobador | Destinatarios configurables en Ajustes, de fábrica el usuario dueño | Hoy hay un solo destinatario real; un grupo vacío no manda nada y nadie se entera |
 | 2 | Un resuelto se atribuye a un plan o «se resolvió fuera de la app» | **Tres** categorías: plan de la bitácora, acto registrado en la app sin plan, y fuera de la app | Un hallazgo cuya remediación es de Odoo —clasificar, vincular una cuenta— se resuelve **en** la app sin pasar por un plan. Decir «fuera» sería falso |
 | 3 | «Sin confirmar» sólo del lado de los resueltos | También del lado de los **nuevos**: `sin_base_anterior` | Un hallazgo que aparece en un repositorio que la corrida anterior no pudo leer puede haber estado ahí todo el tiempo. La misma honestidad, en el otro sentido |
+
+### 5 · Higiene (E3.2)
+
+| elemento | estado | dónde |
+|---|---|---|
+| Rama integrada, candidata a borrar | ✅ | dice contra qué rama se midió |
+| Rama abandonada, sólo se lista | ✅ | y no se puede planificar por ninguna de las dos puertas |
+| Repositorio candidato a archivar | ✅ | umbral configurable en Ajustes |
+| Borrar rama por el embudo | ✅ | destructiva, reversible, con el nombre escrito a mano y la salvedad en la frase |
+| Archivar / desarchivar por el embudo | ✅ | con el aviso estilo D3 y los hechos de ese repositorio |
+| Campana: plan a aprobar / plan aplicado | 🔒 | casillero, **E3.3** |
 
 ## 6a–6c · F4 y notificaciones
 

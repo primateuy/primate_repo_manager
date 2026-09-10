@@ -497,12 +497,33 @@ class RepoRepositorySync(models.Model):
 			try:
 				comparacion = client.get("/repos/%s/compare/%s...%s" % (
 					self.full_name, produccion.name, rama.name)) or {}
-				rama.write({
+				valores = {
 					"line_branch_name": produccion.name,
 					"ahead_of_line": comparacion.get("ahead_by") or 0,
 					"line_comparison_readable": True,
 					"line_comparison_cause": False,
-				})
+				}
+				# LA FECHA DEL ÚLTIMO COMMIT SALE DE ACÁ, y no de una llamada aparte.
+				#
+				# El campo existía desde F1 y NADIE lo llenaba, así que «rama abandonada»
+				# —que lo mira— no podía dispararse nunca: media E3 era código muerto y
+				# los tests no lo veían porque escribían la fecha a mano. Lo encontró el
+				# ensayo contra GitHub.
+				#
+				# La comparación ya trae los commits que están adelante, y el más nuevo
+				# de ésos ES la punta de la rama cuando hay trabajo sin integrar — que es
+				# el único caso donde la fecha se usa. Sale gratis de una llamada que ya
+				# se paga.
+				commits = comparacion.get("commits") or []
+				if commits:
+					ultimo = (commits[-1].get("commit") or {}).get("committer") or {}
+					fecha = _fecha(ultimo.get("date"))
+					if fecha:
+						valores["last_commit_date"] = fecha
+					sha = commits[-1].get("sha")
+					if sha:
+						valores["last_commit_sha"] = sha
+				rama.write(valores)
 			except Exception as exc:  # noqa: BLE001 - se dice, nunca se supone
 				rama.write({
 					"line_branch_name": produccion.name,
