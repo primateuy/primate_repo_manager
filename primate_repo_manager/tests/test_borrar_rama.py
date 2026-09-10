@@ -210,3 +210,167 @@ class TestBorrarRama(TransactionCase):
 		self.assertIn("ya no está integrada", primera.error)
 		self.assertEqual(segunda.state, "applied",
 						 "la guarda de una operación se llevó puesta a la otra")
+
+
+class TestArchivarRepositorio(TransactionCase):
+	"""E3.2d · archivar y desarchivar, y el aviso que dice qué depende de ese repo.
+
+	«Archivar lo deja en sólo lectura» es cierto y no ayuda. Lo que este bloque prueba es
+	que el aviso lleve HECHOS: PRs que se congelan, forks que lo tienen de upstream,
+	módulos que una promoción movió.
+	"""
+
+	def setUp(self):
+		super().setUp()
+		self.env.user.group_ids |= self.env.ref("primate_repo_manager.group_repo_lead")
+		self.backend = self.env["repo.backend"].create({
+			"name": "Arch %s" % uuid.uuid4().hex[:6],
+			"owner_login": "org-%s" % uuid.uuid4().hex[:8],
+			"owner_type": "organization", "app_id": "1", "installation_id": "2",
+			"environment": "sandbox"})
+		clave = _clave_rsa_de_prueba()
+		self.backend.private_key = clave
+		self.backend.write_app_id = "10"
+		self.backend.write_installation_id = "20"
+		self.backend.write_private_key = clave
+		self.repo = self.env["repo.repository"].create({
+			"backend_id": self.backend.id, "github_id": uuid.uuid4().hex[:8],
+			"name": "viejo", "full_name": "org/viejo"})
+		sin_cursor_aparte(self)
+
+	def _plan(self):
+		plan = self.env["repo.write.plan"].create({
+			"name": "Archivar", "backend_id": self.backend.id})
+		self.env["repo.write.operation"].create({
+			"plan_id": plan.id, "kind": "repository_archive",
+			"repository_id": self.repo.id, "target": self.repo.full_name,
+			"payload_json": "{}"})
+		return plan
+
+	def test_es_destructiva_y_reversible(self):
+		"""No borra nada y se deshace con un click, pero deja el repositorio en sólo
+		lectura para todos: alguien puede perder algo con esto."""
+		operacion = self._plan().operation_ids
+		self.assertTrue(operacion.is_destructive)
+		self.assertFalse(operacion.is_irreversible)
+
+	def test_la_frase_dice_que_queda_en_solo_lectura_y_que_se_deshace(self):
+		frase = self._plan().operation_ids.description
+		self.assertIn("ARCHIVADO", frase)
+		self.assertIn("sólo lectura", frase)
+		self.assertIn("no se pierde nada", frase)
+
+	# --- el aviso, con hechos ---
+
+	def test_el_aviso_nombra_las_PRs_ABIERTAS_que_se_congelan(self):
+		self.env["repo.pull.request"].create({
+			"repository_id": self.repo.id, "number": 42, "title": "algo",
+			"state": "open"})
+		self.env["repo.pull.request"].create({
+			"repository_id": self.repo.id, "number": 7, "title": "cerrada",
+			"state": "closed"})
+
+		hechos = self._plan().operation_ids.hechos_de_archivado()
+
+		self.assertEqual([p["numero"] for p in hechos["prs_abiertas"]], [42])
+
+	def test_el_aviso_nombra_los_FORKS_que_lo_tienen_de_upstream(self):
+		self.env["repo.repository"].create({
+			"backend_id": self.backend.id, "github_id": uuid.uuid4().hex[:8],
+			"name": "fork", "full_name": "org/fork",
+			"upstream_full_name": "org/viejo"})
+
+		hechos = self._plan().operation_ids.hechos_de_archivado()
+
+		self.assertEqual(hechos["forks"], ["org/fork"])
+
+	def test_el_aviso_nombra_los_MODULOS_QUE_UNA_PROMOCION_movio(self):
+		"""Sale de las operaciones APLICADAS, que es donde está el hecho.
+
+		`repo.module.copy` dice qué módulos hay hoy —lo llena el escaneo— y no distingue
+		el que llegó por una promoción del que siempre estuvo. Preguntarle a él sería
+		confundir «está» con «lo pusimos nosotros».
+		"""
+		viejo = self.env["repo.write.plan"].create({
+			"name": "Promoción vieja", "backend_id": self.backend.id})
+		self.env["repo.write.operation"].create({
+			"plan_id": viejo.id, "kind": "module_copy",
+			"repository_id": self.repo.id, "target": "sale_comision",
+			"payload_json": "{}", "state": "applied"})
+		self.env["repo.write.operation"].create({
+			"plan_id": viejo.id, "kind": "module_copy",
+			"repository_id": self.repo.id, "target": "nunca_se_aplico",
+			"payload_json": "{}", "state": "pending"})
+
+		hechos = self._plan().operation_ids.hechos_de_archivado()
+
+		self.assertEqual(hechos["modulos_promovidos"], ["sale_comision"])
+
+	def test_sin_nada_que_dependa_el_aviso_NO_dice_que_no_depende_nada(self):
+		"""Dice lo que el espejo ve, que no es lo mismo. La plantilla lo escribe así."""
+		hechos = self._plan().operation_ids.hechos_de_archivado()
+		self.assertEqual(hechos["prs_abiertas"], [])
+		self.assertEqual(hechos["forks"], [])
+		self.assertEqual(hechos["modulos_promovidos"], [])
+
+	def test_los_hechos_son_POR_OPERACION_y_no_por_plan(self):
+		"""Dos repositorios distintos en el mismo plan tienen hechos distintos, y
+		juntarlos haría que nadie supiera cuál es de cuál."""
+		otro = self.env["repo.repository"].create({
+			"backend_id": self.backend.id, "github_id": uuid.uuid4().hex[:8],
+			"name": "otro", "full_name": "org/otro"})
+		plan = self._plan()
+		self.env["repo.write.operation"].create({
+			"plan_id": plan.id, "kind": "repository_archive",
+			"repository_id": otro.id, "target": otro.full_name, "payload_json": "{}"})
+		self.env["repo.pull.request"].create({
+			"repository_id": otro.id, "number": 9, "state": "open"})
+
+		por_repo = {op.repository_id.full_name: op.hechos_de_archivado()
+					for op in plan.operation_ids}
+
+		self.assertEqual(por_repo["org/viejo"]["prs_abiertas"], [])
+		self.assertEqual(len(por_repo["org/otro"]["prs_abiertas"]), 1)
+
+	# --- el ciclo ---
+
+	def _con_transporte(self, transporte, hacer):
+		Backend = type(self.backend)
+		original = Backend.write_client
+		Backend.write_client = lambda s, transport=None: original(s, transport=transporte)
+		try:
+			hacer()
+		finally:
+			Backend.write_client = original
+
+	def test_archiva_y_verifica_releyendo(self):
+		plan = _aprobar_plan(self._plan())
+		transporte = Transporte(gets=[
+			Respuesta(200, {"archived": False}),   # 1 · estado previo
+			Respuesta(200, {"archived": True}),    # 3 · verificación
+		])
+		# La guarda de alcance es real y va antes que todo: la App de escritura se
+		# habilita por tandas. El doble tiene que abarcar este repositorio.
+		transporte.abarca = ["org/viejo"]
+		self._con_transporte(transporte, plan.action_apply)
+		self.assertEqual(plan.operation_ids.state, "applied")
+
+	def test_desarchivar_RESTAURA_EL_ESTADO_QUE_HABIA(self):
+		"""Si ya estaba archivado antes —alguien lo archivó por su cuenta— la reversión
+		no puede dejarlo abierto."""
+		plan = _aprobar_plan(self._plan())
+		transporte = Transporte(gets=[
+			Respuesta(200, {"archived": True}),    # ya venía archivado
+			Respuesta(200, {"archived": True}),
+		])
+		transporte.abarca = ["org/viejo"]
+		self._con_transporte(transporte, plan.action_apply)
+
+		transporte.gets = [Respuesta(200, {"archived": True}),
+						   Respuesta(200, {"archived": True})]
+		self._con_transporte(transporte, plan.action_rollback)
+
+		patches = [cuerpo for m, u, cuerpo in transporte.cuerpos if m == "PATCH"]
+		self.assertTrue(patches)
+		self.assertTrue(patches[-1]["archived"],
+						"la reversión lo dejó abierto: antes ya estaba archivado")

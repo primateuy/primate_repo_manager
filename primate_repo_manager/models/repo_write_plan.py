@@ -81,6 +81,11 @@ OPERATION_KINDS = [
 	# —recrear la ref en el mismo commit— pero depende de que GitHub todavía conserve el
 	# objeto, y eso no lo controlamos.
 	("branch_delete", "Borrar una rama"),
+	# E3.2 · archivar. Es la operación MÁS REVERSIBLE del catálogo —GitHub archiva y
+	# desarchiva sin tocar contenido— y aun así es destructiva en el sentido que importa:
+	# deja el repositorio en sólo lectura PARA TODOS, y lo que dependa de él para escribir
+	# deja de funcionar sin que nadie lo avise.
+	("repository_archive", "Archivar el repositorio"),
 ]
 
 
@@ -656,6 +661,9 @@ class RepoWriteOperation(models.Model):
 		# E3.2 · borrar una rama. Sólo se propone sobre ramas INTEGRADAS —lo que tenían
 		# ya está del otro lado— pero sigue siendo sacar algo que estaba.
 		"branch_delete",
+		# Archivar no borra nada y se deshace con un click, pero deja el repositorio en
+		# sólo lectura para todos: alguien puede perder algo con esto.
+		"repository_archive",
 	)
 
 	# LAS QUE EXIGEN ESCRIBIR EL NOMBRE, que hasta ahora eran exactamente las
@@ -907,6 +915,50 @@ class RepoWriteOperation(models.Model):
 			op.action_confirmar()
 		return len(candidatas)
 
+	def hechos_de_archivado(self):
+		"""QUÉ DEPENDE HOY DE ESTE REPOSITORIO. El aviso estilo D3, con datos y no con
+		una advertencia genérica.
+
+		«Archivar lo deja en sólo lectura» es cierto y no ayuda: quien decide necesita
+		saber si eso rompe algo SUYO. Los tres hechos salen del espejo, que ya los tiene:
+
+		· **PRs abiertas** — se congelan donde están y nadie las va a poder mergear.
+		· **Forks nuestros que lo tienen de upstream** — su sync ff-only sigue leyendo,
+		  pero el día que haya que empujar algo al upstream deja de poder hacerse.
+		· **Módulos que alguna promoción movió desde o hacia él** — si una instancia lo
+		  carga en su `addons_path`, seguir leyendo funciona; corregir un bug ahí, no.
+
+		Se calcula por operación y no por plan: dos repositorios distintos en el mismo
+		plan tienen hechos distintos, y juntarlos en una sola lista haría que nadie
+		supiera cuál es de cuál.
+		"""
+		self.ensure_one()
+		repo = self.repository_id
+		if not repo:
+			return {}
+		forks = self.env["repo.repository"].search([
+			("upstream_full_name", "=", repo.full_name),
+			("id", "!=", repo.id)])
+		# LOS MÓDULOS QUE UNA PROMOCIÓN MOVIÓ salen de las OPERACIONES APLICADAS, que es
+		# donde está el hecho. `repo.module.copy` dice qué módulos hay hoy —lo llena el
+		# escaneo— y no distingue el que llegó por una promoción del que siempre estuvo;
+		# preguntarle a él sería confundir «está» con «lo pusimos nosotros».
+		promociones = self.env["repo.write.operation"].search([
+			("repository_id", "=", repo.id),
+			("kind", "in", ("module_copy", "module_delete")),
+			("state", "=", "applied"),
+		])
+		return {
+			"repositorio": repo.full_name,
+			"prs_abiertas": [
+				{"numero": pr.number, "titulo": pr.title or ""}
+				for pr in repo.pull_request_ids.filtered(lambda p: p.state == "open")
+			],
+			"forks": forks.mapped("full_name"),
+			"modulos_promovidos": sorted(
+				{op.target for op in promociones if op.target}),
+		}
+
 	def _rama_de_destino(self):
 		"""La rama donde esta operación va a commitear, o False si no commitea.
 
@@ -964,6 +1016,12 @@ class RepoWriteOperation(models.Model):
 			return _(
 				"En %(repo)s SE BORRA el ruleset «%(nombre)s» y dejan de aplicarse sus "
 				"reglas.") % {"repo": repo, "nombre": datos.get("name") or destino}
+		if self.kind == "repository_archive":
+			return _(
+				"%(repo)s pasa a ARCHIVADO: queda en sólo lectura para todos. Se "
+				"desarchiva desde acá y no se pierde nada, pero mientras esté archivado "
+				"nadie puede empujar, abrir PRs ni cambiar su configuración."
+			) % {"repo": repo}
 		if self.kind == "branch_delete":
 			datos_rama = datos or {}
 			contra = datos_rama.get("integrated_into")

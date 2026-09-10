@@ -161,6 +161,11 @@ class Transporte:
 
 	def patch(self, url, json=None, headers=None, timeout=None):
 		self.llamadas.append(("PATCH", url))
+		# EL CUERPO TAMBIÉN. `put` y `post` ya lo guardaban y `patch` no: un test que
+		# afirma «hubo un PATCH» sin decir CON QUÉ deja pasar una reversión que restaura
+		# algo distinto de lo que había. Es la misma lección que el catálogo de mutaciones
+		# ya tenía escrita, sobreviviendo en el verbo que nadie había usado todavía.
+		self.cuerpos.append(("PATCH", url, json))
 		return self.escrituras.get("PATCH", Respuesta(200, {}))
 
 	def delete(self, url, json=None, headers=None, timeout=None):

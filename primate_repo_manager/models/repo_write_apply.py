@@ -1095,6 +1095,16 @@ class RepoWriteOperationApply(models.Model):
 				"verificar": "_verificar_rama_borrada",
 				"revertir": "_recrear_rama",
 			},
+			# E3.2 · ARCHIVAR. La única operación de nivel repositorio que se deshace sin
+			# pérdida: GitHub archiva y desarchiva sin tocar contenido. Por eso es un
+			# buen primer caso de operación sobre el repositorio entero, y por eso su
+			# reversión es de verdad y no una aproximación.
+			"repository_archive": {
+				"leer": "_leer_archivado",
+				"ejecutar": "_archivar",
+				"verificar": "_verificar_archivado",
+				"revertir": "_desarchivar",
+			},
 			"codeowners_write": {
 				"leer": "_leer_codeowners",
 				"ejecutar": "_escribir_codeowners",
@@ -1566,6 +1576,35 @@ class RepoWriteOperationApply(models.Model):
 	# ignora: no falla al escribirse, falla en silencio después.
 
 	UBICACIONES_CODEOWNERS = (".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS")
+
+	# --- E3.2 · archivar un repositorio -----------------------------------
+
+	def _leer_archivado(self, cliente):
+		detalle = cliente.get("/repos/%s" % self.repository_id.full_name) or {}
+		return {"anterior": {"archived": bool(detalle.get("archived"))}}
+
+	def _archivar(self, cliente):
+		cliente.patch("/repos/%s" % self.repository_id.full_name, {"archived": True})
+		return {"archivado": self.repository_id.full_name}
+
+	def _verificar_archivado(self, cliente):
+		"""Releer: que el PATCH no haya devuelto error no dice que haya quedado."""
+		detalle = cliente.get("/repos/%s" % self.repository_id.full_name) or {}
+		if detalle.get("archived"):
+			return True, {"archived": True}
+		return False, _("«%s» no quedó archivado") % self.repository_id.full_name
+
+	def _desarchivar(self, cliente, previo):
+		"""La vuelta, y es completa: GitHub desarchiva sin tocar contenido.
+
+		Se restaura el estado QUE HABÍA, no «desarchivado» a secas: si el repositorio ya
+		estaba archivado antes de esta operación —alguien lo archivó por su cuenta— la
+		reversión no puede dejarlo abierto.
+		"""
+		estaba = bool((previo or {}).get("anterior", {}).get("archived"))
+		cliente.patch("/repos/%s" % self.repository_id.full_name,
+					  {"archived": estaba})
+		return {"archived": estaba}
 
 	# --- E3.2 · borrar una rama -------------------------------------------
 

@@ -20,7 +20,7 @@
  * pantalla es una pantalla, y una pantalla se saltea llamando al método.
  */
 
-import { Component, useState } from "@odoo/owl";
+import { Component, onWillStart, useState } from "@odoo/owl";
 import { registry } from "@web/core/registry";
 import { standardFieldProps } from "@web/views/fields/standard_field_props";
 import { useService } from "@web/core/utils/hooks";
@@ -39,7 +39,8 @@ export class PlanOps extends Component {
 		this.notification = useService("notification");
 		// Lo que se está escribiendo en cada irreversible, por id. No se guarda en el
 		// servidor mientras se escribe: lo escrito a medias no es una confirmación.
-		this.state = useState({ tipeo: {}, plegado: {} });
+		this.state = useState({ tipeo: {}, plegado: {}, archivados: [] });
+		onWillStart(() => this.cargarHechosDeArchivado());
 	}
 
 	get operaciones() {
@@ -120,6 +121,25 @@ export class PlanOps extends Component {
 	 * alguien tenga que mantener sincronizada, es la misma información leída para otra
 	 * pregunta. Si mañana se agrega o se saca un retiro, esto lo sigue solo.
 	 */
+	/**
+	 * LOS HECHOS CONCRETOS DE CADA ARCHIVADO — el aviso estilo D3, con datos.
+	 *
+	 * «Archivar lo deja en sólo lectura» es cierto y no ayuda: quien decide necesita
+	 * saber si eso rompe algo suyo. Los hechos los arma el servidor —salen del espejo y
+	 * del registro de operaciones aplicadas— porque decidir qué cuenta como «depende de
+	 * este repositorio» es criterio del producto, no del navegador.
+	 */
+	async cargarHechosDeArchivado() {
+		const ops = this.operaciones.filter(
+			(o) => o.data.kind === "repository_archive");
+		if (!ops.length) {
+			return;
+		}
+		const hechos = await this.orm.call(
+			"repo.write.operation", "hechos_de_archivado", [ops.map((o) => o.resId)]);
+		this.state.archivados = Array.isArray(hechos) ? hechos : [hechos];
+	}
+
 	get retiros() {
 		return this.operaciones
 			.filter((o) => o.data.kind === "module_delete")

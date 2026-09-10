@@ -25,6 +25,47 @@
 					<div><strong>Este plan tuvo una ejecución que no terminó.</strong></div>
 					<div t-esc="props.record.data.interrupted_detail"/>
 				</div>
+				<!-- E3.2d · EL BORDE DEL ARCHIVADO, con los hechos de ESE repositorio.
+					 «Archivar lo deja en sólo lectura» es cierto y no ayuda: quien
+					 decide necesita saber si eso rompe algo suyo. Mismo lugar que el
+					 aviso de despliegue —el cuerpo de la aprobación, antes de decidir—
+					 y misma razón. -->
+				<div t-foreach="state.archivados" t-as="hecho"
+					 t-key="hecho.repositorio" class="rm-plan-despliegue">
+					<div class="rm-plan-despliegue-titulo">
+						Qué depende hoy de <span class="rm-mono"
+												 t-esc="hecho.repositorio"/>
+					</div>
+					<ul class="rm-plan-despliegue-lista">
+						<li t-if="hecho.prs_abiertas.length">
+							<b><t t-esc="hecho.prs_abiertas.length"/> pull request(s)
+							abierta(s)</b> — se congelan donde están: mientras esté
+							archivado nadie las puede mergear.
+							<span t-foreach="hecho.prs_abiertas" t-as="pr"
+								  t-key="pr.numero" class="rm-mono">#<t t-esc="pr.numero"/> </span>
+						</li>
+						<li t-if="hecho.forks.length">
+							<b><t t-esc="hecho.forks.length"/> fork(s) nuestro(s)</b> lo
+							tienen como upstream: el sync ff-only sigue leyendo, pero
+							empujar algo al upstream deja de poder hacerse.
+							<span t-foreach="hecho.forks" t-as="fork" t-key="fork"
+								  class="rm-mono"><t t-esc="fork"/> </span>
+						</li>
+						<li t-if="hecho.modulos_promovidos.length">
+							<b><t t-esc="hecho.modulos_promovidos.length"/> módulo(s)</b>
+							que una promoción movió desde o hacia él. Una instancia que
+							los cargue desde acá va a poder seguir leyendo; corregir un
+							bug ahí, no.
+							<span t-foreach="hecho.modulos_promovidos" t-as="mod"
+								  t-key="mod" class="rm-mono"><t t-esc="mod"/> </span>
+						</li>
+						<li t-if="!hecho.prs_abiertas.length and !hecho.forks.length and !hecho.modulos_promovidos.length">
+							Nada que este módulo conozca depende de él hoy. Eso es lo que
+							el espejo ve — no es lo mismo que «nada depende de él».
+						</li>
+					</ul>
+				</div>
+
 				<!-- EL BORDE CON EL DESPLIEGUE, en el cuerpo de la aprobación y no en
 					 una nota al pie. Va acá porque es lo que hay que saber ANTES de
 					 aprobar: el plan saca código de repositorios que alguien está usando,
