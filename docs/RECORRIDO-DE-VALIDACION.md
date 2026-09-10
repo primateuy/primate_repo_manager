@@ -563,13 +563,27 @@ cuatro ramas, `19.0-prod` como rama por defecto, tres rulesets y Dependabot ence
 
 **Hago:** lanzo una auditoría y miro los hallazgos **de ese repositorio**.
 
-**Tengo que ver:** **dos**, los dos de seguridad, y los dos diciendo que **no se pudo
-leer** —no que esté todo bien—. Son ciertos: a la instalación de `prm-sandbox` le faltan
-los dos permisos de seguridad que sí aprobaste para `primateuy`. Si los aprobás antes de
-este paso, tienen que ser **cero**.
+**Tengo que ver: cero accionables y uno informativo.** Ese uno dice que **secret scanning
+está apagado** y que encenderlo exige Advanced Security.
 
-**Sería problema:** un hallazgo de rama sin protección sobre las ramas gobernadas, o de
-convención de commits sobre el commit inicial del README.
+Y es la verdad, no una excusa: los permisos de la App están aprobados desde el
+10-sep —Dependabot lee bien y el plan lo enciende al nacer, así que esa fuente queda
+limpia— y secret scanning está apagado en toda la organización, también en los
+repositorios públicos. **Que aparezca es el producto funcionando**: no dice «no hay
+secretos», dice que nadie miró y por qué. La alternativa —callarlo— sería afirmar que un
+repositorio está limpio sin haberlo mirado.
+
+Ese hallazgo, además, es mejor diapositiva que un cero pelado: nombra una decisión
+comercial concreta que alguien tiene que tomar, en vez de un número que no invita a nada.
+
+**Sería problema:**
+
+- que sean **dos** y el otro diga «no se pudo leer» en vez de «apagado» → los permisos se
+  cayeron, avisame;
+- un hallazgo de rama sin protección sobre las ramas gobernadas;
+- uno de convención de commits sobre el commit inicial del README;
+- **cero hallazgos y ninguno informativo** → eso NO sería una buena noticia: querría decir
+  que el módulo dejó de decir que hay una fuente que no miró.
 
 ---
 
