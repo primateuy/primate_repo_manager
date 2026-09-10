@@ -36,6 +36,15 @@
 						<field name="audit_cron_hour" widget="float_time"
 							   invisible="not audit_cron_active"/>
 						<field name="audit_cron_nextcall" readonly="1"/>
+						<field name="delta_recipient_ids" widget="many2many_tags"
+							   invisible="not audit_cron_active"/>
+						<div colspan="2" class="text-muted"
+							 invisible="not audit_cron_active">
+							El resumen de lo que cambió llega por correo y por Discuss
+							después de cada auditoría programada. Si la auditoría falla,
+							el correo <b>llega igual</b> diciéndolo: no mandar nada
+							dejaría creer que no hay novedades.
+						</div>
 						<div colspan="2" class="text-muted">
 							La hora es la <b>tuya</b>. Se guarda convertida a UTC, que es
 							como Odoo programa las tareas, y la línea de arriba la

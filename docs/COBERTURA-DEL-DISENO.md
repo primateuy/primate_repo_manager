@@ -28,8 +28,8 @@ oscuro (turno 7 del entregable).
 
 | columna | cuántos |
 |---|---|
-| ✅ Implementado | 96 |
-| 🔒 Apagado con su cartel | 14 |
+| ✅ Implementado | 99 |
+| 🔒 Apagado con su cartel | 15 |
 | 📋 Ítem de plan, con su bloque | 11 |
 | ↔️ Desvío deliberado, con su motivo | 3 |
 | ⛔ Sin representación | **0** |
@@ -285,7 +285,11 @@ que la realidad no sostiene, y el producto dice lo que sí puede sostener.
 | · Dependabot nace encendido | ✅ | operación propia; medido: la App de escritura puede |
 | · Rama por defecto puesta por el plan | ✅ | operación N+2, tras crear la rama de producción |
 | · «Nace con cero hallazgos» | ✅ | Verificado contra el sandbox: nace con dos, y los dos dicen la verdad — a la instalación de `prm-sandbox` le faltan los permisos de seguridad que sí tiene `primateuy`. No es deuda del módulo; con esa aprobación queda en cero. Medido en `ENSAYO-B5.4.md` |
-| Notificaciones (tres canales) | 🔒 | casillero, **E3** |
+| Correo del lunes con el delta | ✅ | E2.3 · los tres números con su movimiento, lo nuevo por gravedad, el plan que espera, y la lista de no leídos con «este correo no dice nada sobre ellos» |
+| El correo llega igual si la auditoría falla | ✅ | E2.3 · con la causa. No mandar nada dejaría creer que no hay novedades |
+| Aviso en Discuss | ✅ | E2.3 · el mismo mensaje, una sola llamada: dos textos separados se desincronizan |
+| Campana: plan a aprobar / plan aplicado | 🔒 | casillero, **E3** |
+| Crítico detectado fuera de la auditoría, al toque | 🔒 | casillero, **F4**: necesita webhooks. Hoy nada detecta fuera de la corrida |
 
 ## 6d · Especificación de drag & drop
 

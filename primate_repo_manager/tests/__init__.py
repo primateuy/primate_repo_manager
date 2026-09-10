@@ -7,6 +7,7 @@ from . import test_rules
 from . import test_policy
 from . import test_ruleset_payload
 from . import test_ramas_pantalla
+from . import test_correo_delta
 from . import test_delta
 from . import test_drift
 from . import test_seguridad

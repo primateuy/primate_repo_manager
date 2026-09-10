@@ -189,6 +189,46 @@ class RepoAuditRun(models.Model):
 			corrida.delta_resolved_count = len(datos["resueltos"])
 			corrida.delta_note = "" if datos["comparable"] else datos["motivo"]
 
+	def _notificar_delta(self):
+		"""El correo del lunes y el aviso en Discuss. Una sola llamada para los dos.
+
+		`message_post` con destinatarios hace las dos cosas a la vez: deja el mensaje en
+		la conversación de la corrida —que es lo que aparece en Discuss— y lo manda por
+		correo a quien esté en la lista. Dos mecanismos separados serían dos textos que
+		se desincronizan, y el que se lee menos envejece mal.
+
+		SÓLO PARA LAS CORRIDAS PROGRAMADAS. Una auditoría lanzada a mano ya tiene a
+		alguien mirando la pantalla; mandarle un correo de lo que está viendo es la clase
+		de ruido que hace que el correo del lunes se ignore.
+
+		Y SE MANDA AUNQUE LA CORRIDA HAYA FALLADO. Ver `repo.delta.mail`: no mandar nada
+		dejaría creer que no hay novedades, y la semana que la auditoría no corre es
+		justamente la semana en la que nadie está mirando.
+		"""
+		self.ensure_one()
+		if self.origin != "scheduled":
+			return False
+		destinatarios = self.env["repo.settings"]._destinatarios()
+		if not destinatarios:
+			_logger.warning(
+				"Repo Manager: la corrida %s terminó y no hay destinatarios para el "
+				"resumen. Se puede configurar en Ajustes.", self.id)
+			return False
+		Correo = self.env["repo.delta.mail"]
+		try:
+			cuerpo = Correo.cuerpo(self)
+			asunto = Correo.asunto(self)
+		except Exception:  # noqa: BLE001 - el resumen no puede tumbar la auditoría
+			_logger.exception(
+				"Repo Manager: no se pudo armar el resumen de la corrida %s", self.id)
+			return False
+		self.message_post(
+			body=cuerpo, subject=asunto,
+			partner_ids=destinatarios.ids,
+			message_type="notification",
+			subtype_xmlid="mail.mt_comment")
+		return True
+
 	def delta(self):
 		"""Qué cambió respecto de la corrida anterior. Atajo hacia `repo.audit.delta`.
 
@@ -464,6 +504,10 @@ class RepoAuditRun(models.Model):
 				"finished_at": fields.Datetime.now(),
 			})
 			self.message_post(body=_("La auditoría falló al enumerar repositorios: %s") % exc)
+			# EL CORREO SALE IGUAL. Es la honestidad de pantalla aplicada al silencio:
+			# una semana sin correo se lee como «no hubo novedades», y lo que pasó es
+			# que nadie miró.
+			self._notificar_delta()
 			raise
 		# Una fila por repositorio de ESTA corrida. Es lo que después permite contar sin
 		# que dos jobs se pisen, y lo que hace que los números de una corrida vieja sigan
@@ -534,6 +578,9 @@ class RepoAuditRun(models.Model):
 		# tendencia no se reconstruye hacia atrás: si esto empezara con el panel que las
 		# muestra, ese panel abriría con un solo punto.
 		self.env["repo.metric"].registrar_corrida(self)
+		# Y el resumen, después de los hallazgos y de la foto: antes no habría qué
+		# contar. Sólo sale para las corridas programadas.
+		self._notificar_delta()
 		self.message_post(body=_(
 			"Auditoría terminada: %(ok)s repositorio(s) recorridos, %(mal)s con error. "
 			"%(hallazgos)s hallazgo(s)."

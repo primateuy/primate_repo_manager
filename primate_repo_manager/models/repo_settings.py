@@ -50,6 +50,11 @@ CLAVES = {
 # el alcance de la elevación de permisos, y está fija en el código.
 CRON_AUDITORIA = "primate_repo_manager.cron_auditoria_programada"
 
+# Los destinatarios del correo del delta. Se guardan como ids de contacto separados por
+# coma: es configuración, no una relación del modelo, y vive donde vive el resto de la
+# configuración.
+CLAVE_DESTINATARIOS = "repo_manager.delta_recipient_ids"
+
 DIAS = [("0", "Lunes"), ("1", "Martes"), ("2", "Miércoles"), ("3", "Jueves"),
 		("4", "Viernes"), ("5", "Sábado"), ("6", "Domingo")]
 
@@ -93,6 +98,10 @@ class RepoSettings(models.TransientModel):
 		string="A qué hora", default=8.0,
 		help="En tu zona horaria. Se guarda convertida a UTC, que es como Odoo programa "
 			 "las tareas.")
+	delta_recipient_ids = fields.Many2many(
+		"res.partner", string="A quién le llega el resumen",
+		help="El correo del lunes con el delta. De fábrica, quien administra la "
+			 "instancia; se cambia acá y no hace falta tocar ningún grupo.")
 	audit_cron_nextcall = fields.Char(
 		string="Próxima corrida programada", compute="_compute_diagnostico",
 		help="La hora real de la próxima, ya convertida a tu zona. Es la comprobación de "
@@ -128,6 +137,7 @@ class RepoSettings(models.TransientModel):
 			except (TypeError, ValueError):
 				valores[campo] = int(DEFAULTS[clave])
 
+		valores["delta_recipient_ids"] = [(6, 0, self._destinatarios().ids)]
 		cron = self._cron()
 		if cron:
 			valores["audit_cron_active"] = cron.active
@@ -137,6 +147,24 @@ class RepoSettings(models.TransientModel):
 				valores["audit_cron_weekday"] = str(local.weekday())
 				valores["audit_cron_hour"] = local.hour + local.minute / 60.0
 		return valores
+
+	@api.model
+	def _destinatarios(self):
+		"""A quién le llega el resumen. De fábrica, quien administra la instancia.
+
+		EL MOCKUP DICE «el grupo Aprobador» Y ACÁ NO SE USA UN GRUPO. Es un desvío
+		deliberado y está anotado en el checklist: hoy el destinatario es una persona, y
+		un grupo vacío no manda nada sin que nadie se entere. Una lista explícita se ve
+		en la pantalla y se corrige en el momento.
+		"""
+		crudo = self.env["ir.config_parameter"].sudo().get_param(CLAVE_DESTINATARIOS)
+		if crudo:
+			ids = [int(x) for x in crudo.split(",") if x.strip().isdigit()]
+			existentes = self.env["res.partner"].sudo().browse(ids).exists()
+			if existentes:
+				return existentes
+		admin = self.env.ref("base.user_admin", raise_if_not_found=False)
+		return admin.partner_id if admin else self.env["res.partner"]
 
 	@api.model
 	def _cron(self):
@@ -194,6 +222,9 @@ class RepoSettings(models.TransientModel):
 		for campo, clave in CLAVES.items():
 			Config.set_param(clave, str(self[campo]))
 
+		Config.set_param(
+			CLAVE_DESTINATARIOS,
+			",".join(str(i) for i in self.delta_recipient_ids.ids))
 		cron = self._cron()
 		if cron:
 			# TRES CAMPOS DE UN REGISTRO, y el registro se busca por su identificador
