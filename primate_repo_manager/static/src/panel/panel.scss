@@ -203,3 +203,47 @@
 	&.rm-panel-delta-peor  { color: var(--rm-error); }
 	&.rm-panel-delta-igual { color: var(--rm-ink-3); }
 }
+
+// E4.1 · la tendencia. Sin librería: ocho puntos y una polilínea.
+.rm-panel-tendencia {
+	.rm-panel-serie { margin-bottom: var(--rm-space-4); }
+
+	.rm-panel-serie-titulo {
+		font-size: 12px;
+		color: var(--rm-ink-3);
+		margin-bottom: var(--rm-space-1);
+	}
+
+	.rm-panel-svg { display: block; overflow: visible; }
+
+	.rm-panel-linea {
+		fill: none;
+		stroke: var(--rm-accent);
+		stroke-width: 1.5;
+		stroke-linejoin: round;
+	}
+
+	.rm-panel-punto { fill: var(--rm-accent); }
+
+	// EL HUECO NO ES UN VALOR BAJO: es la ausencia de medición. Por eso no se dibuja en
+	// la escala —no tiene altura— sino como una marca vertical rayada que ocupa el lugar
+	// entero. Es el mismo lenguaje que «no se pudo leer» en el resto del módulo.
+	// EL HUECO ES UNA BANDA, no una línea fina: ocupa el lugar que la corrida ocupa en
+	// la serie y se ve como lo que es, un tramo sin dato. Es el rayado de «no se pudo
+	// leer» del sistema, aplicado al eje del tiempo.
+	.rm-panel-hueco {
+		fill: var(--rm-unread-bg);
+		stroke: var(--rm-unread);
+		stroke-width: .5;
+		stroke-dasharray: 2 2;
+	}
+
+	.rm-panel-serie-pie {
+		display: flex;
+		justify-content: space-between;
+		gap: var(--rm-space-2);
+		font-size: 11px;
+		color: var(--rm-ink-3);
+		@include rm-mono;
+	}
+}

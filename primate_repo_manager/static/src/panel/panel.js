@@ -87,6 +87,72 @@ export class PanelDeSalud extends Component {
 	 * el panel pintaría de verde una semana en la que aparecieron doce hallazgos nuevos,
 	 * sólo porque el número creció.
 	 */
+	// --- E4.1 · la tendencia, dibujada acá y sin librería ------------------
+	//
+	// SVG INLINE Y NADA MÁS. Odoo no trae una librería de gráficos en el backend y sumar
+	// una para dibujar ocho puntos es peso, superficie y una dependencia que alguien va a
+	// tener que actualizar. Ocho puntos y una polilínea se calculan en veinte líneas.
+	//
+	// LA LÍNEA SE CORTA EN EL HUECO. Una corrida que falló no tiene medición, y unir el
+	// punto anterior con el siguiente dibujaría una recta que afirma que esa semana se
+	// midió. Se parte la serie en tramos y cada tramo se dibuja aparte; el hueco queda
+	// marcado con su propia señal.
+
+	get ancho() { return 260; }
+	get alto() { return 48; }
+
+	/** Los puntos de una serie, ya en coordenadas del dibujo. */
+	puntos(clave) {
+		const serie = ((this.state.datos.detalle.tendencia || {}).series || {})[clave];
+		if (!serie || !serie.length) {
+			return [];
+		}
+		const medidos = serie.filter((p) => p.medida).map((p) => p.valor);
+		const max = Math.max(...medidos, 0);
+		const min = Math.min(...medidos, 0);
+		const rango = max - min || 1;
+		const paso = serie.length > 1 ? this.ancho / (serie.length - 1) : 0;
+		return serie.map((p, i) => ({
+			...p,
+			x: Math.round(i * paso),
+			// El eje crece hacia arriba; el SVG, hacia abajo.
+			y: p.medida
+				? Math.round(this.alto - ((p.valor - min) / rango) * (this.alto - 8) - 4)
+				: null,
+		}));
+	}
+
+	/**
+	 * Los TRAMOS continuos de la serie. Cada corte es una corrida sin medición.
+	 *
+	 * Devolver una sola polilínea con los huecos salteados es lo que haría cualquier
+	 * librería por omisión, y es justamente lo que no se puede hacer acá.
+	 */
+	tramos(clave) {
+		const salida = [];
+		let actual = [];
+		for (const punto of this.puntos(clave)) {
+			if (punto.y === null) {
+				if (actual.length > 1) {
+					salida.push(actual);
+				}
+				actual = [];
+				continue;
+			}
+			actual.push(punto);
+		}
+		if (actual.length > 1) {
+			salida.push(actual);
+		}
+		return salida.map((tramo) =>
+			tramo.map((p) => `${p.x},${p.y}`).join(" "));
+	}
+
+	/** Los huecos, para marcarlos: son corridas que existieron y no se pudieron medir. */
+	huecos(clave) {
+		return this.puntos(clave).filter((p) => p.y === null);
+	}
+
 	sentido(numero) {
 		if (!numero.delta) {
 			return "igual";

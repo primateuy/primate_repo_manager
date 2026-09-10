@@ -86,9 +86,6 @@
 						</div>
 
 						<!-- Regla 2: lo que todavía no llegó, a la vista y apagado. -->
-						<Apagado t-if="numero.clave === 'protegidas'"
-								 que="'Tendencia de las últimas 8 corridas'" bloque="'E4'"
-								 detalle="'El gráfico de la serie. Los datos ya se guardan en cada corrida; falta la pantalla, que nace con ella en E4.'"/>
 						<Apagado t-if="numero.clave === 'convencion'"
 								 que="'Meta configurable'" bloque="'E4'"
 								 detalle="'Hoy el número se muestra sin meta contra la cual compararlo.'"/>
@@ -146,6 +143,58 @@
 				</div>
 
 				<div t-if="state.abierto and datos.detalle.hay" class="rm-panel-detalle">
+					<!-- E4.1 · LA TENDENCIA. Tres series, una por número, y la línea se
+						 CORTA donde una corrida no se pudo medir: unir el punto anterior
+						 con el siguiente dibujaría una recta que afirma que esa semana
+						 se midió. El hueco se marca; no se rellena. -->
+					<div class="rm-card rm-panel-tendencia">
+						<h2>Cómo venimos</h2>
+						<t t-if="!datos.detalle.tendencia.hay">
+							<div class="rm-panel-nada"
+								 t-esc="datos.detalle.tendencia.motivo"/>
+						</t>
+						<t t-else="">
+							<div t-foreach="datos.numeros" t-as="numero"
+								 t-key="numero.clave" class="rm-panel-serie">
+								<div class="rm-panel-serie-titulo" t-esc="numero.titulo"/>
+								<svg t-att-width="ancho" t-att-height="alto"
+									 t-attf-viewBox="0 0 {{ancho}} {{alto}}"
+									 class="rm-panel-svg" role="img"
+									 t-attf-aria-label="Tendencia de {{numero.titulo}} en las últimas corridas">
+									<t t-foreach="tramos(numero.clave)" t-as="tramo"
+									   t-key="tramo_index">
+										<polyline t-att-points="tramo"
+												  class="rm-panel-linea"/>
+									</t>
+									<t t-foreach="puntos(numero.clave)" t-as="punto"
+									   t-key="punto.corrida_id">
+										<circle t-if="punto.y !== null"
+												t-att-cx="punto.x" t-att-cy="punto.y"
+												r="2.5" class="rm-panel-punto"/>
+									</t>
+									<!-- El hueco, con su marca propia: una corrida que
+										 existió y no se pudo medir. -->
+									<t t-foreach="huecos(numero.clave)" t-as="hueco"
+									   t-key="hueco.corrida_id">
+										<rect t-attf-x="{{hueco.x - 3}}" y="2"
+											  width="6" t-attf-height="{{alto - 4}}"
+											  class="rm-panel-hueco"/>
+									</t>
+								</svg>
+								<div class="rm-panel-serie-pie">
+									<span t-esc="puntos(numero.clave)[0].cuando"/>
+									<span t-if="huecos(numero.clave).length"
+										  class="rm-no-legible">
+										<t t-esc="huecos(numero.clave).length"/>
+										corrida(s) sin medición: la línea se corta ahí, no
+										se rellena
+									</span>
+									<span t-esc="puntos(numero.clave).slice(-1)[0].cuando"/>
+								</div>
+							</div>
+						</t>
+					</div>
+
 					<div class="rm-card">
 						<h2>Qué está mal, por gravedad</h2>
 						<div t-if="!datos.detalle.por_gravedad.length"

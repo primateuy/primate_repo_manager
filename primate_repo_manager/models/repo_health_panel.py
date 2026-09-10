@@ -287,10 +287,67 @@ class RepoHealthPanel(models.AbstractModel):
 			return {"hay": False}
 		return {
 			"hay": True,
+			"tendencia": self._tendencia(backend),
 			"por_gravedad": self._por_gravedad(corrida),
 			"por_tipo": self._por_tipo(backend),
 			"sin_dueno": self._sin_dueno(backend),
 		}
+
+	# ------------------------------------------------------------------
+	# E4.1 · la tendencia
+	# ------------------------------------------------------------------
+
+	# Ocho corridas. No es un número redondo por gusto: con una auditoría semanal son dos
+	# meses, que es el horizonte en el que una decisión de gobernanza se ve. Más puntos
+	# convierten el dibujo en un electrocardiograma que nadie lee de un vistazo.
+	CORRIDAS_DE_TENDENCIA = 8
+
+	@api.model
+	def _tendencia(self, backend):
+		"""Las últimas corridas, con su valor guardado — y con los huecos a la vista.
+
+		LA SERIE ES SOBRE CORRIDAS, NO SOBRE MEDICIONES. Es la diferencia que hace que
+		esto no mienta: una corrida que falló no tiene métrica, y saltearla dibujaría una
+		línea continua entre la semana anterior y la siguiente como si esa semana se
+		hubiera medido y hubiera dado bien. **La línea se corta ahí.** Interpolar sería
+		exactamente la mentira cómoda de siempre: el gráfico queda más lindo y afirma
+		algo que nadie miró.
+
+		Los valores salen de `repo.metric`, que guarda la foto al cerrar cada corrida.
+		Recalcularlos hoy desde el espejo daría el estado de HOY repetido ocho veces.
+		"""
+		corridas = self.env["repo.audit.run"].search(
+			[("backend_id", "=", backend.id),
+			 ("state", "in", ("done", "partial", "error"))],
+			order="id desc", limit=self.CORRIDAS_DE_TENDENCIA)
+		corridas = corridas.sorted("id")
+		if len(corridas) < 2:
+			# La frase es del mockup, y dice la verdad: con un punto no hay tendencia.
+			return {"hay": False,
+					"motivo": _("El detalle aparece con la segunda auditoría.")}
+		fotos = {}
+		for metrica in self.env["repo.metric"].search(
+				[("run_id", "in", corridas.ids)]):
+			fotos.setdefault(metrica.run_id.id, {})[metrica.key] = metrica.value
+
+		series = {}
+		for clave in ("protegidas", "convencion", "hallazgos"):
+			puntos = []
+			for corrida in corridas:
+				valor = fotos.get(corrida.id, {}).get(clave)
+				puntos.append({
+					"corrida_id": corrida.id,
+					"etiqueta": corrida.display_name,
+					"cuando": (corrida.finished_at or corrida.create_date).strftime(
+						"%d/%m"),
+					# `None` es un HUECO y no un cero. La pantalla corta la línea acá.
+					"valor": valor,
+					"medida": valor is not None,
+					"fallida": corrida.state == "error",
+				})
+			series[clave] = puntos
+		return {"hay": True, "series": series,
+				"corridas": len(corridas)}
 
 	def _por_gravedad(self, corrida):
 		etiquetas = dict(

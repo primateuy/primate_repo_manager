@@ -28,8 +28,8 @@ oscuro (turno 7 del entregable).
 
 | columna | cuántos |
 |---|---|
-| ✅ Implementado | 104 |
-| 🔒 Apagado con su cartel | 15 |
+| ✅ Implementado | 105 |
+| 🔒 Apagado con su cartel | 14 |
 | 📋 Ítem de plan, con su bloque | 11 |
 | ↔️ Desvío deliberado, con su motivo | 3 |
 | ⛔ Sin representación | **0** |
@@ -75,7 +75,7 @@ final cuenta cuáles eran y dónde fueron.
 | Por tipo de repositorio | ✅ | dentro del pliegue |
 | Cuentas sin dueño | ✅ | por conexión |
 | Bloque de repositorios sin leer con su causa | ✅ | y fuera de los porcentajes |
-| Tendencia de las últimas 8 corridas | 🔒 | llega con **E4**: los datos ya se guardan en cada corrida (`repo.metric`); falta la pantalla, que nace con ella |
+| Tendencia de las últimas 8 corridas | ✅ | E4.1 · SVG propio, sin librería. La línea **se corta** donde una corrida no se pudo medir: el hueco lleva su banda rayada y su frase, y jamás se interpola |
 | «Comparar con auditoría anterior» | ✅ | E2.2b · y además «Comparar con otra», que el mockup pide en la pantalla del delta |
 | Meta configurable del 85 % | 🔒 | llega con **E4** |
 | Delta «▲ 6 puntos desde la anterior» en los números | ✅ | E2.2b · el valor viejo sale de `repo.metric`. El color dice si el movimiento es **bueno o malo**, no si el número subió: más ramas protegidas es mejor, más hallazgos abiertos es peor |

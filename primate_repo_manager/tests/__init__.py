@@ -26,6 +26,7 @@ from . import test_findings
 from . import test_hallazgos_pantalla
 from . import test_audit_log
 from . import test_write_plan
+from . import test_tendencia
 from . import test_write_apply
 from . import test_clasificacion_manual
 from . import test_acciones_abren
