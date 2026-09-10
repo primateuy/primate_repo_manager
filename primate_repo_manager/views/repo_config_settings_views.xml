@@ -66,6 +66,20 @@
 						<field name="repo_archive_months"/>
 					</group>
 
+					<group string="Metas del panel">
+						<div colspan="2" class="text-muted mb-2">
+							Son <b>aspiración</b>, no política. El panel las muestra junto
+							al número y las dibuja en la tendencia; <b>no generan
+							hallazgos</b> ni cambian el delta. Lo que el módulo exige se
+							define en las plantillas de política.<br/>
+							Vacías, el número se muestra como hoy. Y vacío no es cero:
+							una meta de cero es exigente, no ausente.
+						</div>
+						<field name="meta_protegidas" placeholder="por ejemplo, 85"/>
+						<field name="meta_convencion" placeholder="por ejemplo, 85"/>
+						<field name="meta_hallazgos" placeholder="por ejemplo, 10"/>
+					</group>
+
 					<group string="Estado de la instancia">
 						<div colspan="2" class="text-muted mb-2">
 							Sólo lectura. Está acá para no tener que entrar al servidor a

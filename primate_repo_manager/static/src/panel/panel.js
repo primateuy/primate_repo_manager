@@ -148,6 +148,32 @@ export class PanelDeSalud extends Component {
 			tramo.map((p) => `${p.x},${p.y}`).join(" "));
 	}
 
+	/**
+	 * Dónde cae la meta en el dibujo, o `null` si no hay meta o queda fuera de la escala.
+	 *
+	 * FUERA DE LA ESCALA SE OMITE, no se pega al borde. Una meta del 85 % dibujada al
+	 * tope de un gráfico que va de 0 a 40 diría «estamos rozándola», que es lo contrario
+	 * de lo que pasa. Cuando no entra, el número de arriba la sigue diciendo en palabras.
+	 */
+	yDeMeta(numero) {
+		if (!numero.meta) {
+			return null;
+		}
+		const serie = this.puntos(numero.clave).filter((p) => p.y !== null);
+		if (!serie.length) {
+			return null;
+		}
+		const valores = serie.map((p) => p.valor);
+		const max = Math.max(...valores, 0);
+		const min = Math.min(...valores, 0);
+		if (numero.meta > max || numero.meta < min) {
+			return null;
+		}
+		const rango = max - min || 1;
+		return Math.round(
+			this.alto - ((numero.meta - min) / rango) * (this.alto - 8) - 4);
+	}
+
 	/** Los huecos, para marcarlos: son corridas que existieron y no se pudieron medir. */
 	huecos(clave) {
 		return this.puntos(clave).filter((p) => p.y === null);

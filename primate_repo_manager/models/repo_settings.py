@@ -48,6 +48,13 @@ CLAVES = {
 	"repo_archive_months": "repo_manager.repo_archive_months",
 }
 
+# Las que pueden estar VACÍAS y por eso no son enteros. Ver el comentario de las metas.
+CLAVES_DE_TEXTO = {
+	"meta_protegidas": "repo_manager.meta_protegidas",
+	"meta_convencion": "repo_manager.meta_convencion",
+	"meta_hallazgos": "repo_manager.meta_hallazgos",
+}
+
 # El cron de la auditoría, por su identificador externo. Igual que `CLAVES`: la lista es
 # el alcance de la elevación de permisos, y está fija en el código.
 CRON_AUDITORIA = "primate_repo_manager.cron_auditoria_programada"
@@ -84,6 +91,19 @@ class RepoSettings(models.TransientModel):
 		help="A esa distancia el merge de parches ya es un problema y no un pendiente.")
 	pr_stale_days = fields.Integer(
 		string="Días para considerar estancada una PR")
+
+	# --- las metas del panel ---
+	#
+	# `Char` y no `Integer` a propósito: hace falta distinguir «sin meta» de «meta cero»,
+	# y un entero vacío es cero. Es la misma regla del panel —un guion no es un cero— del
+	# lado de la configuración.
+	meta_protegidas = fields.Char(
+		string="Meta · ramas principales protegidas (%)",
+		help="Vacío: el número se muestra sin meta, como hoy. La meta es aspiración: el "
+			 "panel la muestra y la dibuja en la tendencia, pero NO genera hallazgos ni "
+			 "cambia el delta.")
+	meta_convencion = fields.Char(string="Meta · commits con convención (%)")
+	meta_hallazgos = fields.Char(string="Meta · hallazgos abiertos (máximo)")
 
 	branch_abandoned_months = fields.Integer(
 		string="Meses sin actividad para llamar abandonada a una rama",
@@ -145,6 +165,8 @@ class RepoSettings(models.TransientModel):
 				valores[campo] = int(crudo)
 			except (TypeError, ValueError):
 				valores[campo] = int(DEFAULTS[clave])
+		for campo, clave in CLAVES_DE_TEXTO.items():
+			valores[campo] = Config.get_param(clave, "") or ""
 
 		valores["delta_recipient_ids"] = [(6, 0, self._destinatarios().ids)]
 		cron = self._cron()
@@ -230,6 +252,8 @@ class RepoSettings(models.TransientModel):
 		Config = self.env["ir.config_parameter"].sudo()
 		for campo, clave in CLAVES.items():
 			Config.set_param(clave, str(self[campo]))
+		for campo, clave in CLAVES_DE_TEXTO.items():
+			Config.set_param(clave, (self[campo] or "").strip())
 
 		Config.set_param(
 			CLAVE_DESTINATARIOS,

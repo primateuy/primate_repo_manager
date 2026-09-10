@@ -28,8 +28,8 @@ oscuro (turno 7 del entregable).
 
 | columna | cuántos |
 |---|---|
-| ✅ Implementado | 105 |
-| 🔒 Apagado con su cartel | 14 |
+| ✅ Implementado | 106 |
+| 🔒 Apagado con su cartel | 13 |
 | 📋 Ítem de plan, con su bloque | 11 |
 | ↔️ Desvío deliberado, con su motivo | 3 |
 | ⛔ Sin representación | **0** |
@@ -77,7 +77,7 @@ final cuenta cuáles eran y dónde fueron.
 | Bloque de repositorios sin leer con su causa | ✅ | y fuera de los porcentajes |
 | Tendencia de las últimas 8 corridas | ✅ | E4.1 · SVG propio, sin librería. La línea **se corta** donde una corrida no se pudo medir: el hueco lleva su banda rayada y su frase, y jamás se interpola |
 | «Comparar con auditoría anterior» | ✅ | E2.2b · y además «Comparar con otra», que el mockup pide en la pantalla del delta |
-| Meta configurable del 85 % | 🔒 | llega con **E4** |
+| Meta configurable del 85 % | ✅ | E4.2 · una por número, las tres opcionales. Es **aspiración, no política**: aparece junto al delta y como línea en la tendencia, y no genera hallazgos ni entra al delta |
 | Delta «▲ 6 puntos desde la anterior» en los números | ✅ | E2.2b · el valor viejo sale de `repo.metric`. El color dice si el movimiento es **bueno o malo**, no si el número subió: más ramas protegidas es mejor, más hallazgos abiertos es peor |
 | Aviso de auditoría en curso dentro del panel | 🔒 | es uno de los dos avisos de barra: **E4**, ver abajo |
 

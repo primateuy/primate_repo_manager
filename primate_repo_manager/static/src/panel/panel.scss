@@ -247,3 +247,14 @@
 		@include rm-mono;
 	}
 }
+
+// E4.2 · la meta. Gris y punteada: es a dónde se quiere llegar, no una medición ni una
+// exigencia. El color de este sistema dice gravedad, y una meta no tiene gravedad.
+.rm-panel-meta { color: var(--rm-ink-3); }
+
+.rm-panel-tendencia .rm-panel-meta-linea {
+	fill: none;
+	stroke: var(--rm-ink-3);
+	stroke-width: 1;
+	stroke-dasharray: 3 3;
+}

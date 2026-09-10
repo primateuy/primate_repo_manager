@@ -112,7 +112,38 @@ class RepoHealthPanel(models.AbstractModel):
 			self._numero_hallazgos(corrida, anterior,
 								   self._hay_politica(backend)),
 		]
-		return self._con_delta(numeros, anterior)
+		return self._con_meta(self._con_delta(numeros, anterior))
+
+	# La meta de cada número, por su clave. Vacía es vacía: ver `_con_meta`.
+	CLAVES_DE_META = {
+		"protegidas": "repo_manager.meta_protegidas",
+		"convencion": "repo_manager.meta_convencion",
+		"hallazgos": "repo_manager.meta_hallazgos",
+	}
+
+	def _con_meta(self, numeros):
+		"""La meta de cada número, si alguien la puso. ASPIRACIÓN, NO POLÍTICA.
+
+		El panel la muestra —junto al delta y como línea en la tendencia— y **no la
+		reclama**: no genera hallazgos, no entra en el delta y no cambia ninguna
+		severidad. Lo que el módulo exige vive en la plantilla de política, que es donde
+		se decide con alguien; una meta es lo que el equipo se propone, y confundir las
+		dos convertiría un deseo en un incumplimiento.
+
+		VACÍA ES VACÍA, y por eso las metas son texto y no enteros. «Sin meta» y «meta
+		cero» son cosas distintas —la segunda es exigente, no ausente— y un entero vacío
+		es cero. Es la misma regla del panel, que no muestra 0 % donde no hay nada que
+		medir, aplicada del lado de la configuración.
+		"""
+		Config = self.env["ir.config_parameter"].sudo()
+		for numero in numeros:
+			crudo = (Config.get_param(
+				self.CLAVES_DE_META.get(numero.get("clave"), ""), "") or "").strip()
+			try:
+				numero["meta"] = float(crudo) if crudo else None
+			except ValueError:
+				numero["meta"] = None
+		return numeros
 
 	def _con_delta(self, numeros, anterior):
 		"""«▲ 6 puntos desde la anterior», para los que se puedan comparar.

@@ -171,3 +171,98 @@ class TestTourTendencia(HttpCase):
 		self.start_tour(
 			"/odoo/action-primate_repo_manager.action_repo_panel_salud",
 			"prm_tendencia", login="admin")
+
+
+class TestLaMeta(TransactionCase):
+	"""E4.2 · la meta es ASPIRACIÓN, no política.
+
+	El panel la muestra; no la reclama. Lo que el módulo exige vive en la plantilla de
+	política, que es donde se decide con alguien. Confundir las dos convertiría un deseo
+	en un incumplimiento — y este módulo ya tiene un lugar para los incumplimientos.
+	"""
+
+	def setUp(self):
+		super().setUp()
+		self.backend = self.env["repo.backend"].create({
+			"name": "Meta %s" % uuid.uuid4().hex[:6],
+			"owner_login": "cuenta-%s" % uuid.uuid4().hex[:8],
+			"owner_type": "user", "app_id": "1", "installation_id": "2",
+			"state": "connected"})
+		self.repo = self.env["repo.repository"].create({
+			"backend_id": self.backend.id, "github_id": uuid.uuid4().hex[:8],
+			"name": "uno", "full_name": "cuenta/uno", "classification": "cliente"})
+		self.corrida = self.env["repo.audit.run"].create({
+			"name": "C", "backend_id": self.backend.id, "state": "done",
+			"finished_at": fields.Datetime.now()})
+		self.Panel = self.env["repo.health.panel"]
+
+	def _poner(self, clave, valor):
+		self.env["ir.config_parameter"].sudo().set_param(clave, valor)
+
+	def _numeros(self):
+		return {n["clave"]: n
+				for n in self.Panel.datos(backend_id=self.backend.id)["numeros"]}
+
+	def test_de_fabrica_NO_hay_meta(self):
+		"""Una meta que el producto elige por vos es una exigencia que nadie decidió."""
+		for numero in self._numeros().values():
+			self.assertIsNone(numero["meta"])
+
+	def test_la_meta_puesta_aparece_en_su_numero(self):
+		self._poner("repo_manager.meta_convencion", "85")
+		numeros = self._numeros()
+		self.assertEqual(numeros["convencion"]["meta"], 85.0)
+		self.assertIsNone(numeros["protegidas"]["meta"], "la meta es POR número")
+
+	def test_VACIO_NO_ES_CERO(self):
+		"""«Sin meta» y «meta cero» son cosas distintas: la segunda es exigente, no
+		ausente. Por eso las metas son texto y no enteros."""
+		self._poner("repo_manager.meta_hallazgos", "0")
+		self.assertEqual(self._numeros()["hallazgos"]["meta"], 0.0)
+		self._poner("repo_manager.meta_hallazgos", "")
+		self.assertIsNone(self._numeros()["hallazgos"]["meta"])
+
+	def test_una_meta_ILEGIBLE_no_rompe_el_panel(self):
+		"""El panel es lo primero que alguien abre: un valor mal tipeado en Ajustes no
+		puede dejarlo en blanco."""
+		self._poner("repo_manager.meta_protegidas", "ochenta y cinco")
+		self.assertIsNone(self._numeros()["protegidas"]["meta"])
+
+	# --- lo que la meta NO hace ---
+
+	def test_la_meta_NO_genera_hallazgos(self):
+		"""Es la guarda que separa aspiración de política."""
+		self._poner("repo_manager.meta_protegidas", "100")
+		self.env["repo.branch"].create({
+			"repository_id": self.repo.id, "name": "19.0", "role": "base",
+			"protected": False, "protection_readable": True})
+
+		self.env["repo.audit.engine"].evaluate(self.corrida)
+
+		tipos = set(self.corrida.finding_ids.mapped("finding_type"))
+		self.assertFalse({t for t in tipos if "meta" in t},
+						 "la meta generó un hallazgo: dejó de ser aspiración")
+
+	def test_la_meta_NO_entra_en_el_delta(self):
+		"""El delta compara dos corridas entre sí, no contra un deseo."""
+		anterior = self.env["repo.audit.run"].create({
+			"name": "Antes", "backend_id": self.backend.id, "state": "done",
+			"finished_at": fields.Datetime.now()})
+		self.env["repo.metric"].create({
+			"run_id": anterior.id, "backend_id": self.backend.id,
+			"key": "protegidas", "value": 40.0,
+			"measured_at": fields.Datetime.now()})
+		self._poner("repo_manager.meta_protegidas", "100")
+
+		delta = self.corrida.delta()
+
+		self.assertFalse(delta["nuevos"])
+		self.assertFalse(delta["resueltos"])
+
+	def test_la_meta_NO_cambia_el_valor_ni_el_delta_del_numero(self):
+		self._poner("repo_manager.meta_protegidas", "100")
+		numero = self._numeros()["protegidas"]
+		self.assertIn("valor", numero)
+		self.assertEqual(numero["meta"], 100.0)
+		# El valor sigue siendo el medido, no la distancia a la meta.
+		self.assertNotEqual(numero["valor"], 100.0)

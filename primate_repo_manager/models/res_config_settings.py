@@ -23,6 +23,13 @@ DEFAULTS = {
 	# cableado es la clase de inconsistencia que después nadie recuerda por qué está.
 	"repo_manager.branch_abandoned_months": "6",
 	"repo_manager.repo_archive_months": "18",
+	# E4.2 · LAS METAS SON ASPIRACIÓN VISUAL, NO POLÍTICA. Vacías de fábrica: una meta
+	# que el producto elige por vos es una exigencia que nadie decidió. El panel la
+	# muestra; no la reclama —no genera hallazgos ni entra al delta— y por eso vive acá y
+	# no en la plantilla de política, que es donde vive lo que sí se exige.
+	"repo_manager.meta_protegidas": "",
+	"repo_manager.meta_convencion": "",
+	"repo_manager.meta_hallazgos": "",
 }
 
 

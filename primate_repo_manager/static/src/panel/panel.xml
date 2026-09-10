@@ -77,18 +77,25 @@
 							 Sólo aparece cuando HAY con qué comparar: un «▲ 0» sobre una
 							 comparación que no existe se lee como «no cambió», que es
 							 una afirmación. -->
-						<div t-if="numero.delta !== null and numero.delta !== undefined"
+						<div t-if="(numero.delta !== null and numero.delta !== undefined) or numero.meta"
 							 t-attf-class="rm-panel-delta rm-panel-delta-{{sentido(numero)}}">
-							<t t-esc="flecha(numero)"/>
-							<t t-esc="Math.abs(numero.delta)"/>
-							<t t-esc="numero.unidad === '%' ? ' puntos' : ''"/>
-							desde la anterior
+							<t t-if="numero.delta !== null and numero.delta !== undefined">
+								<t t-esc="flecha(numero)"/>
+								<t t-esc="Math.abs(numero.delta)"/>
+								<t t-esc="numero.unidad === '%' ? ' puntos' : ''"/>
+								desde la anterior
+							</t>
+							<!-- E4.2 · LA META ES ASPIRACIÓN, NO POLÍTICA. Se muestra;
+								 no se reclama. No genera hallazgos ni cambia el delta,
+								 y por eso va en gris al lado y no con el color del
+								 movimiento. -->
+							<span t-if="numero.meta" class="rm-panel-meta">
+								<t t-if="numero.delta !== null and numero.delta !== undefined"> · </t>
+								meta <t t-esc="numero.meta"/><t t-esc="numero.unidad"/>
+							</span>
 						</div>
 
 						<!-- Regla 2: lo que todavía no llegó, a la vista y apagado. -->
-						<Apagado t-if="numero.clave === 'convencion'"
-								 que="'Meta configurable'" bloque="'E4'"
-								 detalle="'Hoy el número se muestra sin meta contra la cual compararlo.'"/>
 					</div>
 				</div>
 
@@ -174,6 +181,15 @@
 									</t>
 									<!-- El hueco, con su marca propia: una corrida que
 										 existió y no se pudo medir. -->
+									<!-- La meta, como línea de referencia. Punteada y
+										 gris: es a dónde se quiere llegar, no una
+										 medición ni una exigencia. -->
+									<!-- `polyline` y no `line`: OWL no renderiza un
+										 `<line>` dentro del `<svg>` — lo midió el tour
+										 de E4.1. Dos puntos hacen la misma recta. -->
+									<polyline t-if="yDeMeta(numero) !== null"
+											  t-attf-points="0,{{yDeMeta(numero)}} {{ancho}},{{yDeMeta(numero)}}"
+											  class="rm-panel-meta-linea"/>
 									<t t-foreach="huecos(numero.clave)" t-as="hueco"
 									   t-key="hueco.corrida_id">
 										<rect t-attf-x="{{hueco.x - 3}}" y="2"
