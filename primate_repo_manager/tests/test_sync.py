@@ -39,7 +39,17 @@ BRANCHES = [
 	{"name": "17.0", "protected": False, "commit": {"sha": "abc123"}},
 	{"name": "17.0.Staging", "protected": False, "commit": {"sha": "def456"}},
 	{"name": "feature/1234-algo", "protected": False, "commit": {"sha": "ghi789"}},
+	# Dos ramas de trabajo sobre la línea 17.0: una integrada y otra con trabajo propio.
+	# Es la distinción entera de E3, así que el doble tiene que poder representarla.
+	{"name": "17.0_integrada", "protected": False, "commit": {"sha": "jkl012"}},
+	{"name": "17.0_con_trabajo", "protected": False, "commit": {"sha": "mno345"}},
 ]
+
+# Lo que GitHub contesta al comparar. La clave es la rama que se compara (`head`).
+COMPARACIONES = {
+	"17.0_integrada": {"ahead_by": 0, "behind_by": 12},
+	"17.0_con_trabajo": {"ahead_by": 7, "behind_by": 3},
+}
 
 COLABORADORES = [
 	{"login": "dyturralbe", "id": 1, "role_name": "write"},
@@ -99,6 +109,15 @@ class TransporteAuditoria:
 			# puede ver (ausencia de dato). Sólo el texto los distingue.
 			if "/webOCA/" in url:
 				return RespuestaFalsa(404, {"message": "Branch not protected"})
+			return RespuestaFalsa(404, {"message": "Not Found"})
+		if "/compare/" in url:
+			# `.../compare/<base>...<head>`. El doble contesta por el head, que es la
+			# rama que se está midiendo.
+			head = url.rsplit("...", 1)[-1]
+			if head in COMPARACIONES:
+				return RespuestaFalsa(200, COMPARACIONES[head])
+			# Una rama que el doble no conoce se comporta como GitHub cuando la ref no
+			# existe: 404. Es el camino de «no se pudo comparar».
 			return RespuestaFalsa(404, {"message": "Not Found"})
 		if "/collaborators" in url:
 			return RespuestaFalsa(200, COLABORADORES)
@@ -162,6 +181,80 @@ class TestSync(TransactionCase):
 			return repos
 		finally:
 			type(self.backend).client = original
+
+	# --- E3.2a · integrada o con trabajo propio ---
+
+	def test_una_rama_INTEGRADA_queda_en_cero_commits_propios(self):
+		"""Cero significa integrada: lo que tenía ya está del otro lado."""
+		repos = self._sincronizar()
+		rama = repos.mapped("branch_ids").filtered(
+			lambda b: b.name == "17.0_integrada")[:1]
+		self.assertTrue(rama)
+		self.assertEqual(rama.ahead_of_line, 0)
+		self.assertTrue(rama.line_comparison_readable)
+		self.assertEqual(rama.line_branch_name, "17.0")
+
+	def test_una_rama_CON_TRABAJO_PROPIO_lo_dice_con_su_numero(self):
+		"""Y es la que NUNCA se va a proponer borrar."""
+		repos = self._sincronizar()
+		rama = repos.mapped("branch_ids").filtered(
+			lambda b: b.name == "17.0_con_trabajo")[:1]
+		self.assertEqual(rama.ahead_of_line, 7)
+		self.assertTrue(rama.line_comparison_readable)
+
+	def test_la_rama_de_produccion_de_la_linea_es_prod_SI_EXISTE(self):
+		"""La jerarquía: rol `prod` si está, si no la base de la línea."""
+		repos = self._sincronizar()
+		repo = repos[:1]
+		trabajo = repo.branch_ids.filtered(lambda b: b.name == "17.0_con_trabajo")[:1]
+		self.assertEqual(trabajo.rama_de_produccion_de_la_linea().name, "17.0")
+
+		# Aparece una rama de producción de la línea y ella pasa a mandar.
+		prod = self.env["repo.branch"].create({
+			"repository_id": repo.id, "name": "17.0-prod", "role": "prod"})
+		self.assertEqual(trabajo.rama_de_produccion_de_la_linea(), prod)
+
+	def test_una_rama_SIN_LINEA_no_se_compara_contra_nada_inventado(self):
+		"""`main`, `gh-pages`: no pertenecen a ninguna línea. Inventarle una sería
+		inventar la comparación entera."""
+		repo = self._sincronizar()[:1]
+		suelta = self.env["repo.branch"].create({
+			"repository_id": repo.id, "name": "gh-pages", "role": "other"})
+		self.assertFalse(suelta.linea())
+		self.assertFalse(suelta.rama_de_produccion_de_la_linea())
+
+	def test_una_rama_NO_se_compara_contra_si_misma(self):
+		repo = self._sincronizar()[:1]
+		base = repo.branch_ids.filtered(lambda b: b.name == "17.0")[:1]
+		self.assertNotEqual(base.rama_de_produccion_de_la_linea(), base)
+
+	def test_las_ramas_GOBERNADAS_no_gastan_una_llamada(self):
+		"""Son la estructura: no son candidatas a nada, y compararlas sería pagar por
+		una pregunta que no se va a hacer."""
+		self._sincronizar()
+		comparaciones = [u for u in self.transporte.llamadas if "/compare/" in u]
+		self.assertTrue(comparaciones, "no se comparó ninguna rama")
+		for url in comparaciones:
+			head = url.rsplit("...", 1)[-1]
+			self.assertNotIn(head, ("17.0", "17.0.Staging"),
+							 "se comparó una rama que la política gobierna")
+
+	def test_un_compare_QUE_FALLA_no_afirma_que_está_integrada(self):
+		"""«Cero commits propios» y «no se pudo mirar» no pueden ser el mismo cero: el
+		primero propone borrar una rama, el segundo no puede proponer nada.
+		"""
+		BRANCHES.append(
+			{"name": "17.0_desconocida", "protected": False, "commit": {"sha": "zzz"}})
+		try:
+			repos = self._sincronizar()
+			rama = repos.mapped("branch_ids").filtered(
+				lambda b: b.name == "17.0_desconocida")[:1]
+			self.assertTrue(rama)
+			self.assertFalse(rama.line_comparison_readable)
+			self.assertTrue(rama.line_comparison_cause)
+			self.assertEqual(rama.ahead_of_line, 0)
+		finally:
+			BRANCHES.pop()
 
 	# --- lo que dejó de venir en el listado ---
 

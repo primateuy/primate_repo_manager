@@ -6,6 +6,8 @@ import ast
 import json
 import logging
 
+import re
+
 from odoo import _, fields, models
 
 from .repo_rules import BRANCH_ROLES
@@ -69,6 +71,26 @@ class RepoBranch(models.Model):
 	behind_upstream = fields.Integer(string="Commits detrás del upstream")
 	comparison_readable = fields.Boolean(string="Comparación legible", default=True)
 
+	# --- E3.2a · la comparación contra la rama de producción de SU línea ---
+	#
+	# NO SE REUSAN `ahead_upstream` / `behind_upstream`: ésos miden contra el upstream de
+	# un fork, que es otra pregunta. Dos significados en un campo es cómo se llega a un
+	# informe que afirma una cosa habiendo medido otra.
+	line_branch_name = fields.Char(
+		string="Rama de producción de su línea", readonly=True,
+		help="Contra cuál se comparó. La del rol «prod» de la línea si existe; si no, la "
+			 "base de la línea.")
+	ahead_of_line = fields.Integer(
+		string="Commits propios sin integrar", readonly=True,
+		help="Commits que están en esta rama y NO en la de producción de su línea. Cero "
+			 "significa integrada: lo que tenía ya está del otro lado.")
+	line_comparison_readable = fields.Boolean(
+		string="Se pudo comparar con su línea", readonly=True,
+		help="Falso mientras no se haya comparado o cuando la comparación falló. Sin "
+			 "esto, «cero commits propios» y «no se pudo mirar» serían el mismo cero.")
+	line_comparison_cause = fields.Char(
+		string="Por qué no se pudo comparar", readonly=True)
+
 	# El árbol de git viene truncado en repositorios muy grandes. Se guarda como dato para
 	# que el inventario de módulos pueda decir «acá no pude ver todo» en vez de dejar que
 	# alguien lea el silencio como «no hay módulos».
@@ -119,6 +141,40 @@ class RepoBranchComparacion(models.Model):
 		_logger.warning(
 			"Repo Manager: no se pudo interpretar la protección de %s", self.display_name)
 		return {}
+
+	def linea(self):
+		"""La línea de versión de esta rama: `19.0-dev` → `19.0`, `17.0_pos` → `17.0`.
+
+		Una rama que no empieza con una versión no pertenece a ninguna línea —`main`,
+		`gh-pages`— y para ellas no hay contra qué comparar. Devuelve vacío y quien
+		pregunta decide qué hacer con eso; inventar una línea sería inventar la
+		comparación entera.
+		"""
+		self.ensure_one()
+		encontrado = re.match(r"^(\d+\.\d+)", self.name or "")
+		return encontrado.group(1) if encontrado else ""
+
+	def rama_de_produccion_de_la_linea(self):
+		"""Contra qué se mide «ya está integrada»: la jerarquía de línea.
+
+		**Rol `prod` si existe; si no, la base de la línea.** Los dos casos son reales:
+		un repositorio gobernado por el módulo tiene `19.0-prod`, y uno que todavía no se
+		migró tiene sólo `19.0`. Medir el segundo contra nada lo dejaría sin higiene
+		posible justamente donde más ramas viejas hay.
+
+		Nunca se compara una rama contra sí misma: la rama de producción no es candidata
+		a nada, y `ahead 0` sobre sí misma sería un «integrada» que no significa nada.
+		"""
+		self.ensure_one()
+		linea = self.linea()
+		if not linea:
+			return self.browse()
+		hermanas = self.repository_id.branch_ids.filtered(
+			lambda b: b.linea() == linea and b != self)
+		prod = hermanas.filtered(lambda b: b.role == "prod")[:1]
+		if prod:
+			return prod
+		return hermanas.filtered(lambda b: b.name == linea)[:1]
 
 	def _rulesets_que_la_cubren(self):
 		"""Los rulesets del espejo cuyas condiciones nombran a esta rama."""

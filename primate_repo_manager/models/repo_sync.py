@@ -30,6 +30,7 @@ from datetime import datetime
 
 from odoo import _, api, fields, models
 
+from .repo_rules import ROLES_GOBERNADOS
 from .repo_ruleset import RULESET_PREFIX
 from .github_client import (
 	GithubError,
@@ -210,6 +211,7 @@ class RepoRepositorySync(models.Model):
 			self._completar_desde_el_detalle(detalle)
 
 			self._sync_branches(client, no_legible)
+			self._sync_integracion_de_ramas(client)
 			self._sync_collaborators(client, no_legible)
 			self._sync_pull_requests(client)
 			self._sync_commit_samples(client)
@@ -457,6 +459,57 @@ class RepoRepositorySync(models.Model):
 				Alerta.upsert(self, fuente, alerta)
 			abiertas = [a for a in alertas if (a.get("state") or "") == "open"]
 			Scan.upsert(self, fuente, "con_datos", alert_count=len(abiertas))
+
+	def _sync_integracion_de_ramas(self, client):
+		"""E3.2a · cuántos commits propios tiene cada rama sin integrar a su producción.
+
+		ES EL ÚNICO DATO QUE PERMITE LA DISTINCIÓN QUE DA SENTIDO A E3. Una rama vieja e
+		integrada es basura; una rama vieja con trabajo que nunca se mergeó puede ser
+		trabajo por rescatar. La diferencia no se ve en ninguna fecha: se ve comparando.
+
+		SÓLO LAS QUE LA POLÍTICA NO GOBIERNA. `base`, `prod`, `staging`, `support` y
+		`mirror` son la estructura; no son candidatas a nada y compararlas gastaría una
+		llamada por repositorio para responder algo que no se va a preguntar.
+
+		SE PAGA UNA LLAMADA POR RAMA, y es a propósito. En la cuenta real son unas 93
+		—segundos contra un límite holgado— y acotarlas por actividad rompería la promesa
+		de E3: la rama integrada ayer es candidata legítima, y una regla por fecha no la
+		vería.
+
+		UN `compare` QUE FALLA NO AFIRMA NADA. Queda `line_comparison_readable` en falso
+		con su causa, y el motor no la propone: «cero commits propios» y «no se pudo
+		mirar» no pueden ser el mismo cero.
+		"""
+		self.ensure_one()
+		for rama in self.branch_ids:
+			if rama.role in ROLES_GOBERNADOS or rama.role == "mirror":
+				continue
+			produccion = rama.rama_de_produccion_de_la_linea()
+			if not produccion:
+				rama.write({
+					"line_branch_name": False, "ahead_of_line": 0,
+					"line_comparison_readable": False,
+					"line_comparison_cause": _(
+						"no pertenece a ninguna línea de versión, así que no hay rama de "
+						"producción contra la cual medirla"),
+				})
+				continue
+			try:
+				comparacion = client.get("/repos/%s/compare/%s...%s" % (
+					self.full_name, produccion.name, rama.name)) or {}
+				rama.write({
+					"line_branch_name": produccion.name,
+					"ahead_of_line": comparacion.get("ahead_by") or 0,
+					"line_comparison_readable": True,
+					"line_comparison_cause": False,
+				})
+			except Exception as exc:  # noqa: BLE001 - se dice, nunca se supone
+				rama.write({
+					"line_branch_name": produccion.name,
+					"ahead_of_line": 0,
+					"line_comparison_readable": False,
+					"line_comparison_cause": str(exc)[:200],
+				})
 
 	def _sync_collaborators(self, client, no_legible):
 		"""Permisos observados. Requiere push o más; sin eso se anota como no legible."""
