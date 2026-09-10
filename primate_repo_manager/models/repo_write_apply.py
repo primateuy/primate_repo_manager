@@ -416,6 +416,11 @@ class RepoWriteOperationApply(models.Model):
 		except GithubError as exc:
 			self._registrar_falla(_("No se pudo leer el estado previo: %s") % exc)
 			return False
+		except UserError as exc:
+			if not manejador.get("falla_sola"):
+				raise
+			self._registrar_falla(str(exc))
+			return False
 
 		# --- 2. ejecutar ------------------------------------------------
 		try:
@@ -425,6 +430,26 @@ class RepoWriteOperationApply(models.Model):
 			# no lo vio y hay que saberlo, no taparlo como si fuera lo mismo.
 			self._registrar_bloqueo(
 				_("Techo de plan detectado recién al escribir: %s") % exc)
+			return False
+		except UserError as exc:
+			# EL MANEJADOR DECIDE SI SU GUARDA TUMBA EL PLAN O SÓLO SU OPERACIÓN, y las
+			# dos posturas son correctas en su lugar.
+			#
+			# Las guardas viejas —«este ruleset no lleva nuestro prefijo», «el payload no
+			# trae permiso»— dicen que el plan está MAL ARMADO: seguir aplicando las
+			# demás sería seguir ejecutando algo que ya se sabe equivocado, y por eso
+			# abortan.
+			#
+			# La de borrar ramas dice otra cosa: que el mundo cambió debajo de UNA
+			# operación —alguien empujó a esa rama después de la auditoría— y las otras
+			# siete del lote siguen siendo válidas. Abortar ahí dejaría las dos primeras
+			# aplicadas, ésta sin registro y las cinco últimas sin intentar ni explicar.
+			#
+			# Lo declara el manejador y no una lista aparte: el día que se agregue otra
+			# guarda de esta clase, decidirlo es parte de escribirla.
+			if not manejador.get("falla_sola"):
+				raise
+			self._registrar_falla(str(exc), previo=previo)
 			return False
 		except GithubError as exc:
 			self._registrar_falla(str(exc), previo=previo)
@@ -1051,6 +1076,25 @@ class RepoWriteOperationApply(models.Model):
 			# B3.2 · IDEMPOTENTE POR DESTINO: el destino es una ruta, y escribir dos
 			# veces deja el mismo archivo. Revertir es volver a poner el contenido
 			# anterior — o borrar el archivo, si antes no había ninguno.
+			# E3.2 · BORRAR UNA RAMA. Destructiva y reversible, con una salvedad que no
+			# es letra chica: revertir es recrear la ref en el MISMO commit, y eso
+			# funciona mientras GitHub todavía conserve el objeto. No lo controlamos, y
+			# por eso esta operación exige el tipeo aunque tenga vuelta.
+			#
+			# El punto de retorno es el SHA leído en el paso 1, no el que el hallazgo
+			# traía: entre que se armó el plan y se aplica, alguien pudo haber empujado
+			# a esa rama. Leer antes de ejecutar es el paso 1 del ciclo justamente por
+			# esto.
+			"branch_delete": {
+				# Su guarda falla SÓLO SU OPERACIÓN: ver el comentario de `falla_sola`
+				# en `_aplicar`. Que alguien haya empujado a una rama no invalida las
+				# otras siete del lote.
+				"falla_sola": True,
+				"leer": "_leer_rama_a_borrar",
+				"ejecutar": "_borrar_rama",
+				"verificar": "_verificar_rama_borrada",
+				"revertir": "_recrear_rama",
+			},
 			"codeowners_write": {
 				"leer": "_leer_codeowners",
 				"ejecutar": "_escribir_codeowners",
@@ -1522,6 +1566,88 @@ class RepoWriteOperationApply(models.Model):
 	# ignora: no falla al escribirse, falla en silencio después.
 
 	UBICACIONES_CODEOWNERS = (".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS")
+
+	# --- E3.2 · borrar una rama -------------------------------------------
+
+	def _leer_rama_a_borrar(self, cliente):
+		"""EL PUNTO DE RETORNO: en qué commit está la rama AHORA.
+
+		No se usa el SHA que traía el hallazgo. Entre que se armó el plan y se aplica,
+		alguien pudo haber empujado a esa rama —y si lo hizo, la rama ya no está
+		integrada y borrarla perdería ese commit—. La verificación de que sigue
+		integrada la hace `_borrar_rama`; acá se registra dónde estaba.
+		"""
+		rama = self._rama_objetivo()
+		try:
+			ref = cliente.get("/repos/%s/git/ref/heads/%s" % (
+				self.repository_id.full_name, rama))
+		except GithubNotFound:
+			# QUE NO ESTÉ ES UN ESTADO VÁLIDO, no un error. El rollback llama a este
+			# mismo método para saber «qué hay ahora» ANTES de restaurar, y para entonces
+			# la rama está borrada — que es el punto. Levantar acá haría que revertir un
+			# borrado exitoso fuera imposible.
+			return {"anterior": {"sha": None, "rama": rama, "existe": False}}
+		return {"anterior": {"sha": (ref.get("object") or {}).get("sha"),
+							 "rama": rama, "existe": True}}
+
+	def _borrar_rama(self, cliente):
+		"""Borra la ref. Antes vuelve a comprobar que siga integrada.
+
+		LA COMPROBACIÓN NO ES REDUNDANTE. El hallazgo dijo «integrada» cuando corrió la
+		auditoría; entre eso y el apply pueden pasar días. Un push a esa rama la vuelve
+		«con trabajo sin integrar», que es justamente la que este módulo no borra nunca.
+		Sin esta relectura, el embudo terminaría haciendo lo que el motor se niega a
+		proponer.
+		"""
+		datos = _cargar(self.payload_json) or {}
+		contra = datos.get("integrated_into")
+		rama = self._rama_objetivo()
+		if contra:
+			comparacion = cliente.get("/repos/%s/compare/%s...%s" % (
+				self.repository_id.full_name, contra, rama)) or {}
+			adelante = comparacion.get("ahead_by") or 0
+			if adelante:
+				raise UserError(_(
+					"«%(rama)s» ya no está integrada a «%(contra)s»: tiene %(n)s commit(s) "
+					"propio(s) que no están del otro lado. Alguien empujó a esa rama "
+					"después de la auditoría. NO se borra."
+				) % {"rama": rama, "contra": contra, "n": adelante})
+		cliente.delete("/repos/%s/git/refs/heads/%s" % (
+			self.repository_id.full_name, rama))
+		# El punto de retorno NO se copia acá. Lo escribe el paso 4 en la bitácora, que
+		# es de donde sale el rollback: si viviera además en el resultado habría dos
+		# copias del mismo dato y la de la bitácora dejaría de ser la fuente.
+		return {"borrada": rama}
+
+	def _verificar_rama_borrada(self, cliente):
+		"""Releer es el paso 3: que la escritura no haya devuelto error no alcanza."""
+		try:
+			cliente.get("/repos/%s/git/ref/heads/%s" % (
+				self.repository_id.full_name, self._rama_objetivo()))
+		except GithubNotFound:
+			return True, {"branch": self._rama_objetivo(), "deleted": True}
+		return False, _("la rama «%s» sigue existiendo") % self._rama_objetivo()
+
+	def _recrear_rama(self, cliente, previo):
+		"""La vuelta: la ref otra vez en EL MISMO commit que tenía.
+
+		Si el SHA no está registrado no se inventa uno: recrear la rama en otro commit
+		sería peor que no recrearla, porque dejaría algo con el nombre correcto y el
+		contenido equivocado — y nadie lo miraría dos veces.
+		"""
+		sha = (previo or {}).get("anterior", {}).get("sha")
+		if not sha:
+			raise UserError(_(
+				"No hay punto de retorno registrado para «%s»: sin el commit original no "
+				"se recrea la rama. Recrearla en otro commit sería dejar el nombre "
+				"correcto con el contenido equivocado.") % self._rama_objetivo())
+		cliente.post("/repos/%s/git/refs" % self.repository_id.full_name,
+					 {"ref": "refs/heads/%s" % self._rama_objetivo(), "sha": sha})
+		return {"recreada": self._rama_objetivo(), "sha": sha}
+
+	def _rama_objetivo(self):
+		datos = _cargar(self.payload_json) or {}
+		return datos.get("branch") or self.target
 
 	def _leer_codeowners(self, cliente):
 		"""Estado previo: qué CODEOWNERS hay hoy, dónde, y de quién es."""

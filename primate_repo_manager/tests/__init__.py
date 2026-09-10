@@ -11,6 +11,7 @@ from . import test_correo_delta
 from . import test_delta
 from . import test_drift
 from . import test_seguridad
+from . import test_borrar_rama
 from . import test_checks_requeridos
 from . import test_codeowners
 from . import test_acl_asistentes

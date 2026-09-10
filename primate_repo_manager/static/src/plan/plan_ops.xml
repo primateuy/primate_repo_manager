@@ -155,7 +155,7 @@
 							<t t-elif="!op.data.is_supported">
 								<span class="rm-plan-nada">no se puede confirmar</span>
 							</t>
-							<t t-elif="op.data.is_irreversible">
+							<t t-elif="op.data.requires_typed_name">
 								<div class="rm-plan-tipeo">
 									<label>
 										Escribí «<span class="rm-mono"

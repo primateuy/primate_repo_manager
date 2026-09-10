@@ -286,6 +286,7 @@ export const planOpsField = {
 		{ name: "repository_id", type: "many2one", relation: "repo.repository" },
 		{ name: "is_destructive", type: "boolean" },
 		{ name: "is_irreversible", type: "boolean" },
+		{ name: "requires_typed_name", type: "boolean" },
 		{ name: "is_supported", type: "boolean" },
 		{ name: "approved", type: "boolean" },
 		{ name: "approval_ok", type: "boolean" },

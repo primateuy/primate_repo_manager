@@ -102,7 +102,7 @@ class RepoPlanApproveWizard(models.TransientModel):
 		sin leer también lo que sí importa.
 		"""
 		self.ensure_one()
-		(self.line_ids - self.line_ids.filtered("is_irreversible")).confirmed = True
+		(self.line_ids - self.line_ids.filtered("requires_typed_name")).confirmed = True
 		return {
 			"type": "ir.actions.act_window", "res_model": self._name,
 			"res_id": self.id, "view_mode": "form", "target": "new",
@@ -131,6 +131,8 @@ class RepoPlanApproveLine(models.TransientModel):
 		related="operation_id.is_destructive", readonly=True)
 	is_irreversible = fields.Boolean(
 		related="operation_id.is_irreversible", readonly=True)
+	requires_typed_name = fields.Boolean(
+		related="operation_id.requires_typed_name", readonly=True)
 	confirmed = fields.Boolean(
 		string="Confirmo",
 		help="Sólo hace falta en las destructivas, y hace falta en cada una.")
@@ -151,6 +153,6 @@ class RepoPlanApproveLine(models.TransientModel):
 	def _onchange_typed_name(self):
 		"""El tilde se prende solo cuando el nombre coincide, y se apaga si deja de hacerlo."""
 		for linea in self:
-			if linea.is_irreversible:
+			if linea.requires_typed_name:
 				linea.confirmed = (
 					(linea.typed_name or "").strip() == (linea.target_name or ""))

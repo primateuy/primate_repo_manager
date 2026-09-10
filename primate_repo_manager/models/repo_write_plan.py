@@ -76,6 +76,11 @@ OPERATION_KINDS = [
 	("branch_create", "Crear una rama"),
 	("dependabot_enable", "Encender las alertas de Dependabot"),
 	("default_branch_set", "Fijar la rama por defecto"),
+	# E3.2 · higiene. BORRA UNA RAMA, y es la primera operación destructiva que además
+	# EXIGE EL TIPEO sin ser irreversible. Ver `KINDS_CON_TIPEO`: la reversión existe
+	# —recrear la ref en el mismo commit— pero depende de que GitHub todavía conserve el
+	# objeto, y eso no lo controlamos.
+	("branch_delete", "Borrar una rama"),
 ]
 
 
@@ -631,6 +636,10 @@ class RepoWriteOperation(models.Model):
 		string="Irreversible", compute="_compute_description", store=True,
 		help="No tiene vuelta atrás por el mismo camino: NO entra en el rollback. Exige "
 			 "escribir el nombre del objeto para aprobarla.")
+	requires_typed_name = fields.Boolean(
+		string="Exige escribir el nombre", compute="_compute_description", store=True,
+		help="Verdadero para las irreversibles y para las que, pudiendo revertirse, "
+			 "dependen de un tercero para volver atrás.")
 	is_supported = fields.Boolean(
 		string="Se puede aplicar", compute="_compute_description", store=True,
 		help="Falso cuando el tipo existe en el selector pero todavía no tiene "
@@ -644,7 +653,21 @@ class RepoWriteOperation(models.Model):
 		"team_repo_revoke", "team_member_remove",
 		# La más destructiva de todas: saca código de un repositorio ajeno.
 		"module_delete",
+		# E3.2 · borrar una rama. Sólo se propone sobre ramas INTEGRADAS —lo que tenían
+		# ya está del otro lado— pero sigue siendo sacar algo que estaba.
+		"branch_delete",
 	)
+
+	# LAS QUE EXIGEN ESCRIBIR EL NOMBRE, que hasta ahora eran exactamente las
+	# irreversibles. Ya no.
+	#
+	# La fricción del tipeo no está atada a «no tiene vuelta» sino a «hay que MIRAR qué se
+	# está por tocar»: un tilde se marca sin leer —la mano va antes que el ojo—, escribir
+	# «17.0_hotfix_viejo» obliga a mirar cuál rama es. Borrar una rama es reversible en el
+	# papel —se recrea la ref en el mismo commit— pero esa vuelta depende de que GitHub
+	# todavía conserve el objeto, y eso no lo controlamos. Con una vuelta que depende de
+	# un tercero, el tilde no alcanza.
+	KINDS_CON_TIPEO = ("branch_delete",)
 
 	state = fields.Selection(
 		[("pending", "Pendiente"), ("applied", "Aplicada"), ("failed", "Fallida"),
@@ -778,6 +801,10 @@ class RepoWriteOperation(models.Model):
 			manejador = (op._manejadores() or {}).get(op.kind) if op.kind else {}
 			op.is_supported = bool(manejador)
 			op.is_irreversible = bool(manejador) and not manejador.get("revertir")
+			# El tipeo se pide para lo que no tiene vuelta Y para lo que la tiene pero
+			# depende de un tercero. Ver `KINDS_CON_TIPEO`.
+			op.requires_typed_name = (
+				op.is_irreversible or op.kind in self.KINDS_CON_TIPEO)
 			op.description = op._describir(datos)
 
 	@api.depends("approved", "approval_fingerprint", "kind", "target", "payload_json",
@@ -937,6 +964,17 @@ class RepoWriteOperation(models.Model):
 			return _(
 				"En %(repo)s SE BORRA el ruleset «%(nombre)s» y dejan de aplicarse sus "
 				"reglas.") % {"repo": repo, "nombre": datos.get("name") or destino}
+		if self.kind == "branch_delete":
+			datos_rama = datos or {}
+			contra = datos_rama.get("integrated_into")
+			return _(
+				"En %(repo)s SE BORRA la rama %(rama)s%(integrada)s. La reversión recrea "
+				"la rama en el mismo commit mientras GitHub conserve el objeto — eso no "
+				"lo controlamos."
+			) % {
+				"repo": repo, "rama": destino,
+				"integrada": (_(", que está integrada a %s") % contra) if contra else "",
+			}
 		if self.kind == "collaborator_grant":
 			return _("En %(repo)s, %(quien)s pasa a tener permiso de %(permiso)s.") % {
 				"repo": repo, "quien": destino,
