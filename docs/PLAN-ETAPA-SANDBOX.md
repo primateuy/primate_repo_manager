@@ -773,7 +773,30 @@ hecho.
 
 *Dimensión:* E3.1 chica (es evaluación sobre datos que ya están). E3.2 chica-media.
 
-### E4 · Panel de salud
+### E4 · Panel de salud · **CERRADO el 10-sep-2026**
+
+Tendencia de las últimas ocho corridas (E4.1) · meta configurable por número (E4.2) · el
+repaso elemento por elemento contra el mockup, mirando el panel real (E4.3) · los dos
+avisos de barra y las dos puertas de entrada (E4.4) · el ensayo final (E4.5,
+`scripts/sandbox/ensayo_e4_panel.py`).
+
+**Con esto el mapa A–E queda completo.** Lo que sigue vive en el backlog de abajo o en F4
+(webhooks) y F6 (el puente con PCM).
+
+Lo que quedó definido en este bloque y no conviene volver a discutir:
+
+- **La línea de la tendencia se corta en la corrida sin medición.** Jamás se interpola.
+  Fallida, sin métrica y cero son tres cosas distintas.
+- **La meta es aspiración, no política.** No genera hallazgos, no entra al delta, no
+  cambia severidades. Vacío no es cero, y por eso es texto.
+- **Dos avisos permanentes y no más.** Un aviso que aparece seguido deja de leerse.
+- **Las puertas son un default, no una jaula**, y no pisan lo que alguien eligió.
+
+---
+
+#### El desglose original, para referencia
+
+##### E4 · Panel de salud
 
 Dimensión funcional, que es lo que se pide acá; el diseño visual va por su carril.
 
