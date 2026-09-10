@@ -26,8 +26,51 @@ oscuro (turno 7 del entregable).
 
 ## Resumen
 
+**Contado sobre las tablas de este documento el 10-sep-2026**, no escrito a mano: los
+números de antes se habían separado de las filas a fuerza de editarlos tramo a tramo, que
+es exactamente lo que un documento de constancia no puede hacer.
+
 | columna | cuántos |
 |---|---|
+| ✅ Implementado | 150 |
+| 🔒 Apagado con su cartel | 17 |
+| 📋 Ítem de plan, con su bloque | 9 |
+| ↔️ Desvío deliberado, con su motivo | 2 |
+| ⛔ Sin representación | **0** |
+| | **178 elementos** |
+
+Para volver a contarlos, sin creerle a esta tabla:
+
+```bash
+python3 - <<'PY'
+lineas = open("docs/COBERTURA-DEL-DISENO.md", encoding="utf-8").read().split("\n")
+resumen = {"✅ Implementado", "🔒 Apagado con su cartel",
+           "📋 Ítem de plan, con su bloque",
+           "↔️ Desvío deliberado, con su motivo", "⛔ Sin representación"}
+conteo = {}
+for l in lineas:
+    if not l.startswith("| ") or l.count("|") < 3:
+        continue
+    celdas = [c.strip() for c in l.strip("|").split("|")]
+    if len(celdas) < 2 or celdas[0] in resumen:
+        continue
+    if celdas[1] in ("✅", "🔒", "📋", "↔️", "⛔"):
+        conteo[celdas[1]] = conteo.get(celdas[1], 0) + 1
+print(conteo, "· total", sum(conteo.values()))
+PY
+```
+
+**Los dos ↔️ son de traducción del sistema de diseño** —la etiqueta «referencia» y el
+acento en oscuro— y están marcados en su fila. Las **correcciones de la implementación al
+diseño**, que son otra cosa, viven en su propia tabla más abajo: ahí el mockup afirma algo
+que la realidad no sostiene y el producto dice lo que sí puede sostener.
+
+**La columna ⛔ quedó vacía**, y así tiene que quedar cada vez: los siete que aparecieron
+pasaron a cartel o a ítem del plan en el mismo commit. La tabla del final cuenta cuáles
+eran y dónde fueron.
+
+---
+---|
 | ✅ Implementado | 112 |
 | 🔒 Apagado con su cartel | 12 |
 | 📋 Ítem de plan, con su bloque | 8 |

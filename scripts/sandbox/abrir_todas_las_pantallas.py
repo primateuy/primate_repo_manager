@@ -42,8 +42,13 @@ try:
 		body:JSON.stringify({jsonrpc:'2.0',method:'call',params:{db:'%s',login:'%s',password:'%s'}})})
 		.then(r=>r.json())""" % (BD, LOGIN, PASS))
 
-	ACCIONES = ["panel", "promocion_modulos", "promocion_ramas", "prs", "rama_tarea",
-				"crear_repo", "seguridad", "higiene", "forks", "notificaciones"]
+	# LOS CASILLEROS QUE TODAVÍA SON CASILLEROS. La lista se achica sola a medida que
+	# las pantallas se construyen: `panel`, `crear_repo` y `seguridad` salieron de acá
+	# cuando llegaron de verdad (A/E4, B5 y B6). Dejarlos en la lista hacía que el guion
+	# reportara TRES PANTALLAS ROTAS que en realidad eran casilleros retirados —un rojo
+	# que no es del producto es peor que ninguno, porque el próximo también se ignora.
+	ACCIONES = ["promocion_modulos", "promocion_ramas", "prs", "rama_tarea",
+				"higiene", "forks", "notificaciones"]
 	malas = []
 	for clave in ACCIONES:
 		url = "%s/odoo/action-primate_repo_manager.action_pendiente_%s" % (BASE, clave)
@@ -73,6 +78,30 @@ try:
 		print("%-20s %s" % (clave, "OK" if ok else "ROTA"))
 		if not ok:
 			malas.append(clave)
+	# Y LAS QUE YA SON PANTALLAS DE VERDAD, revisadas como tales: se abren y se exige
+	# que dibujen SU raíz, no un casillero. Es el mismo control, un escalón más arriba.
+	REALES = {
+		"action_repo_panel_salud": ".rm-panel",
+		"action_repo_audit_run": ".o_list_view",
+		"action_repo_security_findings": ".o_list_view, .rm-hallazgos",
+		"action_repo_repository_create": ".o_form_view",
+	}
+	for accion, selector in REALES.items():
+		cdp("Page.navigate",
+			url="%s/odoo/action-primate_repo_manager.%s" % (BASE, accion))
+		ok = False
+		for _ in range(25):
+			time.sleep(0.6)
+			if js("!!document.querySelector('%s')" % selector):
+				ok = True; break
+			if js("!!document.querySelector('.o_error_dialog, .modal-title')"):
+				break
+		error = js("(document.querySelector('.o_error_dialog, .modal-body')||{}).innerText") or ""
+		print("%-30s %s  %s" % (accion, "OK " if ok else "ROTA",
+								error[:60].replace("\n", " ")))
+		if not ok:
+			malas.append(accion)
+
 	print("\nROTAS:", malas or "ninguna")
 finally:
 	proc.terminate(); shutil.rmtree(PERFIL, ignore_errors=True)
