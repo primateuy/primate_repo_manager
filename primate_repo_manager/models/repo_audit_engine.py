@@ -95,6 +95,12 @@ class RepoAuditEngine(models.AbstractModel):
 		# y esconderlo hasta que alguien lo clasifique sería callar lo más grave que el
 		# módulo sabe decir justo sobre los repositorios que nadie miró todavía.
 		self._evaluate_security(run, repo)
+		# LA HIGIENE TAMPOCO DEPENDE DE LA POLÍTICA. Se trata del ciclo de vida —qué está
+		# integrado y qué no se toca hace un año—, y eso es cierto de un repositorio
+		# clasificado y de uno que nadie clasificó todavía. Justamente los repositorios
+		# que nadie miró son los que más ramas viejas juntan.
+		self._evaluate_higiene(run, repo)
+		self._evaluate_archivable(run, repo)
 		if not repo.classification:
 			self._finding(run, repo, "classification_missing",
 						  _("«%s» no coincide con ninguna regla de clasificación")
@@ -506,6 +512,85 @@ class RepoAuditEngine(models.AbstractModel):
 					_("%(n)s commit(s) sin firmar en «%(repo)s», que exige firma") % {
 						"n": len(sin_firmar), "repo": repo.full_name},
 					observed={"unsigned": len(sin_firmar), "sample": len(muestras)})
+
+	@api.model
+	def _evaluate_higiene(self, run, repo):
+		"""E3.2b · los tres hallazgos de higiene, atados al CICLO DE VIDA y no a la fecha.
+
+		LA DISTINCIÓN ES EL PRODUCTO. Una rama vieja e integrada es basura y se ofrece
+		borrar; una rama vieja con trabajo que nunca se mergeó puede ser trabajo por
+		rescatar y **no se ofrece borrar nunca**, ni siquiera detrás de una confirmación.
+		Una regla por fecha no puede hacer esa distinción: las dos ramas se ven iguales.
+
+		Y LO QUE NO SE PUDO COMPARAR NO ES NINGUNA DE LAS DOS. Sin `compare` no se sabe
+		si tiene trabajo propio, así que no se propone nada — es el mismo tercer estado
+		de siempre, en el lugar donde más caro sale equivocarse.
+		"""
+		meses_abandono = ResConfigSettings._repo_param(
+			self.env, "repo_manager.branch_abandoned_months",
+			DEFAULTS["repo_manager.branch_abandoned_months"])
+		limite = fields.Datetime.now() - timedelta(days=30 * meses_abandono)
+
+		for rama in repo.branch_ids:
+			if not rama.line_comparison_readable or not rama.line_branch_name:
+				continue
+			if rama.ahead_of_line == 0:
+				# INTEGRADA. Dice contra QUÉ se midió: «integrada a 17.0-prod» y
+				# «integrada a 17.0» son afirmaciones distintas, y quien decide borrar
+				# necesita saber cuál de las dos está leyendo.
+				self._finding(
+					run, repo, "branch_integrated_candidate",
+					_("«%(rama)s» de «%(repo)s» está integrada a «%(prod)s»: no tiene "
+					  "commits propios") % {
+						"rama": rama.name, "repo": repo.full_name,
+						"prod": rama.line_branch_name},
+					subject=rama.name,
+					detail=_("Todo lo que tenía ya está en «%s». Borrarla no pierde nada, "
+							 "y se hace por el embudo con el nombre escrito a mano.")
+						   % rama.line_branch_name,
+					remediation_payload={"repository": repo.full_name,
+										 "branch": rama.name,
+										 "sha": rama.last_commit_sha or "",
+										 "integrated_into": rama.line_branch_name},
+					observed={"ahead": 0, "integrated_into": rama.line_branch_name})
+				continue
+			# CON TRABAJO PROPIO. Sólo se dice si además hace rato que nadie la toca:
+			# una rama activa con commits sin integrar es trabajo en curso, no higiene.
+			if rama.last_commit_date and rama.last_commit_date < limite:
+				self._finding(
+					run, repo, "branch_abandoned",
+					_("«%(rama)s» de «%(repo)s» tiene %(n)s commit(s) que nunca llegaron "
+					  "a «%(prod)s» y no se toca desde %(fecha)s") % {
+						"rama": rama.name, "repo": repo.full_name,
+						"n": rama.ahead_of_line, "prod": rama.line_branch_name,
+						"fecha": rama.last_commit_date.date()},
+					subject=rama.name,
+					detail=_("Este módulo NO ofrece borrarla: esos commits no están en "
+							 "ningún otro lado. Se mira a mano y se decide con quien la "
+							 "escribió."),
+					observed={"ahead": rama.ahead_of_line,
+							  "last_commit": str(rama.last_commit_date)})
+
+	@api.model
+	def _evaluate_archivable(self, run, repo):
+		"""Un repositorio sin push hace mucho. Archivar es reversible y sin pérdida."""
+		meses = ResConfigSettings._repo_param(
+			self.env, "repo_manager.repo_archive_months",
+			DEFAULTS["repo_manager.repo_archive_months"])
+		if repo.archived or not repo.pushed_at:
+			return
+		limite = fields.Datetime.now() - timedelta(days=30 * meses)
+		if repo.pushed_at >= limite:
+			return
+		self._finding(
+			run, repo, "repository_archivable",
+			_("«%(repo)s» no recibe un push desde %(fecha)s") % {
+				"repo": repo.full_name, "fecha": repo.pushed_at.date()},
+			detail=_("Archivarlo lo deja en sólo lectura para todos, y se puede "
+					 "desarchivar sin perder nada. La aprobación dice qué depende de él "
+					 "hoy."),
+			remediation_payload={"repository": repo.full_name},
+			observed={"pushed_at": str(repo.pushed_at), "meses": meses})
 
 	@api.model
 	def _evaluate_pull_requests(self, run, repo):

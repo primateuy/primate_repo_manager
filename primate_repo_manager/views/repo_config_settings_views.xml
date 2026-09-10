@@ -62,6 +62,8 @@
 						<field name="commit_violation_ratio"/>
 						<field name="fork_behind_threshold"/>
 						<field name="pr_stale_days"/>
+						<field name="branch_abandoned_months"/>
+						<field name="repo_archive_months"/>
 					</group>
 
 					<group string="Estado de la instancia">

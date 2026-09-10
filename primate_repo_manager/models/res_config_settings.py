@@ -19,6 +19,10 @@ DEFAULTS = {
 	# A partir de cuántos repositorios la auditoría deja de correr en el momento y pasa a
 	# encolarse. Ver el docstring de `action_start`.
 	"repo_manager.sync_threshold": "25",
+	# E3.2 · higiene. Los dos son del mismo tipo y los dos se editan: uno editable y otro
+	# cableado es la clase de inconsistencia que después nadie recuerda por qué está.
+	"repo_manager.branch_abandoned_months": "6",
+	"repo_manager.repo_archive_months": "18",
 }
 
 

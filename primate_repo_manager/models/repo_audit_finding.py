@@ -68,6 +68,12 @@ FINDING_TYPES = [
 	# inherente a la propiedad y no se puede bajar. El dato igual se conserva, como nota.
 	("owner_account_admin", "La cuenta dueña figura como colaboradora"),
 	("repository_absent", "El repositorio ya no viene en el listado"),
+	# E3.2 · higiene. Son TRES y no uno, y la diferencia es todo el punto: una rama vieja
+	# e integrada es basura; una rama vieja con trabajo que nunca se mergeó puede ser
+	# trabajo por rescatar.
+	("branch_integrated_candidate", "Rama integrada, candidata a borrar"),
+	("branch_abandoned", "Rama abandonada con trabajo sin integrar"),
+	("repository_archivable", "Repositorio candidato a archivar"),
 	("institutional_account", "Cuenta institucional sin persona asociada"),
 	# B4 · los dos sentidos del drift. Son dos tipos y no uno con una bandera porque
 	# significan cosas distintas: el primero es un INCIDENTE —alguien cambió GitHub por
@@ -105,6 +111,9 @@ BASE_SEVERITY = {
 	"convention_adoption": "info",
 	"owner_account_admin": "info",
 	"repository_absent": "info",
+	"branch_integrated_candidate": "info",
+	"branch_abandoned": "info",
+	"repository_archivable": "info",
 	"institutional_account": "info",
 	# El incidente es alto; la deuda es media. La diferencia no es de matiz: uno pasó
 	# afuera del embudo y el otro es trabajo nuestro que falta hacer.
@@ -137,6 +146,8 @@ REMEDIATION_ACTIONS = [
 	("review_manually", "Revisar a mano"),
 	("no_action_owner", "No requiere acción: es la cuenta dueña"),
 	("no_action_recien_creado", "No requiere acción: se relee en la próxima corrida"),
+	("delete_branch", "Borrar la rama"),
+	("archive_repository", "Archivar el repositorio"),
 	("reapply_ruleset", "Volver a aplicar el ruleset como estaba"),
 	("reapply_policy", "Volver a aplicar la política de la plantilla"),
 	("rotate_secret", "Rotar el secreto y cerrar la alerta en GitHub"),
@@ -163,6 +174,10 @@ REMEDIATION_BY_TYPE = {
 	"convention_adoption": "review_manually",
 	"owner_account_admin": "no_action_owner",
 	"repository_absent": "review_manually",
+	"branch_integrated_candidate": "delete_branch",
+	# NO ES «borrar» NI SIQUIERA DETRÁS DE UNA CONFIRMACIÓN. Ver `NUNCA_PLANIFICABLES`.
+	"branch_abandoned": "review_manually",
+	"repository_archivable": "archive_repository",
 	"institutional_account": "no_action_owner",
 	# El módulo auditándose a sí mismo: si la cadena de la bitácora está rota, alguien
 	# escribió en la base por fuera de la aplicación. No hay hallazgo más grave que ése,
@@ -201,6 +216,18 @@ DESTRUCTIVE_ACTIONS = ("revoke_permission", "rename_default_branch")
 #
 # Antes de agregar una acción acá hay que comprobar que su payload sea EJECUTABLE para el
 # tipo de operación de destino, no sólo que exista.
+# LOS QUE NO SE PLANIFICAN NUNCA, pase lo que pase con el catálogo de acciones.
+#
+# Hay uno solo, y merece estar escrito aparte: proponer borrar una rama abandonada sería
+# ofrecer perder trabajo que nunca llegó a producción. El producto no lo ofrece — ni
+# siquiera detrás de una confirmación con el nombre escrito a mano.
+NUNCA_PLANIFICABLES = {
+	"branch_abandoned": (
+		"Tiene commits que nunca llegaron a producción. Borrarla los tira, así que este "
+		"módulo no lo ofrece: se mira a mano y se decide con la persona que la escribió."
+	),
+}
+
 PLANIFICABLES = {
 	"revoke_permission": "collaborator_revoke",
 	# B4 · LA EXCEPCIÓN A LA LECCIÓN DE ARRIBA, Y HAY QUE DECIR POR QUÉ ES UNA.
@@ -271,6 +298,12 @@ POR_QUE_NO_PLANIFICABLE = {
 		"Crear ramas todavía no es un tipo de operación del plan."),
 	"review_manually": "No hay una acción automática: hay que mirarlo.",
 	"no_action_owner": "No requiere acción.",
+	"delete_branch": (
+		"Se borra por el embudo, como operación destructiva y con el nombre escrito a "
+		"mano."),
+	"archive_repository": (
+		"Se archiva por el embudo. Archivar deja el repositorio en sólo lectura para "
+		"todos, así que la aprobación lo dice con los hechos concretos de ese repo."),
 	"no_action_recien_creado": (
 		"El repositorio es de hace un rato y GitHub todavía no expone su estado en esa "
 		"fuente. Se vuelve a mirar en la próxima corrida."),
@@ -371,6 +404,16 @@ class RepoAuditFinding(models.Model):
 			hallazgo.planned_operation_id = viva
 			hallazgo.planned_plan_id = viva.plan_id
 			accion = hallazgo.remediation_action
+			# LA GUARDA DURA, y va acá y no sólo en el catálogo de acciones a propósito.
+			# Este es el único hallazgo del módulo donde «remediar» significaría OFRECER
+			# PERDER TRABAJO: una rama abandonada tiene commits que nunca llegaron a
+			# producción, y borrarla los tira. El catálogo ya le asigna una acción no
+			# planificable; esto lo sostiene aunque alguien cambie esa asignación, que
+			# es exactamente el error que nadie notaría hasta que alguien apretara.
+			if hallazgo.finding_type in NUNCA_PLANIFICABLES:
+				hallazgo.can_be_planned = False
+				hallazgo.why_not_planned = NUNCA_PLANIFICABLES[hallazgo.finding_type]
+				continue
 			hallazgo.can_be_planned = accion in PLANIFICABLES
 			hallazgo.why_not_planned = (
 				False if hallazgo.can_be_planned

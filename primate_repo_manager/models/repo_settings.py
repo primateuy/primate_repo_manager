@@ -44,6 +44,8 @@ CLAVES = {
 	"commit_violation_ratio": "repo_manager.commit_violation_ratio",
 	"fork_behind_threshold": "repo_manager.fork_behind_threshold",
 	"pr_stale_days": "repo_manager.pr_stale_days",
+	"branch_abandoned_months": "repo_manager.branch_abandoned_months",
+	"repo_archive_months": "repo_manager.repo_archive_months",
 }
 
 # El cron de la auditoría, por su identificador externo. Igual que `CLAVES`: la lista es
@@ -82,6 +84,13 @@ class RepoSettings(models.TransientModel):
 		help="A esa distancia el merge de parches ya es un problema y no un pendiente.")
 	pr_stale_days = fields.Integer(
 		string="Días para considerar estancada una PR")
+
+	branch_abandoned_months = fields.Integer(
+		string="Meses sin actividad para llamar abandonada a una rama",
+		help="Sólo cuenta para ramas que TIENEN commits sin integrar. Una rama integrada "
+			 "es candidata a borrar el día que se integra, tenga la edad que tenga.")
+	repo_archive_months = fields.Integer(
+		string="Meses sin push para proponer archivar un repositorio")
 
 	# --- cuándo se audita sola ---
 	audit_cron_active = fields.Boolean(
