@@ -57,6 +57,26 @@
 				</header>
 
 				<!-- LOS TRES NÚMEROS -->
+				<!-- E4.3 · LA AUDITORÍA EN CURSO, y la frase que la justifica. El
+					 avance ya se ve en la pantalla de la corrida; lo que sólo puede
+					 decirse acá es que LOS NÚMEROS DE ABAJO NO SON DE ESTA CORRIDA.
+					 Sin eso, quien abre el panel mientras algo corre decide con datos de
+					 la semana pasada creyendo que son de hoy. -->
+				<div t-if="datos.en_curso.hay" class="rm-card rm-panel-en-curso">
+					<div class="rm-panel-en-curso-titulo">
+						<span class="rm-chip rm-chip-live">Auditoría en curso</span>
+						<t t-esc="datos.en_curso.leidos"/> de
+						<t t-esc="datos.en_curso.total"/> repositorios revisados
+					</div>
+					<p class="rm-panel-en-curso-aviso">
+						Los números de abajo son de la auditoría anterior. Se actualizan
+						al terminar; <b>hasta entonces no cambian solos.</b>
+					</p>
+					<a href="#" t-on-click.prevent="() => this.verCorrida()">
+						Ver el avance
+					</a>
+				</div>
+
 				<div class="rm-panel-numeros">
 					<div t-foreach="datos.numeros" t-as="numero" t-key="numero.clave"
 						 class="rm-card rm-panel-numero">
@@ -68,6 +88,10 @@
 							 class="rm-chip rm-chip-critical">
 							<t t-esc="numero.criticos"/> críticos
 						</div>
+						<div t-if="numero.clave === 'hallazgos' and numero.en_plan"
+							 class="rm-panel-en-plan">
+							<t t-esc="numero.en_plan"/> ya están en un plan en borrador
+						</div>
 						<div t-if="numero.sin_leer" class="rm-no-legible">
 							<t t-esc="numero.sin_leer"/> rama(s) sin leer, fuera del cálculo
 						</div>
@@ -77,9 +101,15 @@
 							 Sólo aparece cuando HAY con qué comparar: un «▲ 0» sobre una
 							 comparación que no existe se lee como «no cambió», que es
 							 una afirmación. -->
-						<div t-if="(numero.delta !== null and numero.delta !== undefined) or numero.meta"
+						<!-- UN DELTA DE CERO NO SE DIBUJA. «=0 puntos desde la
+							 anterior» ocupa una línea para decir que no pasó nada, y en
+							 un panel donde cada línea es una afirmación, eso es ruido.
+							 Cuando algo no se movió, el número solo ya lo dice.
+							 (Esta condición se rompió al agregar la meta y se vio recién
+							 mirando el panel real.) -->
+						<div t-if="numero.delta or numero.meta"
 							 t-attf-class="rm-panel-delta rm-panel-delta-{{sentido(numero)}}">
-							<t t-if="numero.delta !== null and numero.delta !== undefined">
+							<t t-if="numero.delta">
 								<t t-esc="flecha(numero)"/>
 								<t t-esc="Math.abs(numero.delta)"/>
 								<t t-esc="numero.unidad === '%' ? ' puntos' : ''"/>
@@ -90,7 +120,7 @@
 								 y por eso va en gris al lado y no con el color del
 								 movimiento. -->
 							<span t-if="numero.meta" class="rm-panel-meta">
-								<t t-if="numero.delta !== null and numero.delta !== undefined"> · </t>
+								<t t-if="numero.delta"> · </t>
 								meta <t t-esc="numero.meta"/><t t-esc="numero.unidad"/>
 							</span>
 						</div>
@@ -163,7 +193,13 @@
 						<t t-else="">
 							<div t-foreach="datos.numeros" t-as="numero"
 								 t-key="numero.clave" class="rm-panel-serie">
-								<div class="rm-panel-serie-titulo" t-esc="numero.titulo"/>
+								<div class="rm-panel-serie-titulo">
+									<t t-esc="numero.titulo"/>
+									<span class="rm-panel-serie-escala">
+										<t t-foreach="escala(numero.clave)" t-as="marca"
+										   t-key="marca_index"><t t-esc="marca"/><t t-esc="numero.unidad"/><t t-if="!marca_last"> · </t></t>
+									</span>
+								</div>
 								<svg t-att-width="ancho" t-att-height="alto"
 									 t-attf-viewBox="0 0 {{ancho}} {{alto}}"
 									 class="rm-panel-svg" role="img"
@@ -199,13 +235,19 @@
 								</svg>
 								<div class="rm-panel-serie-pie">
 									<span t-esc="puntos(numero.clave)[0].cuando"/>
-									<span t-if="huecos(numero.clave).length"
-										  class="rm-no-legible">
-										<t t-esc="huecos(numero.clave).length"/>
-										corrida(s) sin medición: la línea se corta ahí, no
-										se rellena
-									</span>
 									<span t-esc="puntos(numero.clave).slice(-1)[0].cuando"/>
+								</div>
+								<!-- SIN `rm-no-legible`: esa trama es para DATOS que no
+									 se pudieron leer, y pintada de fondo detrás de una
+									 frase larga la vuelve ilegible. Lo que no se pudo
+									 leer acá es el dato del gráfico —y ahí sí está
+									 rayado—; esto es la explicación, y una explicación
+									 se lee. -->
+								<div t-if="huecos(numero.clave).length"
+									 class="rm-panel-serie-aviso">
+									<t t-esc="huecos(numero.clave).length"/>
+									corrida(s) sin medición: la línea se corta ahí, no se
+									rellena
 								</div>
 							</div>
 						</t>
@@ -262,10 +304,6 @@
 						<p class="rm-panel-nota">Cuentas con acceso que ninguna persona
 							reconoce como propia. Siempre son críticas.</p>
 					</div>
-
-					<Apagado que="'Hallazgos abiertos, auditoría por auditoría'"
-							 bloque="'E2'" forma="'bloque'"
-							 detalle="'La tendencia de las últimas 8 corridas, con las que fallaron marcadas y sin inventarles un valor.'"/>
 				</div>
 			</t>
 		</div>

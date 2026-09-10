@@ -266,3 +266,92 @@ class TestLaMeta(TransactionCase):
 		self.assertEqual(numero["meta"], 100.0)
 		# El valor sigue siendo el medido, no la distancia a la meta.
 		self.assertNotEqual(numero["valor"], 100.0)
+
+
+class TestLoQueSoloSeVioMIRANDO(TransactionCase):
+	"""E4.3 · lo que el repaso contra el mockup encontró abriendo el panel.
+
+	Ninguno de estos cuatro lo habría encontrado un test: los cuatro son verdaderos en el
+	sentido de «el dato es correcto» y falsos en el sentido de «lo que la pantalla afirma».
+	Quedan escritos como tests para que no vuelvan.
+	"""
+
+	def setUp(self):
+		super().setUp()
+		self.backend = self.env["repo.backend"].create({
+			"name": "Mirar %s" % uuid.uuid4().hex[:6],
+			"owner_login": "primateuy-%s" % uuid.uuid4().hex[:6],
+			"owner_type": "organization", "app_id": "1", "installation_id": "2",
+			"state": "connected"})
+		self.repo = self.env["repo.repository"].create({
+			"backend_id": self.backend.id, "github_id": uuid.uuid4().hex[:8],
+			"name": "uno", "full_name": "cuenta/uno", "classification": "cliente"})
+		self.Panel = self.env["repo.health.panel"]
+
+	def test_la_cuenta_DUEÑA_no_es_una_cuenta_sin_dueño(self):
+		"""Detrás de ella no hay un empleado: es la identidad de la empresa, y el motor
+		ya la exime. El panel la contaba igual y señalaba a la cuenta de la propia
+		organización como «cuenta que nadie reconoce como propia»."""
+		duena = self.env["repo.member"].create(
+			{"github_login": self.backend.owner_login})
+		ajena = self.env["repo.member"].create(
+			{"github_login": "ext-%s" % uuid.uuid4().hex[:6]})
+		for miembro in (duena, ajena):
+			self.env["repo.collaborator"].create({
+				"repository_id": self.repo.id, "member_id": miembro.id,
+				"permission": "push"})
+
+		sin_dueno = self.Panel._sin_dueno(self.backend)
+
+		self.assertEqual(sin_dueno["cuantas"], 1)
+		self.assertNotIn(self.backend.owner_login, sin_dueno["quienes"])
+
+	def test_el_aviso_de_auditoria_EN_CURSO_dice_que_los_numeros_son_viejos(self):
+		"""Es lo único que sólo puede decirse en el panel. Sin esa frase, quien lo abre
+		mientras algo corre decide con datos de la semana pasada creyendo que son de hoy.
+		"""
+		self.env["repo.audit.run"].create({
+			"name": "Terminada", "backend_id": self.backend.id, "state": "done",
+			"finished_at": fields.Datetime.now()})
+		corriendo = self.env["repo.audit.run"].create({
+			"name": "En curso", "backend_id": self.backend.id, "state": "running",
+			"started_at": fields.Datetime.now()})
+		self.env["repo.audit.run.line"].create({
+			"run_id": corriendo.id, "repository_id": self.repo.id, "state": "done"})
+
+		datos = self.Panel.datos(backend_id=self.backend.id)
+
+		self.assertTrue(datos["en_curso"]["hay"])
+		self.assertEqual(datos["en_curso"]["leidos"], 1)
+		self.assertTrue(datos["en_curso"]["los_numeros_son_de"])
+
+	def test_sin_nada_corriendo_no_hay_aviso(self):
+		self.env["repo.audit.run"].create({
+			"name": "Terminada", "backend_id": self.backend.id, "state": "done",
+			"finished_at": fields.Datetime.now()})
+		self.assertFalse(
+			self.Panel.datos(backend_id=self.backend.id)["en_curso"]["hay"])
+
+	def test_el_panel_dice_cuantos_hallazgos_YA_ESTAN_en_un_plan(self):
+		"""Es la diferencia entre una lista de problemas y una lista de problemas de los
+		que alguien ya se ocupó."""
+		corrida = self.env["repo.audit.run"].create({
+			"name": "C", "backend_id": self.backend.id, "state": "done",
+			"finished_at": fields.Datetime.now()})
+		plan = self.env["repo.write.plan"].create(
+			{"name": "P", "backend_id": self.backend.id})
+		for i, con_plan in enumerate((True, False)):
+			hallazgo = self.env["repo.audit.finding"].create({
+				"run_id": corrida.id, "repository_id": self.repo.id,
+				"finding_type": "permission_exceeded", "severity": "high",
+				"subject": "quien-%s" % i, "summary": "algo %s" % i})
+			if con_plan:
+				self.env["repo.write.operation"].create({
+					"plan_id": plan.id, "kind": "collaborator_revoke",
+					"repository_id": self.repo.id, "target": hallazgo.subject,
+					"payload_json": "{}", "finding_id": hallazgo.id})
+
+		numeros = {n["clave"]: n
+				   for n in self.Panel.datos(backend_id=self.backend.id)["numeros"]}
+
+		self.assertEqual(numeros["hallazgos"]["en_plan"], 1)

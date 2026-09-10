@@ -28,8 +28,8 @@ oscuro (turno 7 del entregable).
 
 | columna | cuántos |
 |---|---|
-| ✅ Implementado | 106 |
-| 🔒 Apagado con su cartel | 13 |
+| ✅ Implementado | 109 |
+| 🔒 Apagado con su cartel | 12 |
 | 📋 Ítem de plan, con su bloque | 11 |
 | ↔️ Desvío deliberado, con su motivo | 3 |
 | ⛔ Sin representación | **0** |
@@ -79,7 +79,9 @@ final cuenta cuáles eran y dónde fueron.
 | «Comparar con auditoría anterior» | ✅ | E2.2b · y además «Comparar con otra», que el mockup pide en la pantalla del delta |
 | Meta configurable del 85 % | ✅ | E4.2 · una por número, las tres opcionales. Es **aspiración, no política**: aparece junto al delta y como línea en la tendencia, y no genera hallazgos ni entra al delta |
 | Delta «▲ 6 puntos desde la anterior» en los números | ✅ | E2.2b · el valor viejo sale de `repo.metric`. El color dice si el movimiento es **bueno o malo**, no si el número subió: más ramas protegidas es mejor, más hallazgos abiertos es peor |
-| Aviso de auditoría en curso dentro del panel | 🔒 | es uno de los dos avisos de barra: **E4**, ver abajo |
+| Aviso de auditoría en curso dentro del panel | ✅ | E4.3 · con la frase que lo justifica: «los números de abajo son de la auditoría anterior y hasta que ésta termine no cambian solos» |
+| «N de estos ya están en el plan en borrador» | ✅ | E4.3 · el puente entre una lista de problemas y una lista de la que alguien ya se ocupó |
+| Marcas del eje en la tendencia | ✅ | E4.3 · los valores **reales** de la serie, no una escala fija: un gráfico de 3 a 9 sobre un eje de 0 a 100 es una línea plana |
 
 ## 2a · Navegación
 
@@ -320,6 +322,24 @@ que la realidad no sostiene, y el producto dice lo que sí puede sostener.
 | elemento | estado | dónde |
 |---|---|---|
 | Criterios de tono aplicados a lo no diseñado | ✅ | vocabulario compartido en `components.scss` |
+
+---
+
+# E4.3 · el repaso final, elemento por elemento
+
+Hecho el 10-sep-2026 **abriendo el panel real** contra los datos del sandbox, no leyendo
+el código. Encontró cinco cosas que ningún test podía ver, porque las cinco son correctas
+como dato y falsas como afirmación de pantalla:
+
+| # | qué se vio | qué se hizo |
+|---|---|---|
+| 1 | «=0 puntos desde la anterior» ocupando una línea para decir que no pasó nada | El delta de cero no se dibuja. Una regresión que introdujo E4.2 al ampliar la condición para la meta |
+| 2 | El casillero apagado de la tendencia seguía abajo, diciendo «llega con E2», con la tendencia ya dibujada arriba | Retirado |
+| 3 | La frase del hueco quedaba centrada **encima** del dibujo y lo tapaba | Pasó a su propia línea, debajo |
+| 4 | Esa misma frase llevaba la trama de «no se pudo leer» de fondo y era ilegible | La trama es para DATOS que no se pudieron leer. Una explicación se lee |
+| 5 | El panel contaba la cuenta dueña entre las «cuentas que ninguna persona reconoce como propia» | El motor ya la eximía; el panel no. Dos lugares mirando el mismo hecho con criterios distintos |
+
+Los cinco tienen su test donde se puede, y el tour de la tendencia cubre el 3.
 
 ---
 

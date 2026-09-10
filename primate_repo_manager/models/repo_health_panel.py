@@ -63,6 +63,11 @@ class RepoHealthPanel(models.AbstractModel):
 			order="id desc", limit=2)
 		corrida = corridas[:1]
 		anterior = corridas[1:2]
+		# LA QUE ESTÁ CORRIENDO AHORA, si hay alguna. Es otra corrida: los números de
+		# abajo siguen siendo los de la última TERMINADA, y el panel tiene que decirlo.
+		en_curso = Run.search(
+			[("backend_id", "=", backend.id), ("state", "=", "running")],
+			order="id desc", limit=1)
 
 		return {
 			"hay_conexion": True,
@@ -71,12 +76,36 @@ class RepoHealthPanel(models.AbstractModel):
 			"conexiones": [{"id": c.id, "nombre": c.name, "cuenta": c.owner_login}
 						   for c in conexiones],
 			"corrida": self._resumen_de_corrida(corrida, anterior),
+			"en_curso": self._resumen_en_curso(en_curso, corrida),
 			"numeros": self._tres_numeros(backend, corrida, anterior),
 			"estado": self._frase_de_estado(backend, corrida),
 			"detalle": self._detalle(backend, corrida),
 		}
 
 	# ------------------------------------------------------------------
+
+	def _resumen_en_curso(self, en_curso, ultima):
+		"""La auditoría que está corriendo ahora, y LA ACLARACIÓN QUE LA ACOMPAÑA.
+
+		El mockup la pide en el panel, y lo que hace que valga la pena no es el avance
+		—eso ya se ve en la pantalla de la corrida— sino la frase de al lado: **los
+		números de abajo son de la auditoría anterior y no cambian solos**. Sin ella,
+		alguien que abre el panel mientras algo corre lee los porcentajes como si fueran
+		de lo que está pasando ahora, y decide con datos de la semana pasada creyendo que
+		son de hoy.
+		"""
+		if not en_curso:
+			return {"hay": False}
+		lineas = en_curso.line_ids
+		return {
+			"hay": True,
+			"id": en_curso.id,
+			"leidos": len(lineas.filtered(lambda l: l.state == "done")),
+			"total": len(lineas),
+			"desde": en_curso.started_at,
+			"los_numeros_son_de": (
+				(ultima.finished_at or ultima.started_at) if ultima else False),
+		}
 
 	def _resumen_de_corrida(self, corrida, anterior):
 		if not corrida:
@@ -260,6 +289,10 @@ class RepoHealthPanel(models.AbstractModel):
 						 % len(set(corrida.finding_ids.mapped("repository_id.id")))),
 			"delta": (len(corrida.finding_ids) - len(anterior.finding_ids)
 					  if anterior else None),
+			# EL PUENTE CON EL PLAN, que el mockup pone acá: «12 de estos ya están en el
+			# plan en borrador». Es la diferencia entre una lista de problemas y una lista
+			# de problemas de los que alguien ya se ocupó.
+			"en_plan": len(corrida.finding_ids.filtered("planned_operation_id")),
 			"explicacion": _("Lo que la última auditoría encontró fuera de la política."),
 		}
 
@@ -436,7 +469,16 @@ class RepoHealthPanel(models.AbstractModel):
 		colaboraciones = self.env["repo.collaborator"].search(
 			[("repository_id.backend_id", "=", backend.id)])
 		miembros = colaboraciones.mapped("member_id")
-		huerfanas = miembros.filtered(lambda m: not m.employee_id)
+		# LA CUENTA DUEÑA NO ES UNA CUENTA SIN DUEÑO. Detrás de ella no hay un empleado:
+		# es la identidad de la empresa, y el motor ya la exime por eso mismo
+		# (`institutional_account`). El panel la contaba igual y decía «1 cuenta que
+		# ninguna persona reconoce como propia» señalando a la cuenta de la propia
+		# organización. Dos lugares mirando el mismo hecho con criterios distintos: se vio
+		# recién abriendo el panel contra datos reales.
+		duena = (backend.owner_login or "").lower()
+		huerfanas = miembros.filtered(
+			lambda m: not m.employee_id
+			and (m.github_login or "").lower() != duena)
 		return {
 			"cuantas": len(huerfanas),
 			"total": len(miembros),

@@ -149,6 +149,27 @@ export class PanelDeSalud extends Component {
 	}
 
 	/**
+	 * Las tres marcas del eje: mínimo, medio y máximo de lo medido.
+	 *
+	 * El mockup dibuja «0 · 20 · 40» al costado. Son los valores REALES de la serie y no
+	 * una escala fija: un gráfico de hallazgos que va de 3 a 9 dibujado sobre un eje de
+	 * 0 a 100 se ve como una línea plana, y la tendencia —que es lo único que este
+	 * gráfico tiene que contar— desaparece.
+	 */
+	escala(clave) {
+		const medidos = this.puntos(clave).filter((p) => p.y !== null).map((p) => p.valor);
+		if (!medidos.length) {
+			return [];
+		}
+		const max = Math.max(...medidos, 0);
+		const min = Math.min(...medidos, 0);
+		if (max === min) {
+			return [max];
+		}
+		return [max, Math.round((max + min) / 2), min];
+	}
+
+	/**
 	 * Dónde cae la meta en el dibujo, o `null` si no hay meta o queda fuera de la escala.
 	 *
 	 * FUERA DE LA ESCALA SE OMITE, no se pega al borde. Una meta del 85 % dibujada al

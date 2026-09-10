@@ -51,7 +51,9 @@ registry.category("web_tour.tours").add("prm_tendencia", {
 		},
 		{
 			content: "y se dice en palabras, para quien no mira el dibujo",
-			trigger: ".rm-panel-serie-pie .rm-no-legible:contains(no se rellena)",
+			// La frase pasó del pie a su propia línea: con los tres elementos en
+			// la misma fila quedaba centrada encima del dibujo y lo tapaba.
+			trigger: ".rm-panel-serie-aviso:contains(no se rellena)",
 		},
 	],
 });

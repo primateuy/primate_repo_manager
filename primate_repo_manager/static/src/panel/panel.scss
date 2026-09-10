@@ -238,6 +238,9 @@
 		stroke-dasharray: 2 2;
 	}
 
+	// LAS FECHAS A LOS COSTADOS Y LA ADVERTENCIA DEBAJO. Con los tres en la misma fila,
+	// la frase del hueco —que es larga— quedaba centrada encima del dibujo y lo tapaba.
+	// Se vio mirando el panel real; en el navegador de los tests nadie mira.
 	.rm-panel-serie-pie {
 		display: flex;
 		justify-content: space-between;
@@ -245,6 +248,13 @@
 		font-size: 11px;
 		color: var(--rm-ink-3);
 		@include rm-mono;
+	}
+
+	.rm-panel-serie-aviso {
+		font-size: 11px;
+		line-height: 1.4;
+		margin-top: 2px;
+		color: var(--rm-unread);
 	}
 }
 
@@ -257,4 +267,37 @@
 	stroke: var(--rm-ink-3);
 	stroke-width: 1;
 	stroke-dasharray: 3 3;
+}
+
+// E4.3 · el aviso de auditoría en curso, dentro del panel.
+.rm-panel-en-curso {
+	border-left: 3px solid var(--rm-live);
+
+	.rm-panel-en-curso-titulo {
+		display: flex;
+		align-items: center;
+		gap: var(--rm-space-2);
+		font-weight: 600;
+	}
+
+	// La frase que hace honesto al resto del panel: no es una nota al pie.
+	.rm-panel-en-curso-aviso {
+		margin: var(--rm-space-2) 0 var(--rm-space-1) 0;
+		color: var(--rm-ink-2);
+	}
+}
+
+.rm-panel-en-plan {
+	font-size: 12px;
+	color: var(--rm-ink-3);
+	margin-top: var(--rm-space-1);
+}
+
+// Las marcas del eje: los valores reales de la serie, no una escala fija. Un gráfico de
+// hallazgos que va de 3 a 9 sobre un eje de 0 a 100 es una línea plana, y la tendencia
+// —lo único que este dibujo cuenta— desaparece.
+.rm-panel-tendencia .rm-panel-serie-escala {
+	float: right;
+	@include rm-mono;
+	color: var(--rm-ink-3);
 }
