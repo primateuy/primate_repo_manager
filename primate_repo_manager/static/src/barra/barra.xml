@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 - PrimateUY / License AGPL-3.0 or later -->
+<templates xml:space="preserve">
+
+	<t t-name="primate_repo_manager.BarraRepoManager">
+		<div class="rm-barra">
+			<!-- AUDITORÍA EN CURSO. No es «hay trabajo corriendo»: es «lo que estás
+				 mirando no es de ahora». Por eso lleva el conteo y no sólo el estado. -->
+			<button t-if="state.auditoria" class="rm-barra-aviso rm-barra-auditoria"
+					t-on-click="abrirAuditoria"
+					t-attf-title="Auditoría en curso: {{state.auditoria.leidos}} de {{state.auditoria.total}} repositorios. Los números de las pantallas son de la auditoría anterior hasta que ésta termine.">
+				<span class="rm-barra-punto"/>
+				Auditoría en curso
+				<span class="rm-barra-cuenta">
+					<t t-esc="state.auditoria.leidos"/>/<t t-esc="state.auditoria.total"/>
+				</span>
+			</button>
+
+			<!-- UN PLAN ESPERANDO. Es lo único del módulo que se frena esperando a una
+				 persona; todo lo demás avanza solo o falla y lo dice. -->
+			<button t-if="state.plan" class="rm-barra-aviso rm-barra-plan"
+					t-on-click="abrirPlan"
+					t-attf-title="{{state.plan.nombre}}: {{state.plan.operaciones}} operación(es) esperando aprobación.">
+				<t t-esc="state.plan.cuantos"/>
+				plan(es) espera(n) tu aprobación
+			</button>
+		</div>
+	</t>
+
+</templates>

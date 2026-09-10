@@ -229,6 +229,42 @@ class RepoAuditRun(models.Model):
 			subtype_xmlid="mail.mt_comment")
 		return True
 
+	@api.model
+	def avisos_de_barra(self):
+		"""Los dos avisos permanentes de la barra. UNA sola llamada para los dos.
+
+		SÓLO LO QUE EL USUARIO PUEDE VER. Se buscan con los permisos de quien pregunta,
+		sin `sudo()`: la barra está en todas las pantallas y no puede ser la rendija por
+		la que alguien se entera de que existe una conexión que no tiene permiso de
+		mirar.
+
+		Y SÓLO LOS PLANES QUE LE TOCAN. Un aviso permanente sobre algo que uno no puede
+		aprobar es ruido que además no se puede sacar: quien no tiene el rol lo vería
+		para siempre.
+		"""
+		en_curso = self.search([("state", "=", "running")], order="id desc", limit=1)
+		aviso_auditoria = False
+		if en_curso:
+			lineas = en_curso.line_ids
+			aviso_auditoria = {
+				"id": en_curso.id,
+				"leidos": len(lineas.filtered(lambda l: l.state == "done")),
+				"total": len(lineas),
+			}
+		aviso_plan = False
+		if self.env.user.has_group("primate_repo_manager.group_repo_lead"):
+			borradores = self.env["repo.write.plan"].search(
+				[("state", "=", "draft"), ("operation_ids", "!=", False)],
+				order="id desc")
+			if borradores:
+				aviso_plan = {
+					"id": borradores[0].id,
+					"nombre": borradores[0].display_name,
+					"cuantos": len(borradores),
+					"operaciones": len(borradores[0].operation_ids),
+				}
+		return {"auditoria": aviso_auditoria, "plan": aviso_plan}
+
 	def delta(self):
 		"""Qué cambió respecto de la corrida anterior. Atajo hacia `repo.audit.delta`.
 

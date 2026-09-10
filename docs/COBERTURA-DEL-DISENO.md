@@ -28,9 +28,9 @@ oscuro (turno 7 del entregable).
 
 | columna | cuántos |
 |---|---|
-| ✅ Implementado | 109 |
+| ✅ Implementado | 112 |
 | 🔒 Apagado con su cartel | 12 |
-| 📋 Ítem de plan, con su bloque | 11 |
+| 📋 Ítem de plan, con su bloque | 8 |
 | ↔️ Desvío deliberado, con su motivo | 3 |
 | ⛔ Sin representación | **0** |
 
@@ -90,9 +90,9 @@ final cuenta cuáles eran y dónde fueron.
 | Siete secciones fijas | ✅ | `repo_menus.xml` |
 | Entradas futuras grises con su etapa | ✅ | nueve casilleros con su página honesta |
 | Página vacía honesta: qué hace y con qué bloque llega | ✅ | `repo.coming.soon` |
-| Aviso permanente «auditoría en curso» en la barra | 📋 | ítem de plan, **E4** — es systray, no hay pantalla donde poner un casillero |
-| Aviso permanente «1 plan espera tu aprobación» | 📋 | ítem de plan, **E4** — ídem |
-| Dos puertas de entrada (gerencia → panel, técnica → hallazgos) | 📋 | ítem de plan, **E4** — es la acción de inicio por grupo |
+| Aviso permanente «auditoría en curso» en la barra | ✅ | E4.4 · con su conteo: no es «hay trabajo corriendo», es «lo que estás mirando no es de ahora» |
+| Aviso permanente «1 plan espera tu aprobación» | ✅ | E4.4 · sólo a quien puede aprobarlo, y sólo si tiene operaciones |
+| Dos puertas de entrada (gerencia → panel, técnica → hallazgos) | ✅ | E4.4 · acción de inicio por rol, y **no se pisa** la que alguien ya eligió |
 
 ## 2b · Plan de escritura
 
